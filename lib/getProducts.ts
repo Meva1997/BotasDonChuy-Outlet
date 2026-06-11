@@ -31,6 +31,10 @@ export const productKeys = {
   filtered: (filters: ProductFilters) => ["products", filters] as const,
 };
 
+export async function getProductById(id: number): Promise<Product | null> {
+  return MOCK_PRODUCTS.find((p) => p.id === id) ?? null;
+}
+
 export async function getProducts(
   filters: ProductFilters = {}
 ): Promise<ProductsResult> {

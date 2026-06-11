@@ -107,6 +107,7 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
               {result.products.map((product) => (
                 <OutletCard
                   key={product.id}
+                  slug={product.id}
                   name={product.name}
                   originalPrice={product.originalPrice}
                   salePrice={product.salePrice}
