@@ -36,11 +36,11 @@ export default function Hero() {
         </Link>
 
         {/* Scroll indicator */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-px h-14 bg-linear-to-b from-amber-400/40 to-transparent" />
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-px h-14 bg-linear-to-b from-amber-400/40 to-transparent [@media(max-height:800px)]:hidden" />
       </section>
 
       {/* Category cards */}
-      <section className="flex justify-center gap-6 max-w-5xl mx-auto pb-24 px-8">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 max-w-5xl mx-auto pb-24 px-4 sm:px-8">
         <CategoryCard title="Botas" count={3} href="/botas" imageSrc="" />
         <CategoryCard
           title="Sombreros"

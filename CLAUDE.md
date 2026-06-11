@@ -24,12 +24,23 @@ Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependenci
 app/              # Next.js App Router
   layout.tsx      # Root layout: fonts, base classes, metadata
   page.tsx        # Home page — composes NavHeader + Hero + Footer
+  (public)/
+    outlet/
+      [slug]/
+        producto/ # Product detail page (async RSC → ProductInfo client component)
 components/
   home/           # Page-level sections (NavHeader, Hero, Footer)
-  ui/             # Reusable primitives (CategoryCard)
+  outlet/         # OutletView — product listing with category filters
+  ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo)
+db/
+  mockProducts.ts # MockProduct interface + MOCK_PRODUCTS array
+lib/
+  getProducts.ts  # getProducts(filters), getProductById(id), Product type
 ```
 
-**Planned routes** (not yet built): `/outlet`, `/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`, `/envios`
+**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`
+
+**Planned routes** (not yet built): `/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`, `/envios`
 
 ## Design System
 

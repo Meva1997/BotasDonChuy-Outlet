@@ -1,33 +1,50 @@
 # Botas Don Chuy — Outlet
 
-Tienda en línea para Botas Don Chuy, especializada en calzado y accesorios de estilo vaquero. Esta es la aplicación frontend del outlet.
+Online store for Botas Don Chuy, specializing in western-style footwear and accessories. This is the outlet frontend application.
 
 ## Stack
 
-- **Next.js** con App Router
+- **Next.js** with App Router
 - **React 19**, **TypeScript**
 - **Tailwind CSS v4**
-- **pnpm** como gestor de paquetes
+- **pnpm** as package manager
 
-## Comandos
+## Commands
 
 ```bash
-pnpm dev        # Servidor de desarrollo (localhost:3000)
-pnpm build      # Build de producción
+pnpm dev        # Dev server (localhost:3000)
+pnpm build      # Production build
 pnpm lint       # ESLint
 ```
 
-## Estructura
+## Structure
 
 ```
 app/              # Next.js App Router
-  layout.tsx      # Layout raíz: fuentes, clases base, metadata
-  page.tsx        # Página principal
+  layout.tsx      # Root layout: fonts, base classes, metadata
+  page.tsx        # Home page
+  (public)/
+    outlet/
+      [slug]/
+        producto/ # Product detail view
 components/
-  home/           # Secciones de la página (NavHeader, Hero, Footer)
-  ui/             # Primitivos reutilizables (CategoryCard)
+  home/           # Page sections (NavHeader, Hero, Footer)
+  outlet/         # OutletView — product listing with filters
+  ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo)
+db/
+  mockProducts.ts # Mock data (MockProduct interface + MOCK_PRODUCTS)
+lib/
+  getProducts.ts  # getProducts(), getProductById() and types
 ```
 
-## Rutas planeadas
+## Implemented routes
 
-`/outlet`, `/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`, `/envios`
+| Route | Status |
+|-------|--------|
+| `/` | Done |
+| `/outlet` | Done |
+| `/outlet/[id]/producto` | Done |
+
+## Planned routes
+
+`/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`, `/envios`

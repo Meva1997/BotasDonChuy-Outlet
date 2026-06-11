@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-const footerLinks = [
+const FOOTER_SECTIONS = [
   {
     heading: "Tienda",
     links: [
@@ -30,13 +30,13 @@ const footerLinks = [
 export default function Footer() {
   return (
     <footer className="border-t border-amber-900/40 mt-auto">
-      <div className="max-w-6xl mx-auto px-8 py-16">
+      <div className="max-w-6xl mx-auto px-8 py-12 md:py-16">
 
-        {/* Top: logo + columns */}
-        <div className="flex flex-col md:flex-row justify-between gap-12">
+        {/* Top: marca + columnas de links */}
+        <div className="flex flex-col md:flex-row md:justify-between gap-10 md:gap-12">
 
-          {/* Brand */}
-          <div className="space-y-3">
+          {/* Marca */}
+          <div className="space-y-3 shrink-0">
             <p className="font-serif text-xl">
               <span className="text-amber-50">Botas Don Chuy </span>
               <span className="italic text-amber-400">Outlet</span>
@@ -46,14 +46,17 @@ export default function Footer() {
             </p>
           </div>
 
-          {/* Link columns */}
-          <div className="flex gap-16">
-            {footerLinks.map(({ heading, links }) => (
-              <div key={heading} className="space-y-4">
-                <p className="text-xs tracking-[0.25em] uppercase text-amber-400/70">
+          {/* Columnas de links — 2 cols en móvil, 3 en sm+ */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-10">
+            {FOOTER_SECTIONS.map(({ heading, links }) => (
+              <section key={heading} aria-labelledby={`footer-${heading.toLowerCase()}`}>
+                <h3
+                  id={`footer-${heading.toLowerCase()}`}
+                  className="text-xs tracking-[0.25em] uppercase text-amber-400/70 mb-4"
+                >
                   {heading}
-                </p>
-                <ul className="space-y-3">
+                </h3>
+                <ul className="space-y-3 list-none">
                   {links.map(({ label, href }) => (
                     <li key={label}>
                       <Link
@@ -65,14 +68,13 @@ export default function Footer() {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </section>
             ))}
           </div>
-
         </div>
 
-        {/* Bottom bar */}
-        <div className="mt-16 pt-6 border-t border-amber-900/30 flex items-center justify-between">
+        {/* Barra inferior */}
+        <div className="mt-12 pt-6 border-t border-amber-900/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <p className="text-xs text-amber-100/30 tracking-wide">
             © {new Date().getFullYear()} Botas Don Chuy. Todos los derechos reservados.
           </p>
