@@ -26,7 +26,7 @@ Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependenci
 
 ```
 app/              # Next.js App Router
-  layout.tsx      # Root layout: fonts, base classes, metadata
+  layout.tsx      # Root layout: fonts, base classes, metadata, CartProvider
   page.tsx        # Home page — composes NavHeader + Hero + Footer
   (public)/
     outlet/
@@ -35,16 +35,24 @@ app/              # Next.js App Router
 components/
   home/           # Page-level sections (NavHeader, Hero, Footer)
   outlet/         # OutletView — product listing with category filters
-  ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo)
+  ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider)
 db/
   mockProducts.ts # MockProduct interface + MOCK_PRODUCTS array
 lib/
   getProducts.ts  # getProducts(filters), getProductById(id), Product type
+  utils/
+    index.ts      # formatPrice(amount) — es-MX locale formatting
+store/
+  cartStore.ts    # Zustand store (persist) — cart items, open/close, totals, stock-aware addItem
 ```
 
 **Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`
 
 **Planned routes** (not yet built): `/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`, `/envios`
+
+## State Management
+
+Cart state lives in a Zustand store (`store/cartStore.ts`) with `persist` middleware (localStorage key: `botas-don-chuy-cart`). The `Cart` drawer is rendered globally via `CartProvider` (dynamic import, SSR disabled) mounted in the root layout. `NavHeader` reads `totalItems()` and calls `toggleCart()`. `ProductInfo` calls `addItem()` + `openCart()` with per-size stock validation.
 
 ## Design System
 
