@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useCartStore } from "@/store/cartStore";
 
 const NAV_LINKS = [
   { href: "/botas", label: "Botas" },
@@ -12,6 +13,8 @@ const NAV_LINKS = [
 export default function NavHeader() {
   const [open, setOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
+  const { toggleCart, totalItems } = useCartStore();
+  const itemCount = totalItems();
 
   useEffect(() => {
     if (!open) return;
@@ -60,12 +63,13 @@ export default function NavHeader() {
           >
             Admin
           </Link>
-          <Link
-            href="/carrito"
-            className="text-xs tracking-[0.15em] uppercase border border-amber-400/60 text-amber-400 px-4 py-2 hover:bg-amber-400/10 transition-colors duration-200"
+          <button
+            type="button"
+            onClick={toggleCart}
+            className="text-xs tracking-[0.15em] uppercase border border-amber-400/60 text-amber-400 px-4 py-2 hover:bg-amber-400/10 transition-colors duration-200 cursor-pointer"
           >
-            Carrito (0)
-          </Link>
+            Carrito ({itemCount})
+          </button>
         </div>
 
         {/* Mobile — solo hamburguesa */}
@@ -124,13 +128,13 @@ export default function NavHeader() {
             >
               Admin
             </Link>
-            <Link
-              href="/carrito"
-              onClick={() => setOpen(false)}
-              className="block text-center text-xs tracking-[0.15em] uppercase border border-amber-400/60 text-amber-400 py-3 hover:bg-amber-400/10 transition-colors duration-200"
+            <button
+              type="button"
+              onClick={() => { setOpen(false); toggleCart(); }}
+              className="block w-full text-center text-xs tracking-[0.15em] uppercase border border-amber-400/60 text-amber-400 py-3 hover:bg-amber-400/10 transition-colors duration-200 cursor-pointer"
             >
-              Carrito (0)
-            </Link>
+              Carrito ({itemCount})
+            </button>
           </div>
         </div>
       )}

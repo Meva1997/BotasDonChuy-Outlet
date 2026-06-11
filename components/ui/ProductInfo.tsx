@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Product } from "@/lib/getProducts";
+import { useCartStore } from "@/store/cartStore";
 
 const CATEGORY_LABELS: Record<string, string> = {
   bota: "Botas",
@@ -16,6 +17,32 @@ interface ProductInfoProps {
 
 export default function ProductInfo({ product }: ProductInfoProps) {
   const [selectedSize, setSelectedSize] = useState<number | null>(null);
+  const [added, setAdded] = useState(false);
+  const { addItem, openCart, items: cartItems } = useCartStore();
+
+  // Stock disponible por talla (un tamaño puede repetirse en el array)
+  const sizeStockMap = product.sizes.reduce<Record<number, number>>((acc, s) => {
+    acc[s] = (acc[s] || 0) + 1;
+    return acc;
+  }, {});
+
+  const uniqueSizes = [...new Set(product.sizes)].sort((a, b) => a - b);
+
+  function cartQuantityFor(size: number) {
+    return cartItems.find((i) => i.id === `${product.id}-${size}`)?.quantity ?? 0;
+  }
+
+  const selectedSizeAtMax =
+    selectedSize !== null &&
+    cartQuantityFor(selectedSize) >= sizeStockMap[selectedSize];
+
+  function handleAddToCart() {
+    if (!selectedSize || selectedSizeAtMax) return;
+    addItem(product, selectedSize);
+    openCart();
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1500);
+  }
 
   const formatPrice = (n: number) =>
     n.toLocaleString("es-MX", { minimumFractionDigits: 0 });
@@ -120,23 +147,38 @@ export default function ProductInfo({ product }: ProductInfoProps) {
               Talla
             </legend>
             <div className="flex flex-wrap gap-2">
-              {product.sizes.map((size) => (
-                <button
-                  key={size}
-                  type="button"
-                  aria-pressed={selectedSize === size}
-                  onClick={() =>
-                    setSelectedSize(selectedSize === size ? null : size)
-                  }
-                  className={`w-14 h-14 border font-sans text-sm transition-all duration-150 cursor-pointer ${
-                    selectedSize === size
-                      ? "border-amber-400 text-amber-400 bg-amber-400/10"
-                      : "border-amber-400/25 text-amber-100/55 hover:border-amber-400/55 hover:text-amber-100/80"
-                  }`}
-                >
-                  {size}
-                </button>
-              ))}
+              {uniqueSizes.map((size) => {
+                const stock = sizeStockMap[size];
+                const inCart = cartQuantityFor(size);
+                const isExhausted = inCart >= stock;
+                const isSelected = selectedSize === size;
+
+                return (
+                  <button
+                    key={size}
+                    type="button"
+                    aria-pressed={isSelected}
+                    disabled={isExhausted}
+                    onClick={() =>
+                      setSelectedSize(isSelected ? null : size)
+                    }
+                    className={`relative w-14 h-14 border font-sans text-sm transition-all duration-150 flex flex-col items-center justify-center gap-0.5 ${
+                      isExhausted
+                        ? "border-amber-900/20 text-amber-100/15 cursor-not-allowed"
+                        : isSelected
+                        ? "border-amber-400 text-amber-400 bg-amber-400/10 cursor-pointer"
+                        : "border-amber-400/25 text-amber-100/55 hover:border-amber-400/55 hover:text-amber-100/80 cursor-pointer"
+                    }`}
+                  >
+                    <span>{size}</span>
+                    {stock > 1 && !isExhausted && (
+                      <span className="text-[9px] tracking-wide text-amber-100/30 leading-none">
+                        ×{stock - inCart}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </fieldset>
 
@@ -152,9 +194,25 @@ export default function ProductInfo({ product }: ProductInfoProps) {
 
           <button
             type="button"
-            className="w-full md:max-w-md bg-linear-to-r from-amber-950 to-amber-900 hover:from-amber-900 hover:to-amber-800 border border-amber-700/40 hover:border-amber-600/60 text-amber-50 font-sans text-xs tracking-[0.25em] uppercase py-4 transition-all duration-200 cursor-pointer"
+            onClick={handleAddToCart}
+            disabled={!selectedSize || added || selectedSizeAtMax}
+            className={`w-full md:max-w-md font-sans text-xs tracking-[0.25em] uppercase py-4 transition-all duration-200 border ${
+              added
+                ? "bg-amber-400/20 border-amber-400/60 text-amber-400 cursor-default"
+                : selectedSizeAtMax
+                ? "bg-transparent border-amber-100/10 text-amber-100/25 cursor-not-allowed"
+                : selectedSize
+                ? "bg-linear-to-r from-amber-950 to-amber-900 hover:from-amber-900 hover:to-amber-800 border-amber-700/40 hover:border-amber-600/60 text-amber-50 cursor-pointer"
+                : "bg-transparent border-amber-100/10 text-amber-100/25 cursor-not-allowed"
+            }`}
           >
-            Agregar al carrito
+            {added
+              ? "Agregado al carrito ✓"
+              : selectedSizeAtMax
+              ? "Ya está en tu carrito"
+              : selectedSize
+              ? "Agregar al carrito"
+              : "Selecciona una talla"}
           </button>
 
           {/* <small> es semánticamente correcto para letra chica / avisos legales */}
