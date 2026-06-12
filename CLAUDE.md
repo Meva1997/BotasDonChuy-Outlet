@@ -36,23 +36,37 @@ components/
   home/           # Page-level sections (NavHeader, Hero, Footer)
   outlet/         # OutletView — product listing with category filters
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider)
+  checkout/       # Multi-step checkout flow (see "Checkout flow" below)
 db/
   mockProducts.ts # MockProduct interface + MOCK_PRODUCTS array
 lib/
   getProducts.ts  # getProducts(filters), getProductById(id), Product type
+  cart.ts         # computeTotals(items) — pure subtotal/savings/total helper
   utils/
     index.ts      # formatPrice(amount) — es-MX locale formatting
+schemas/
+  checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list
 store/
   cartStore.ts    # Zustand store (persist) — cart items, open/close, totals, stock-aware addItem
 ```
 
-**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`
+**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/checkout`
 
 **Planned routes** (not yet built): `/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`, `/envios`
 
 ## State Management
 
 Cart state lives in a Zustand store (`store/cartStore.ts`) with `persist` middleware (localStorage key: `botas-don-chuy-cart`). The `Cart` drawer is rendered globally via `CartProvider` (dynamic import, SSR disabled) mounted in the root layout. `NavHeader` reads `totalItems()` and calls `toggleCart()`. `ProductInfo` calls `addItem()` + `openCart()` with per-size stock validation.
+
+## Checkout flow
+
+`/checkout` is a 3-step wizard. Step state is held in a React context (`components/checkout/CheckoutContext.tsx`, scoped via `CheckoutProvider` in the page — not persisted, so a refresh restarts at step 0):
+
+1. **Resumen** (`OrderSummary`) — read-only cart review + **required** terms & privacy checkbox; "Continuar" is disabled until accepted.
+2. **Datos de envío** (`UserDetails`) — shipping form validated with `react-hook-form` + `zodResolver` against `schemas/checkout.ts`. Shipping is restricted to Mexico via the `MEXICAN_STATES` enum. Payment (`PaymentSection`) is a presentational placeholder to be replaced by **Stripe Elements** later — its fields are not validated or submitted. On submit, `completeOrder()` snapshots the cart + totals + customer into the context, clears the Zustand cart, and advances.
+3. **Confirmación** (`Success`) — renders the frozen order snapshot + shipping address.
+
+Shared, prop-driven pieces: `Stepper` (wizard indicator), `OrderItems`, `OrderTotals`, and `FormControls` (`TextField`/`SelectField` — `forwardRef` inputs that take RHF `register()` spread + an `error` string).
 
 ## Design System
 

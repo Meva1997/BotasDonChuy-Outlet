@@ -8,6 +8,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **React 19**, **TypeScript**
 - **Tailwind CSS v4**
 - **Zustand v5** — cart state management (persisted to localStorage)
+- **react-hook-form + zod** — checkout form validation
 - **pnpm** as package manager
 
 ## Commands
@@ -32,11 +33,15 @@ components/
   home/           # Page sections (NavHeader, Hero, Footer)
   outlet/         # OutletView — product listing with filters
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider)
+  checkout/       # Multi-step checkout wizard components
 db/
   mockProducts.ts # Mock data (MockProduct interface + MOCK_PRODUCTS)
 lib/
   getProducts.ts  # getProducts(), getProductById() and types
+  cart.ts         # computeTotals() — pure subtotal/savings/total helper
   utils/index.ts  # formatPrice() helper
+schemas/
+  checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list
 store/
   cartStore.ts    # Zustand cart store with localStorage persistence
 ```
@@ -48,6 +53,7 @@ store/
 | `/` | Done |
 | `/outlet` | Done |
 | `/outlet/[id]/producto` | Done |
+| `/checkout` | Done |
 
 ## Planned routes
 
@@ -58,3 +64,13 @@ store/
 The cart is a slide-in drawer powered by a Zustand store persisted to localStorage. Opening/closing is triggered from `NavHeader` (desktop and mobile). Adding items is done from the product detail page (`ProductInfo`) with per-size stock validation — the button is disabled when the selected size is already at stock limit.
 
 Key files: `store/cartStore.ts`, `components/ui/Cart.tsx`, `components/ui/CartProvider.tsx`.
+
+## Checkout flow
+
+`/checkout` is a 3-step wizard (state held in React context, resets on refresh):
+
+1. **Resumen** — read-only cart review; requires accepting terms & privacy before continuing.
+2. **Datos de envío** — shipping form validated with react-hook-form + zod (Mexico only). Payment section is a placeholder for future Stripe Elements integration.
+3. **Confirmación** — frozen order snapshot with shipping address.
+
+Key files: `app/(public)/checkout/page.tsx`, `components/checkout/`, `schemas/checkout.ts`, `lib/cart.ts`.
