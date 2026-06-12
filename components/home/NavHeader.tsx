@@ -12,9 +12,12 @@ const NAV_LINKS = [
 
 export default function NavHeader() {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const { toggleCart, totalItems } = useCartStore();
-  const itemCount = totalItems();
+  const itemCount = mounted ? totalItems() : 0;
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;

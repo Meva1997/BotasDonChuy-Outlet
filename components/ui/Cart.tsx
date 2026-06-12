@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/cartStore";
 import { formatPrice } from "@/lib/utils";
@@ -16,6 +17,7 @@ function ProductPlaceholder({ type }: { type: string }) {
 
 export default function Cart() {
   const router = useRouter();
+  const [navigating, setNavigating] = useState(false);
   const {
     items,
     isOpen,
@@ -250,9 +252,37 @@ export default function Cart() {
             </div>
             <button
               type="button"
-              className="w-full mt-3 bg-amber-400 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:bg-amber-300 transition-colors cursor-pointer"
+              disabled={navigating}
+              onClick={() => {
+                setNavigating(true);
+                closeCart();
+                router.push("/checkout");
+              }}
+              className="w-full mt-3 bg-amber-400 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:bg-amber-300 transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              Proceder al checkout
+              {navigating && (
+                <svg
+                  fill="none"
+                  aria-hidden="true"
+                  className="animate-spin w-3.5 h-3.5 shrink-0"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    className="opacity-25"
+                  />
+                  <path
+                    fill="currentColor"
+                    d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4z"
+                    className="opacity-75"
+                  />
+                </svg>
+              )}
+              {navigating ? "Cargando..." : "Proceder al checkout"}
             </button>
           </div>
         )}
