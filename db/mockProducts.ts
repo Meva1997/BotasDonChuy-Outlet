@@ -10,6 +10,11 @@ export interface MockProduct {
   sizes: number[];
   imageSrc?: string;
   code?: string | null;
+  // Dimensiones del paquete — requeridas por la API de Skydropx para cotizar envíos.
+  weightKg: number;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
 }
 
 export const MOCK_PRODUCTS: MockProduct[] = [
@@ -25,6 +30,10 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     type: "bota",
     sizes: [25, 26, 27, 28],
     code: "jeh3ujlkh",
+    weightKg: 2.5,
+    lengthCm: 35,
+    widthCm: 30,
+    heightCm: 20,
   },
   {
     id: 2,
@@ -37,6 +46,10 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     stock: 3,
     type: "bota",
     sizes: [24, 26, 28],
+    weightKg: 2.5,
+    lengthCm: 35,
+    widthCm: 30,
+    heightCm: 20,
   },
   {
     id: 3,
@@ -49,6 +62,10 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     stock: 3,
     type: "sombrero",
     sizes: [56, 58, 60],
+    weightKg: 0.8,
+    lengthCm: 45,
+    widthCm: 45,
+    heightCm: 20,
   },
   {
     id: 4,
@@ -62,6 +79,10 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     type: "bota",
     sizes: [25, 27],
     code: "3hk3hllf",
+    weightKg: 2.5,
+    lengthCm: 35,
+    widthCm: 30,
+    heightCm: 20,
   },
   {
     id: 5,
@@ -74,6 +95,10 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     stock: 1,
     type: "sombrero",
     sizes: [58],
+    weightKg: 0.8,
+    lengthCm: 45,
+    widthCm: 45,
+    heightCm: 20,
   },
   {
     id: 6,
@@ -86,5 +111,9 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     stock: 4,
     type: "bota",
     sizes: [24, 25, 26, 27],
+    weightKg: 2.5,
+    lengthCm: 35,
+    widthCm: 30,
+    heightCm: 20,
   },
 ];
