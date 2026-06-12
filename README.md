@@ -29,16 +29,20 @@ app/              # Next.js App Router
     outlet/
       [slug]/
         producto/ # Product detail view
+    terminos/     # Terms & Conditions page
+    privacidad/   # Privacy Policy page
+    envios/       # Shipping Policy page
 components/
   home/           # Page sections (NavHeader, Hero, Footer)
   outlet/         # OutletView — product listing with filters
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider)
   checkout/       # Multi-step checkout wizard components
+  legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
 db/
   mockProducts.ts # Mock data (MockProduct interface + MOCK_PRODUCTS)
 lib/
   getProducts.ts  # getProducts(), getProductById() and types
-  cart.ts         # computeTotals() — pure subtotal/savings/total helper
+  cart.ts         # computeShipping() + computeTotals() — shipping + order totals
   utils/index.ts  # formatPrice() helper
 schemas/
   checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list
@@ -48,16 +52,19 @@ store/
 
 ## Implemented routes
 
-| Route | Status |
-|-------|--------|
-| `/` | Done |
-| `/outlet` | Done |
-| `/outlet/[id]/producto` | Done |
-| `/checkout` | Done |
+| Route | Description |
+|-------|-------------|
+| `/` | Home page |
+| `/outlet` | Product listing with category filters |
+| `/outlet/[id]/producto` | Product detail |
+| `/checkout` | 3-step checkout wizard |
+| `/terminos` | Terms & Conditions |
+| `/privacidad` | Privacy Policy |
+| `/envios` | Shipping Policy |
 
 ## Planned routes
 
-`/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`, `/envios`
+`/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`
 
 ## Shopping cart
 
@@ -74,3 +81,9 @@ Key files: `store/cartStore.ts`, `components/ui/Cart.tsx`, `components/ui/CartPr
 3. **Confirmación** — frozen order snapshot with shipping address.
 
 Key files: `app/(public)/checkout/page.tsx`, `components/checkout/`, `schemas/checkout.ts`, `lib/cart.ts`.
+
+## Shipping
+
+Shipping is calculated in `lib/cart.ts` via `computeShipping(items)`. Currently uses flat rates by product type (boots › hats › clothing). The rate of the heaviest item in the cart applies to the whole order. `CartTotals.shipping` flows through `OrderTotals` and the order snapshot in `CheckoutContext` — the total shown at every checkout step always includes shipping.
+
+When ready to integrate a real carrier API (e.g. Skydropx), only `computeShipping` needs to be replaced. See `CLAUDE.md` for the full migration guide.

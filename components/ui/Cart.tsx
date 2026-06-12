@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/cartStore";
 import { formatPrice } from "@/lib/utils";
@@ -31,6 +31,10 @@ export default function Cart() {
 
   const total = subtotal() - savings();
   const itemCount = totalItems();
+
+  useEffect(() => {
+    if (isOpen) setNavigating(false);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

@@ -32,11 +32,15 @@ app/              # Next.js App Router
     outlet/
       [slug]/
         producto/ # Product detail page (async RSC → ProductInfo client component)
+    terminos/     # Terms & Conditions page → TermsConditions component
+    privacidad/   # Privacy Policy page → PrivacyPolicy component
+    envios/       # Shipping Policy page → ShippingInfo component
 components/
   home/           # Page-level sections (NavHeader, Hero, Footer)
   outlet/         # OutletView — product listing with category filters
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider)
   checkout/       # Multi-step checkout flow (see "Checkout flow" below)
+  legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal content pages
 db/
   mockProducts.ts # MockProduct interface + MOCK_PRODUCTS array
 lib/
@@ -50,9 +54,9 @@ store/
   cartStore.ts    # Zustand store (persist) — cart items, open/close, totals, stock-aware addItem
 ```
 
-**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/checkout`
+**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/checkout`, `/terminos`, `/privacidad`, `/envios`
 
-**Planned routes** (not yet built): `/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`, `/envios`
+**Planned routes** (not yet built): `/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`
 
 ## State Management
 
@@ -67,6 +71,98 @@ Cart state lives in a Zustand store (`store/cartStore.ts`) with `persist` middle
 3. **Confirmación** (`Success`) — renders the frozen order snapshot + shipping address.
 
 Shared, prop-driven pieces: `Stepper` (wizard indicator), `OrderItems`, `OrderTotals`, and `FormControls` (`TextField`/`SelectField` — `forwardRef` inputs that take RHF `register()` spread + an `error` string).
+
+## Shipping — estado actual y hoja de ruta
+
+### Estado actual: tarifa plana por categoría
+
+`lib/cart.ts` contiene toda la lógica de envío. El campo `CartTotals.shipping` fluye por todo el sistema — `OrderTotals`, `OrderSummary`, `Success`, y la snapshot en `CheckoutContext.completeOrder()`. No hay más lugares que actualizar.
+
+Regla activa: se cobra la tarifa del producto más caro del carrito (la bota domina sobre el sombrero, el sombrero sobre la ropa). Origen: Celaya, Guanajuato, CP 38000.
+
+```
+SHIPPING_BY_TYPE = { bota: 160, sombrero: 130, ropa: 100 }  // MXN
+```
+
+### Migración a Skydropx (cuando el volumen lo justifique)
+
+La documentación oficial fue verificada contra la API real de Skydropx. Todo lo que se describe abajo está basado en endpoints confirmados.
+
+**Lo que ya está listo en el proyecto**
+
+- `MockProduct` ya incluye `weightKg`, `lengthCm`, `widthCm`, `heightCm` en todos los productos — los únicos datos de empaque que Skydropx necesita.
+- `ShippingData` (schemas/checkout.ts) ya captura `postalCode`, `state`, `city`, `neighborhood` — que mapean directamente a los campos de Skydropx:
+
+  | Campo en ShippingData | Campo en Skydropx |
+  |---|---|
+  | `postalCode` | `postal_code` |
+  | `state` | `area_level1` |
+  | `city` | `area_level2` |
+  | `neighborhood` | `area_level3` |
+
+**Paso 1 — Obtener credenciales**
+
+Crear cuenta en skydropx.com y obtener el API key desde el panel. Agregar a Vercel:
+
+```
+SKYDROPX_API_KEY=tu_api_key_aqui
+```
+
+Base URL: `https://pro.skydropx.com`  
+Autenticación: header `Authorization: Bearer $SKYDROPX_API_KEY`
+
+**Paso 2 — Crear API route para cotización**
+
+`app/api/shipping/rates/route.ts` — recibe el CP destino + items del carrito, llama a Skydropx y devuelve las opciones disponibles.
+
+Endpoint Skydropx: `POST /api/v1/quotations`
+
+```typescript
+// Payload que construir con los datos que ya tenemos:
+{
+  quotation: {
+    order_id: crypto.randomUUID(),          // UUID aleatorio por cotización
+    address_from: {
+      country_code: "MX",
+      postal_code: "38000",                 // CP fijo de Celaya
+      area_level1: "Guanajuato",
+      area_level2: "Celaya",
+      area_level3: "Centro",
+    },
+    address_to: {
+      country_code: "MX",
+      postal_code: shippingData.postalCode,
+      area_level1: shippingData.state,
+      area_level2: shippingData.city,
+      area_level3: shippingData.neighborhood,
+    },
+    parcels: [
+      // Un parcel por cada CartItem, usando las dimensiones del producto:
+      {
+        weight: item.product.weightKg,
+        length: item.product.lengthCm,
+        width: item.product.widthCm,
+        height: item.product.heightCm,
+      }
+    ],
+  }
+}
+```
+
+La respuesta de Skydropx incluye: `provider_display_name`, `amount` (precio sin IVA), `total` (con IVA), `days` (días estimados de entrega).
+
+**Paso 3 — Agregar paso de selección de envío al checkout**
+
+Insertar un paso entre "Datos de envío" y "Confirmación":
+- `CHECKOUT_STEPS` en `CheckoutContext.tsx` pasa de 3 a 4 elementos
+- Nuevo componente `ShippingOptions.tsx` llama al API route y muestra las opciones con precio y días
+- La opción elegida (carrier + precio) se guarda en el context y se pasa a `completeOrder()`
+
+**Paso 4 — Reemplazar `computeShipping`**
+
+`computeShipping(items)` en `lib/cart.ts` se elimina o queda como fallback. El costo de envío pasa a venir del context (opción elegida por el cliente). `CartTotals.shipping` no cambia — solo cambia de dónde viene el valor.
+
+**Nada más cambia.** `OrderTotals`, `OrderSummary`, `Success`, y `CheckoutContext` consumen `CartTotals.shipping` de forma genérica y no necesitan modificaciones.
 
 ## Design System
 

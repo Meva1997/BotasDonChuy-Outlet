@@ -60,14 +60,28 @@ export default function OrderSummary() {
           />
           <span className="text-xs leading-relaxed text-amber-100/60">
             He leído y acepto los{" "}
-            <a href="/terminos" className="text-amber-400 hover:underline">
+            <a
+              href="/terminos"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-400 hover:underline"
+            >
               términos y condiciones
             </a>{" "}
             y la{" "}
-            <a href="/privacidad" className="text-amber-400 hover:underline">
+            <a
+              href="/privacidad"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-400 hover:underline"
+            >
               política de privacidad
             </a>
-            . Entiendo que estas piezas no tienen cambios ni devoluciones.
+            . Entiendo que estas piezas son modelos descontinuados y{" "}
+            <span className="text-amber-200/80 font-medium">
+              no tienen cambios ni devoluciones
+            </span>
+            .
           </span>
         </label>
 
