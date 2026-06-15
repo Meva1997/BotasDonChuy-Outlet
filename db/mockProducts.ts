@@ -5,6 +5,7 @@ export interface MockProduct {
   originalPrice: number;
   salePrice: number;
   discountPercent: number;
+  costoUnitario: number; // costo de adquisición por pieza (manufactura + materiales)
   stock: number;
   type: string;
   sizes: number[];
@@ -26,6 +27,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     originalPrice: 4800,
     salePrice: 1920,
     discountPercent: 60,
+    costoUnitario: 800,
     stock: 4,
     type: "bota",
     sizes: [25, 26, 27, 28],
@@ -43,6 +45,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     originalPrice: 7200,
     salePrice: 2880,
     discountPercent: 60,
+    costoUnitario: 1400,
     stock: 3,
     type: "bota",
     sizes: [24, 26, 28],
@@ -59,6 +62,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     originalPrice: 3400,
     salePrice: 1530,
     discountPercent: 55,
+    costoUnitario: 580,
     stock: 3,
     type: "sombrero",
     sizes: [56, 58, 60],
@@ -75,6 +79,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     originalPrice: 5600,
     salePrice: 2240,
     discountPercent: 60,
+    costoUnitario: 950,
     stock: 2,
     type: "bota",
     sizes: [25, 27],
@@ -92,6 +97,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     originalPrice: 2800,
     salePrice: 1400,
     discountPercent: 50,
+    costoUnitario: 520,
     stock: 1,
     type: "sombrero",
     sizes: [58],
@@ -108,6 +114,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     originalPrice: 3900,
     salePrice: 1755,
     discountPercent: 55,
+    costoUnitario: 750,
     stock: 4,
     type: "bota",
     sizes: [24, 25, 26, 27],

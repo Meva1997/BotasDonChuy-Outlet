@@ -9,6 +9,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **Tailwind CSS v4**
 - **Zustand v5** — cart state management (persisted to localStorage)
 - **react-hook-form + zod** — checkout form validation
+- **recharts** — gráficas del panel de administración
 - **pnpm** as package manager
 
 ## Commands
@@ -38,8 +39,11 @@ components/
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider)
   checkout/       # Multi-step checkout wizard components
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
+  admin/          # Secciones del panel admin: MarcaSection, ProductSection, DataSection, ConfigSection
+                  #   data/ — subcomponentes de métricas (KpiGrid, RevenueChart, InventoryTable, SalesTable)
 db/
   mockProducts.ts # Mock data (MockProduct interface + MOCK_PRODUCTS)
+  mockData.ts     # Datos de ejemplo para el panel admin (KPIs, ingresos, inventario, ventas)
 lib/
   getProducts.ts  # getProducts(), getProductById() and types
   cart.ts         # computeShipping() + computeTotals() — shipping + order totals
@@ -61,10 +65,11 @@ store/
 | `/terminos` | Terms & Conditions |
 | `/privacidad` | Privacy Policy |
 | `/envios` | Shipping Policy |
+| `/admin` | Panel de administración (marca, productos, datos, configuración) |
 
 ## Planned routes
 
-`/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`
+`/botas`, `/sombreros`, `/ropa`, `/carrito`, `/nosotros`, `/devoluciones`
 
 ## Shopping cart
 

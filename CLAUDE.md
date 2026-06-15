@@ -44,9 +44,15 @@ components/
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider, Sidebar)
   checkout/       # Multi-step checkout flow (see "Checkout flow" below)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal content pages
-  admin/          # MarcaSection — brand identity editor (logo, colors, copy)
+  admin/          # Panel de administración — secciones completas:
+                  #   MarcaSection — editor de identidad de marca (logo, colores, copy)
+                  #   ProductSection — gestión de catálogo (ProductForm, ProductCategoryView)
+                  #   DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable)
+                  #   ConfigSection — ajustes generales de la tienda
+                  #   data/ — subcomponentes de gráficas y tablas (recharts)
 db/
   mockProducts.ts # MockProduct interface + MOCK_PRODUCTS array
+  mockData.ts     # Datos de ejemplo para KPIs, ingresos, inventario y ventas del panel admin
 lib/
   getProducts.ts  # getProducts(filters), getProductById(id), Product type
   cart.ts         # computeTotals(items) — pure subtotal/savings/total helper
