@@ -9,6 +9,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **Tailwind CSS v4**
 - **Zustand v5** — cart state management (persisted to localStorage)
 - **react-hook-form + zod** — checkout form validation
+- **recharts** — gráficas del panel de administración
 - **pnpm** as package manager
 
 ## Commands
@@ -38,11 +39,16 @@ components/
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider)
   checkout/       # Multi-step checkout wizard components
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
+  admin/          # Secciones del panel admin: MarcaSection, ProductSection, DataSection, ReportesSection, ConfigSection
+                  #   data/ — subcomponentes de métricas (KpiGrid, RevenueChart, InventoryTable, SalesTable)
+                  #   reportes/ — SalesReport (histórico) y ReplenishmentReport (forecast + pedido sugerido)
 db/
   mockProducts.ts # Mock data (MockProduct interface + MOCK_PRODUCTS)
+  mockData.ts     # Datos del admin: KPIs, ingresos, inventario, ventas mensuales y reposición (derivados)
 lib/
   getProducts.ts  # getProducts(), getProductById() and types
   cart.ts         # computeShipping() + computeTotals() — shipping + order totals
+  forecast.ts     # computeForecast() — pronóstico de demanda auto-escalado por nº de meses
   utils/index.ts  # formatPrice() helper
 schemas/
   checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list
@@ -61,10 +67,11 @@ store/
 | `/terminos` | Terms & Conditions |
 | `/privacidad` | Privacy Policy |
 | `/envios` | Shipping Policy |
+| `/admin` | Panel de administración (marca, productos, datos, configuración) |
 
 ## Planned routes
 
-`/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`
+`/botas`, `/sombreros`, `/ropa`, `/carrito`, `/nosotros`, `/devoluciones`
 
 ## Shopping cart
 
