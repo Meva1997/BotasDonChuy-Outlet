@@ -28,6 +28,9 @@ Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependenci
 app/              # Next.js App Router
   layout.tsx      # Root layout: fonts, base classes, metadata, CartProvider
   page.tsx        # Home page — composes NavHeader + Hero + Footer
+  admin/
+    layout.tsx    # Admin layout: full-height stone-950 shell
+    page.tsx      # Admin dashboard — Sidebar + section routing (AdminSection type)
   (public)/
     outlet/
       [slug]/
@@ -38,9 +41,10 @@ app/              # Next.js App Router
 components/
   home/           # Page-level sections (NavHeader, Hero, Footer)
   outlet/         # OutletView — product listing with category filters
-  ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider)
+  ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider, Sidebar)
   checkout/       # Multi-step checkout flow (see "Checkout flow" below)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal content pages
+  admin/          # MarcaSection — brand identity editor (logo, colors, copy)
 db/
   mockProducts.ts # MockProduct interface + MOCK_PRODUCTS array
 lib/
@@ -54,9 +58,9 @@ store/
   cartStore.ts    # Zustand store (persist) — cart items, open/close, totals, stock-aware addItem
 ```
 
-**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/checkout`, `/terminos`, `/privacidad`, `/envios`
+**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/checkout`, `/terminos`, `/privacidad`, `/envios`, `/admin`
 
-**Planned routes** (not yet built): `/botas`, `/sombreros`, `/ropa`, `/admin`, `/carrito`, `/nosotros`, `/devoluciones`
+**Planned routes** (not yet built): `/botas`, `/sombreros`, `/ropa`, `/carrito`, `/nosotros`, `/devoluciones`
 
 ## State Management
 
