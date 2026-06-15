@@ -4,6 +4,7 @@ import type { AdminSection } from "@/app/admin/page";
 
 const NAV_ITEMS: { id: AdminSection; label: string; badge?: number }[] = [
   { id: "datos", label: "Datos" },
+  { id: "reportes", label: "Reportes" },
   { id: "productos", label: "Productos" },
   { id: "marca", label: "Marca" },
   { id: "configuracion", label: "Configuración" },

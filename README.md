@@ -39,14 +39,16 @@ components/
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider)
   checkout/       # Multi-step checkout wizard components
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
-  admin/          # Secciones del panel admin: MarcaSection, ProductSection, DataSection, ConfigSection
+  admin/          # Secciones del panel admin: MarcaSection, ProductSection, DataSection, ReportesSection, ConfigSection
                   #   data/ — subcomponentes de métricas (KpiGrid, RevenueChart, InventoryTable, SalesTable)
+                  #   reportes/ — SalesReport (histórico) y ReplenishmentReport (forecast + pedido sugerido)
 db/
   mockProducts.ts # Mock data (MockProduct interface + MOCK_PRODUCTS)
-  mockData.ts     # Datos de ejemplo para el panel admin (KPIs, ingresos, inventario, ventas)
+  mockData.ts     # Datos del admin: KPIs, ingresos, inventario, ventas mensuales y reposición (derivados)
 lib/
   getProducts.ts  # getProducts(), getProductById() and types
   cart.ts         # computeShipping() + computeTotals() — shipping + order totals
+  forecast.ts     # computeForecast() — pronóstico de demanda auto-escalado por nº de meses
   utils/index.ts  # formatPrice() helper
 schemas/
   checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list

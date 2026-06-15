@@ -1,4 +1,12 @@
-import { DashboardData, RevenuePoint } from "../components/admin/data/types";
+import {
+  DashboardData,
+  MonthlyCategoryBreakdown,
+  MonthlyProductSales,
+  MonthlyReport,
+  ReplenishmentRow,
+  RevenuePoint,
+} from "../components/admin/data/types";
+import { computeForecast } from "../lib/forecast";
 import { MOCK_PRODUCTS } from "./mockProducts";
 
 function buildRevenueSeries(days: number): RevenuePoint[] {
@@ -124,3 +132,160 @@ export const MOCK_DASHBOARD: DashboardData = {
     valorInventario: p.stock * p.costoUnitario,
   })),
 };
+
+// ─── Reportes mensuales ────────────────────────────────────────────────────────
+// Simulación de un outlet de liquidación: catálogo escaso, modelos pasados y
+// volúmenes BAJOS por naturaleza. Cada producto tiene un comportamiento distinto
+// para que el análisis de datos arroje señales reales:
+//
+//   • Avestruz (id 2)  → estrella: se mantiene, ligera tendencia al alza
+//   • Víbora   (id 4)  → en declive: se está agotando, ventas a la baja
+//   • Ranchera (id 1)  → clásico estable mes a mes
+//   • Llanero  (id 3)  → sombrero de venta baja pero constante
+//   • Bordada  (id 6)  → rotación lenta, errático (modelo de nicho)
+//   • Norteño  (id 5)  → dead stock: casi no se mueve, candidato a descontinuar
+//
+// IMPORTANTE — mantenibilidad: aquí SOLO se editan las unidades vendidas por
+// producto y mes. Ingresos, totales y desglose por categoría se DERIVAN de
+// MOCK_PRODUCTS (precio y categoría reales), así no hay números a mano que
+// puedan desincronizarse. En producción, esta matriz se reemplaza por un query
+// agrupado por mes; el resto del archivo no cambia.
+
+interface MonthlyUnitSales {
+  key: string;
+  label: string;
+  partial?: boolean;
+  /** productId → unidades vendidas en el mes */
+  units: Record<number, number>;
+}
+
+const MONTHLY_UNIT_SALES: MonthlyUnitSales[] = [
+  { key: "2026-01", label: "Enero 2026",   units: { 1: 3, 2: 4, 3: 2, 4: 6, 5: 1, 6: 1 } },
+  { key: "2026-02", label: "Febrero 2026", units: { 1: 4, 2: 3, 3: 1, 4: 5, 5: 0, 6: 2 } },
+  { key: "2026-03", label: "Marzo 2026",   units: { 1: 3, 2: 5, 3: 2, 4: 4, 5: 1, 6: 1 } },
+  { key: "2026-04", label: "Abril 2026",   units: { 1: 4, 2: 4, 3: 3, 4: 4, 5: 0, 6: 1 } },
+  { key: "2026-05", label: "Mayo 2026",    units: { 1: 4, 2: 6, 3: 2, 4: 3, 5: 1, 6: 2 } },
+  { key: "2026-06", label: "Junio 2026", partial: true, units: { 1: 2, 2: 2, 3: 1, 4: 1, 5: 0, 6: 0 } },
+];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  bota: "Botas",
+  sombrero: "Sombreros",
+  ropa: "Ropa",
+};
+
+// Deriva un MonthlyReport completo a partir de las unidades vendidas + el catálogo.
+function buildMonthlyReports(): MonthlyReport[] {
+  return MONTHLY_UNIT_SALES.map((month) => {
+    const byProduct: MonthlyProductSales[] = MOCK_PRODUCTS.map((product) => {
+      const unitsSold = month.units[product.id] ?? 0;
+      return {
+        productId: product.id,
+        name: product.name,
+        type: product.type,
+        unitsSold,
+        revenue: unitsSold * product.salePrice,
+        costoUnitario: product.costoUnitario,
+      };
+    }).sort((a, b) => b.unitsSold - a.unitsSold);
+
+    // Agrupar por categoría
+    const grouped = new Map<string, { revenue: number; units: number }>();
+    for (const p of byProduct) {
+      const agg = grouped.get(p.type) ?? { revenue: 0, units: 0 };
+      agg.revenue += p.revenue;
+      agg.units += p.unitsSold;
+      grouped.set(p.type, agg);
+    }
+    const byCategory: MonthlyCategoryBreakdown[] = [...grouped.entries()]
+      .map(([category, agg]) => ({
+        category,
+        label: CATEGORY_LABELS[category] ?? category,
+        revenue: agg.revenue,
+        units: agg.units,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    return {
+      key: month.key,
+      label: month.label,
+      partial: month.partial,
+      totalRevenue: byProduct.reduce((s, p) => s + p.revenue, 0),
+      totalUnits: byProduct.reduce((s, p) => s + p.unitsSold, 0),
+      byProduct,
+      byCategory,
+    };
+  });
+}
+
+export const MOCK_MONTHLY_REPORTS: MonthlyReport[] = buildMonthlyReports();
+
+// ─── Tabla de reposición ───────────────────────────────────────────────────────
+// Usa solo meses completos como historial para computeForecast().
+// computeForecast() selecciona el algoritmo según cuántos meses haya:
+//   1-2 → promedio simple | 3 → prom. ponderado + tendencia | 4+ → suav. exponencial
+
+const fullMonths = MOCK_MONTHLY_REPORTS.filter((r) => !r.partial);
+
+// Orden de urgencia por cobertura. Dentro de cada nivel, el margen mensual
+// desempata: primero los productos que más ganancia generan al mes.
+const PRIORITY_RANK: Record<ReplenishmentRow["priority"], number> = {
+  urgente: 0,
+  pronto: 1,
+  ok: 2,
+};
+
+function buildReplenishment(): ReplenishmentRow[] {
+  return MOCK_PRODUCTS.map((product) => {
+    const monthlySales = fullMonths.map(
+      (m) => m.byProduct.find((p) => p.productId === product.id)?.unitsSold ?? 0
+    );
+
+    const forecast = computeForecast(monthlySales);
+
+    // Promedio de unidades/mes sobre el historial completo → base de ingreso y margen.
+    const avgUnits =
+      monthlySales.length > 0
+        ? monthlySales.reduce((a, b) => a + b, 0) / monthlySales.length
+        : 0;
+    const ingresoMensual = Math.round(avgUnits * product.salePrice);
+    const margenMensual = Math.round(
+      avgUnits * (product.salePrice - product.costoUnitario)
+    );
+
+    const diasCobertura =
+      forecast.forecastNextMonth > 0
+        ? Math.round((product.stock / forecast.forecastNextMonth) * 30)
+        : 999;
+    const suggestedOrder = Math.max(
+      0,
+      Math.round(forecast.forecastNextMonth * 2) - product.stock
+    );
+    const priority: ReplenishmentRow["priority"] =
+      diasCobertura < 15 ? "urgente" : diasCobertura < 45 ? "pronto" : "ok";
+
+    return {
+      productId: product.id,
+      name: product.name,
+      type: product.type,
+      currentStock: product.stock,
+      forecastNextMonth: forecast.forecastNextMonth,
+      forecastMethod: forecast.method,
+      forecastMethodLabel: forecast.methodLabel,
+      trend: forecast.trend,
+      confidence: forecast.confidence,
+      diasCobertura,
+      ingresoMensual,
+      margenMensual,
+      suggestedOrder,
+      costoEstimadoPedido: suggestedOrder * product.costoUnitario,
+      priority,
+    };
+  }).sort(
+    (a, b) =>
+      PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] ||
+      b.margenMensual - a.margenMensual
+  );
+}
+
+export const MOCK_REPLENISHMENT: ReplenishmentRow[] = buildReplenishment();

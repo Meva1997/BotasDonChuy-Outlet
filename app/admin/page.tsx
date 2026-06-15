@@ -6,11 +6,17 @@ import MarcaSection from "@/components/admin/MarcaSection";
 import ProductSection from "@/components/admin/ProductSection";
 import DataSection from "@/components/admin/DataSection";
 import ConfigSection from "@/components/admin/ConfigSection";
+import ReportesSection from "@/components/admin/ReportesSection";
 
-export type AdminSection = "marca" | "productos" | "datos" | "configuracion";
+export type AdminSection =
+  | "marca"
+  | "productos"
+  | "datos"
+  | "reportes"
+  | "configuracion";
 
 export default function AdminPage() {
-  const [active, setActive] = useState<AdminSection>("marca");
+  const [active, setActive] = useState<AdminSection>("datos");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -30,19 +36,32 @@ export default function AdminPage() {
             aria-label="Abrir menú"
             className="text-amber-100/40 hover:text-amber-100/80 transition-colors cursor-pointer"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <line x1="3" y1="6" x2="21" y2="6" />
               <line x1="3" y1="12" x2="21" y2="12" />
               <line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
-          <span className="font-serif text-amber-50 text-sm">Botas Don Chuy</span>
+          <span className="font-serif text-amber-50 text-sm">
+            Botas Don Chuy
+          </span>
         </div>
 
         <div className="p-6 md:p-10">
           {active === "marca" && <MarcaSection />}
           {active === "productos" && <ProductSection />}
           {active === "datos" && <DataSection />}
+          {active === "reportes" && <ReportesSection />}
           {active === "configuracion" && <ConfigSection />}
         </div>
       </main>
