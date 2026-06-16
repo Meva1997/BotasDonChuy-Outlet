@@ -35,9 +35,14 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const categoria = defaultCategoria ?? searchParams.get("categoria") ?? undefined;
-  const talla = searchParams.get("talla") ? Number(searchParams.get("talla")) : undefined;
-  const page = searchParams.get("pagina") ? Number(searchParams.get("pagina")) : 1;
+  const categoria =
+    defaultCategoria ?? searchParams.get("categoria") ?? undefined;
+  const talla = searchParams.get("talla")
+    ? Number(searchParams.get("talla"))
+    : undefined;
+  const page = searchParams.get("pagina")
+    ? Number(searchParams.get("pagina"))
+    : 1;
 
   const filters: ProductFilters = { categoria, talla, page };
 
@@ -63,7 +68,7 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
       if (key !== "pagina") params.delete("pagina");
       router.push(`?${params.toString()}`);
     },
-    [router, searchParams]
+    [router, searchParams],
   );
 
   const title = categoria
@@ -71,9 +76,9 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
     : "Outlet — todo";
 
   return (
-    <section className="min-h-screen bg-stone-950 px-6 md:px-10 py-12">
+    <section className="min-dvh-screen bg-tobacco-950 px-6 md:p-10 py-12 my-20">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-8 max-w-7xl mx-auto">
         <h1 className="font-serif text-amber-50 text-4xl md:text-5xl mb-2">
           {title}
         </h1>
@@ -103,7 +108,7 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
               message="No hay piezas en esta categoría por el momento. Vuelve pronto — el inventario cambia constantemente."
             />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 max-w-6xl mx-auto">
               {result.products.map((product) => (
                 <OutletCard
                   key={product.id}

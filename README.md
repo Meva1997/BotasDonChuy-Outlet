@@ -33,12 +33,15 @@ app/              # Next.js App Router
     terminos/     # Terms & Conditions page
     privacidad/   # Privacy Policy page
     envios/       # Shipping Policy page
+  login/          # Login page
+  forgot-password/ # Forgot password page
 components/
   home/           # Page sections (NavHeader, Hero, Footer)
   outlet/         # OutletView — product listing with filters
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider)
   checkout/       # Multi-step checkout wizard components
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
+  auth/           # AuthShell layout + LoginForm, ForgotPasswordForm
   admin/          # Secciones del panel admin: MarcaSection, ProductSection, DataSection, ReportesSection, ConfigSection
                   #   data/ — subcomponentes de métricas (KpiGrid, RevenueChart, InventoryTable, SalesTable)
                   #   reportes/ — SalesReport (histórico) y ReplenishmentReport (forecast + pedido sugerido)
@@ -52,6 +55,7 @@ lib/
   utils/index.ts  # formatPrice() helper
 schemas/
   checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list
+  auth.ts         # zod loginSchema + forgotPasswordSchema
 store/
   cartStore.ts    # Zustand cart store with localStorage persistence
 ```
@@ -68,6 +72,8 @@ store/
 | `/privacidad` | Privacy Policy |
 | `/envios` | Shipping Policy |
 | `/admin` | Panel de administración (marca, productos, datos, configuración) |
+| `/login` | Login form |
+| `/forgot-password` | Forgot password form |
 
 ## Planned routes
 

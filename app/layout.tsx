@@ -30,7 +30,7 @@ export default function RootLayout({
       lang="es"
       className={`${playfair.variable} ${jost.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-stone-950 text-amber-50 font-sans">
+      <body className="min-h-full flex flex-col bg-tobacco-950 text-amber-50 font-sans">
         {children}
         <CartProvider />
       </body>

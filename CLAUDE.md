@@ -20,7 +20,8 @@ Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependenci
 
 - **Next.js 16** with App Router (all pages in `app/`)
 - **React 19**, **TypeScript**
-- **Tailwind CSS v4** — configured via `@import "tailwindcss"` in `globals.css`, not a `tailwind.config.*` file. Custom theme tokens (fonts) live in a `@theme {}` block in `globals.css`.
+- **Tailwind CSS v4** — configured via `@import "tailwindcss"` in `globals.css`, not a `tailwind.config.*` file. Custom theme tokens (fonts, `tobacco-*` color scale) live in a `@theme {}` block in `globals.css`.
+- **Playwright** (`@playwright/test`) — installed as a dev dependency for e2e testing.
 
 ## Architecture
 
@@ -38,12 +39,15 @@ app/              # Next.js App Router
     terminos/     # Terms & Conditions page → TermsConditions component
     privacidad/   # Privacy Policy page → PrivacyPolicy component
     envios/       # Shipping Policy page → ShippingInfo component
+  login/          # Login page → AuthShell + LoginForm
+  forgot-password/ # Forgot password page → AuthShell + ForgotPasswordForm
 components/
   home/           # Page-level sections (NavHeader, Hero, Footer)
   outlet/         # OutletView — product listing with category filters
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider, Sidebar)
   checkout/       # Multi-step checkout flow (see "Checkout flow" below)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal content pages
+  auth/           # AuthShell (split-panel layout) + LoginForm/ForgotPasswordForm — react-hook-form + zod (schemas/auth.ts), submission is mocked pending backend
   admin/          # Panel de administración — secciones completas:
                   #   MarcaSection — editor de identidad de marca (logo, colores, copy)
                   #   ProductSection — gestión de catálogo (ProductForm, ProductCategoryView)
@@ -64,11 +68,12 @@ lib/
     index.ts      # formatPrice(amount) — es-MX locale formatting
 schemas/
   checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list
+  auth.ts         # zod loginSchema + forgotPasswordSchema + LoginData/ForgotPasswordData types
 store/
   cartStore.ts    # Zustand store (persist) — cart items, open/close, totals, stock-aware addItem
 ```
 
-**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/checkout`, `/terminos`, `/privacidad`, `/envios`, `/admin`
+**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/checkout`, `/terminos`, `/privacidad`, `/envios`, `/admin`, `/login`, `/forgot-password`
 
 **Planned routes** (not yet built): `/botas`, `/sombreros`, `/ropa`, `/carrito`, `/nosotros`, `/devoluciones`
 

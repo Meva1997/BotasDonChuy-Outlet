@@ -9,7 +9,7 @@ export default function PublicLayout({
   return (
     <>
       <NavHeader />
-      <main className="flex-1">{children}</main>
+      <main className="flex-1 bg-tobacco-950">{children}</main>
       <Footer />
     </>
   );

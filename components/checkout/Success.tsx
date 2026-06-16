@@ -18,7 +18,7 @@ export default function Success() {
         <button
           type="button"
           onClick={() => router.push("/outlet")}
-          className="text-xs tracking-[0.2em] uppercase border border-amber-400/40 text-amber-400 px-8 py-3 hover:bg-amber-400/10 transition-colors cursor-pointer"
+          className="text-xs tracking-[0.2em] uppercase rounded-md border border-yellow-500/40 text-yellow-400 px-8 py-3 hover:bg-yellow-500/10 transition-colors cursor-pointer"
         >
           Ver outlet
         </button>
@@ -29,37 +29,65 @@ export default function Success() {
   const { items, totals, customer } = order;
 
   return (
-    <div className="w-full max-w-lg mx-auto space-y-10">
-      <div className="text-center space-y-4">
-        <div className="mx-auto flex items-center justify-center w-16 h-16 rounded-full border border-amber-400/60 text-amber-400">
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
-            <path
-              d="M7 14.5 12 19.5 21 8.5"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+    <div className="w-full max-w-lg mx-auto space-y-10 animate-fade-in-up">
+      <div className="relative text-center space-y-4">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full bg-yellow-500/20 blur-3xl"
+        />
+
+        <div className="relative mx-auto w-20 h-20">
+          <span
+            aria-hidden="true"
+            className="absolute inset-0 rounded-full bg-yellow-500/30 blur-md animate-glow-pulse"
+          />
+          <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-linear-to-br from-yellow-400 to-yellow-600 text-stone-950 shadow-[0_8px_32px_-8px_rgba(202,138,4,0.7)] animate-ring-pop">
+            <svg width="32" height="32" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+              <path
+                d="M7 14.5 12 19.5 21 8.5"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="animate-check-draw"
+              />
+            </svg>
+          </div>
         </div>
-        <h2 className="font-serif text-2xl text-amber-50">Pago completado</h2>
-        <p className="text-amber-100/50 text-sm leading-relaxed">
+
+        <h2 className="relative font-serif text-3xl text-amber-50">
+          ¡Pago completado!
+        </h2>
+        <p className="relative text-amber-100/60 text-sm leading-relaxed max-w-sm mx-auto">
           Gracias por tu compra, {customer.fullName.split(" ")[0]}. Tu pedido ya
           está en preparación y enviaremos la confirmación a{" "}
-          <span className="text-amber-100/80">{customer.email}</span>.
+          <span className="text-yellow-400/90">{customer.email}</span>.
         </p>
       </div>
 
-      <div className="border border-amber-900/40 bg-stone-900/30 p-6 sm:p-8 space-y-6">
-        <h3 className="font-serif text-lg text-amber-50">Resumen de tu pedido</h3>
+      <div className="rounded-xl border border-yellow-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 space-y-6 shadow-[0_0_40px_-15px_rgba(202,138,4,0.35)]">
+        <div className="flex items-center gap-3 pb-4 border-b border-yellow-600/30">
+          <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-yellow-500/20 to-yellow-600/5 border border-yellow-600/30 text-yellow-500 shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M6 7h12l-1 13H7L6 7Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              />
+              <path d="M9 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </span>
+          <h3 className="font-serif text-lg text-amber-50">Resumen de tu pedido</h3>
+        </div>
 
         <OrderItems items={items} />
 
-        <div className="border-t border-amber-900/30 pt-5">
+        <div className="border-t border-yellow-600/30 pt-5">
           <OrderTotals totals={totals} />
         </div>
 
-        <div className="border-t border-amber-900/30 pt-5">
+        <div className="border-t border-yellow-600/30 pt-5">
           <p className="text-[10px] tracking-[0.25em] uppercase text-amber-100/40 mb-2">
             Enviar a
           </p>
@@ -79,7 +107,7 @@ export default function Success() {
         <button
           type="button"
           onClick={() => router.push("/outlet")}
-          className="text-xs tracking-[0.25em] uppercase border border-amber-400/40 text-amber-400 px-10 py-3.5 hover:bg-amber-400/10 transition-colors cursor-pointer"
+          className="btn-shimmer text-xs tracking-[0.25em] uppercase rounded-md bg-linear-to-r from-yellow-400 to-yellow-600 text-stone-950 px-10 py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(202,138,4,0.6)] cursor-pointer"
         >
           Seguir comprando
         </button>

@@ -27,21 +27,31 @@ export default function CheckoutFlow() {
   const heading = HEADINGS[step];
 
   return (
-    <div className="px-4 sm:px-6 py-12 sm:py-16">
-      <Stepper current={step} onNavigate={goTo} />
+    <div className="relative px-4 sm:px-6 py-12 sm:py-16 overflow-hidden">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-160 h-112 rounded-full "
+      />
 
-      <header className="text-center max-w-xl mx-auto mt-12 mb-12 space-y-3">
-        <h2 className="font-serif text-2xl sm:text-3xl text-amber-50">
-          {heading.title}
-        </h2>
-        <p className="text-amber-100/50 text-sm leading-relaxed">
-          {heading.subtitle}
-        </p>
-      </header>
+      <div className="relative">
+        <Stepper current={step} onNavigate={goTo} />
 
-      {step === 0 && <OrderSummary />}
-      {step === 1 && <UserDetails />}
-      {step === 2 && <Success />}
+        <header
+          key={step}
+          className="text-center max-w-xl mx-auto mt-12 mb-12 space-y-3 animate-fade-in-up"
+        >
+          <h2 className="font-serif text-2xl sm:text-3xl text-amber-50">
+            {heading.title}
+          </h2>
+          <p className="text-amber-100/50 text-sm leading-relaxed">
+            {heading.subtitle}
+          </p>
+        </header>
+
+        {step === 0 && <OrderSummary />}
+        {step === 1 && <UserDetails />}
+        {step === 2 && <Success />}
+      </div>
     </div>
   );
 }

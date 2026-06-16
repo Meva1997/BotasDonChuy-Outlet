@@ -4,7 +4,13 @@ import { CHECKOUT_STEPS, type CheckoutStep } from "./CheckoutContext";
 
 function Check() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d="M2.5 7.5 5.5 10.5 11.5 3.5"
         stroke="currentColor"
@@ -34,17 +40,25 @@ export default function Stepper({ current, onNavigate }: StepperProps) {
           const canNavigate = isDone && current !== CHECKOUT_STEPS.length - 1;
 
           const circle = (
-            <span
-              aria-current={isActive ? "step" : undefined}
-              className={`flex items-center justify-center w-9 h-9 rounded-full border text-xs font-medium transition-colors ${
-                isActive
-                  ? "border-amber-400 text-stone-950 bg-amber-400"
-                  : isDone
-                    ? "border-amber-400/70 text-amber-400"
-                    : "border-amber-900/50 text-amber-100/30"
-              }`}
-            >
-              {isDone ? <Check /> : index + 1}
+            <span className="relative flex items-center justify-center">
+              {isActive && (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 rounded-full bg-yellow-500/40 blur-md animate-glow-pulse"
+                />
+              )}
+              <span
+                aria-current={isActive ? "step" : undefined}
+                className={`relative flex items-center justify-center w-9 h-9 rounded-full border text-xs font-medium transition-colors duration-300 ${
+                  isActive
+                    ? "border-yellow-400 text-stone-950 bg-linear-to-br from-yellow-400 to-yellow-600 shadow-[0_0_0_4px_rgba(202,138,4,0.15)]"
+                    : isDone
+                      ? "border-yellow-500/70 text-yellow-500 bg-yellow-500/10"
+                      : "border-amber-900/50 text-amber-100/30"
+                }`}
+              >
+                {isDone ? <Check /> : index + 1}
+              </span>
             </span>
           );
 
@@ -86,8 +100,8 @@ export default function Stepper({ current, onNavigate }: StepperProps) {
 
               {!isLast && (
                 <span
-                  className={`flex-1 h-px mx-3 -mt-6 transition-colors ${
-                    isDone ? "bg-amber-400/60" : "bg-amber-900/40"
+                  className={`flex-1 h-px mx-3 -mt-6 transition-colors duration-500 ${
+                    isDone ? "bg-yellow-500/70" : "bg-amber-900/40"
                   }`}
                 />
               )}

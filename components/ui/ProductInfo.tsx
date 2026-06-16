@@ -21,15 +21,20 @@ export default function ProductInfo({ product }: ProductInfoProps) {
   const { addItem, openCart, items: cartItems } = useCartStore();
 
   // Stock disponible por talla (un tamaño puede repetirse en el array)
-  const sizeStockMap = product.sizes.reduce<Record<number, number>>((acc, s) => {
-    acc[s] = (acc[s] || 0) + 1;
-    return acc;
-  }, {});
+  const sizeStockMap = product.sizes.reduce<Record<number, number>>(
+    (acc, s) => {
+      acc[s] = (acc[s] || 0) + 1;
+      return acc;
+    },
+    {},
+  );
 
   const uniqueSizes = [...new Set(product.sizes)].sort((a, b) => a - b);
 
   function cartQuantityFor(size: number) {
-    return cartItems.find((i) => i.id === `${product.id}-${size}`)?.quantity ?? 0;
+    return (
+      cartItems.find((i) => i.id === `${product.id}-${size}`)?.quantity ?? 0
+    );
   }
 
   const selectedSizeAtMax =
@@ -50,10 +55,13 @@ export default function ProductInfo({ product }: ProductInfoProps) {
   const categoryLabel = CATEGORY_LABELS[product.type] ?? product.type;
 
   return (
-    <main className="min-h-screen bg-stone-950">
+    <main className="min-dvh-screen bg-tobacco-950">
       {/* Breadcrumb — nav > ol > li es el patrón semántico correcto */}
-      <nav aria-label="Ruta de navegación" className="px-8 md:px-16 pt-6 pb-2">
-        <ol className="flex items-center gap-2 font-sans text-amber-100/35 text-xs tracking-[0.18em] uppercase list-none">
+      <nav
+        aria-label="Ruta de navegación"
+        className="max-w-6xl mx-auto px-4 sm:px-8 md:px-16 pt-4 sm:pt-6 my-20"
+      >
+        <ol className="flex items-center gap-2 font-sans text-amber-100/35 text-[11px] sm:text-xs tracking-[0.16em] sm:tracking-[0.18em] uppercase list-none overflow-x-auto ">
           <li>
             <Link
               href="/"
@@ -79,13 +87,13 @@ export default function ProductInfo({ product }: ProductInfoProps) {
       </nav>
 
       {/* Contenido principal: dos columnas en desktop, apilado en móvil */}
-      <div className="px-8 md:px-16 py-8 flex flex-col md:flex-row gap-12 lg:gap-20">
-        {/* ── Columna izquierda (45% en desktop) — imagen ── */}
-        <figure className="w-full md:w-[45%] shrink-0 m-0">
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 md:px-16 py-6 sm:py-8 flex flex-col md:flex-row gap-8 md:gap-12 lg:gap-2 my-20">
+        {/* ── Columna izquierda — imagen, compacta en móvil, ~38% en desktop ── */}
+        <figure className="w-full sm:w-56 md:w-[38%] md:max-w-sm shrink-0 m-0 mx-auto sm:mx-0">
           <div
             role="img"
             aria-label={`Fotografía de ${product.name}`}
-            className="relative w-full aspect-square rounded-sm overflow-hidden"
+            className="relative w-full aspect-square rounded-sm overflow-hidden border border-amber-400/10"
             style={{
               backgroundImage: product.imageSrc
                 ? `url(${product.imageSrc})`
@@ -100,23 +108,12 @@ export default function ProductInfo({ product }: ProductInfoProps) {
               aria-hidden="true"
               className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#2c1a08_0%,#0d0a06_70%)]"
             />
-
-            {/* Textura de grano */}
-            <div
-              aria-hidden="true"
-              className="absolute inset-0 opacity-25"
-              style={{
-                backgroundImage:
-                  "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.4'/%3E%3C/svg%3E\")",
-                backgroundSize: "128px 128px",
-              }}
-            />
           </div>
         </figure>
 
         {/* ── Columna derecha (flex-1, ocupa el resto) — información ── */}
-        <article className="flex flex-col gap-7 flex-1">
-          <h1 className="font-serif text-amber-50 text-4xl md:text-5xl leading-tight">
+        <article className="flex flex-col gap-5 sm:gap-6 md:gap-7 flex-1 min-w-0">
+          <h1 className="font-serif text-amber-50 text-2xl sm:text-3xl md:text-4xl lg:text-5xl leading-tight">
             {product.name}
           </h1>
 
@@ -128,11 +125,11 @@ export default function ProductInfo({ product }: ProductInfoProps) {
 
           {/* Precios — <s> marca semánticamente el precio tachado */}
           <section aria-label="Precio">
-            <div className="flex items-baseline gap-4">
+            <div className="flex items-baseline gap-3 sm:gap-4 flex-wrap">
               <s className="font-sans text-amber-100/35 text-sm line-through">
                 ${formatPrice(product.originalPrice)}
               </s>
-              <strong className="font-serif text-amber-400 text-5xl leading-none font-normal">
+              <strong className="font-serif text-amber-400 text-3xl sm:text-4xl md:text-5xl leading-none font-normal">
                 ${formatPrice(product.salePrice)}
               </strong>
             </div>
@@ -159,15 +156,13 @@ export default function ProductInfo({ product }: ProductInfoProps) {
                     type="button"
                     aria-pressed={isSelected}
                     disabled={isExhausted}
-                    onClick={() =>
-                      setSelectedSize(isSelected ? null : size)
-                    }
-                    className={`relative w-14 h-14 border font-sans text-sm transition-all duration-150 flex flex-col items-center justify-center gap-0.5 ${
+                    onClick={() => setSelectedSize(isSelected ? null : size)}
+                    className={`relative w-12 h-12 sm:w-14 sm:h-14 border font-sans text-sm transition-all duration-150 flex flex-col items-center justify-center gap-0.5 ${
                       isExhausted
                         ? "border-amber-900/20 text-amber-100/15 cursor-not-allowed"
                         : isSelected
-                        ? "border-amber-400 text-amber-400 bg-amber-400/10 cursor-pointer"
-                        : "border-amber-400/25 text-amber-100/55 hover:border-amber-400/55 hover:text-amber-100/80 cursor-pointer"
+                          ? "border-amber-400 text-amber-400 bg-amber-400/10 cursor-pointer"
+                          : "border-amber-400/25 text-amber-100/55 hover:border-amber-400/55 hover:text-amber-100/80 cursor-pointer"
                     }`}
                   >
                     <span>{size}</span>
@@ -196,23 +191,23 @@ export default function ProductInfo({ product }: ProductInfoProps) {
             type="button"
             onClick={handleAddToCart}
             disabled={!selectedSize || added || selectedSizeAtMax}
-            className={`w-full md:max-w-md font-sans text-xs tracking-[0.25em] uppercase py-4 transition-all duration-200 border ${
+            className={`w-full md:max-w-md font-sans text-xs tracking-[0.2em] sm:tracking-[0.25em] uppercase py-3.5 sm:py-4 transition-all duration-200 border ${
               added
                 ? "bg-amber-400/20 border-amber-400/60 text-amber-400 cursor-default"
                 : selectedSizeAtMax
-                ? "bg-transparent border-amber-100/10 text-amber-100/25 cursor-not-allowed"
-                : selectedSize
-                ? "bg-linear-to-r from-amber-950 to-amber-900 hover:from-amber-900 hover:to-amber-800 border-amber-700/40 hover:border-amber-600/60 text-amber-50 cursor-pointer"
-                : "bg-transparent border-amber-100/10 text-amber-100/25 cursor-not-allowed"
+                  ? "bg-transparent border-amber-100/10 text-amber-100/25 cursor-not-allowed"
+                  : selectedSize
+                    ? "bg-linear-to-r from-amber-950 to-amber-900 hover:from-amber-900 hover:to-amber-800 border-amber-700/40 hover:border-amber-600/60 text-amber-50 cursor-pointer"
+                    : "bg-transparent border-amber-100/10 text-amber-100/25 cursor-not-allowed"
             }`}
           >
             {added
               ? "Agregado al carrito ✓"
               : selectedSizeAtMax
-              ? "Ya está en tu carrito"
-              : selectedSize
-              ? "Agregar al carrito"
-              : "Selecciona una talla"}
+                ? "Ya está en tu carrito"
+                : selectedSize
+                  ? "Agregar al carrito"
+                  : "Selecciona una talla"}
           </button>
 
           {/* <small> es semánticamente correcto para letra chica / avisos legales */}

@@ -32,7 +32,7 @@ export default function OutletFilters({
   onTallaChange,
 }: OutletFiltersProps) {
   return (
-    <div className="flex flex-wrap items-center gap-3 mb-10">
+    <div className="flex flex-wrap items-center gap-3 mb-10 max-w-7xl mx-auto">
       {showCategoria && (
         <select
           value={selectedCategoria ?? ""}
