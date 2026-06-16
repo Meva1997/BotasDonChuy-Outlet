@@ -1,7 +1,10 @@
 "use client";
 
+import { motion } from "framer-motion";
+import { fadeIn } from "@/lib/motion";
+
 const SELECT_CLASS =
-  "font-sans text-amber-50 text-sm bg-transparent border border-amber-400/30 rounded-sm px-4 py-2 pr-8 appearance-none cursor-pointer hover:border-amber-400/60 focus:outline-none focus:border-amber-400/60 transition-colors duration-200";
+  "font-sans text-amber-50 text-sm bg-stone-900/60 border border-amber-400/25 rounded-sm px-4 py-2.5 pr-9 appearance-none cursor-pointer hover:border-amber-400/55 focus:outline-none focus:border-amber-400/70 focus:ring-1 focus:ring-amber-400/30 transition-all duration-200";
 
 const ARROW_STYLE: React.CSSProperties = {
   backgroundImage:
@@ -32,7 +35,13 @@ export default function OutletFilters({
   onTallaChange,
 }: OutletFiltersProps) {
   return (
-    <div className="flex flex-wrap items-center gap-3 mb-10 max-w-7xl mx-auto">
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      variants={fadeIn}
+      transition={{ duration: 0.5, delay: 0.1 }}
+      className="flex flex-wrap items-center gap-3 mb-10 max-w-7xl mx-auto sticky top-0 z-10 bg-tobacco-950/85 backdrop-blur-sm py-3 -mx-6 px-6 md:mx-0 md:px-0 md:static md:bg-transparent md:backdrop-blur-none"
+    >
       {showCategoria && (
         <select
           value={selectedCategoria ?? ""}
@@ -74,10 +83,12 @@ export default function OutletFilters({
       )}
 
       {total !== undefined && (
-        <span className="ml-auto font-sans text-amber-100/40 text-sm tracking-wide">
-          {total} {total === 1 ? "pieza" : "piezas"} · sin reposición
+        <span className="ml-auto font-sans text-amber-100/40 text-xs sm:text-sm tracking-[0.1em] uppercase">
+          {total} {total === 1 ? "pieza" : "piezas"}
+          <span className="text-amber-400/50 mx-1.5">·</span>
+          sin reposición
         </span>
       )}
-    </div>
+    </motion.div>
   );
 }

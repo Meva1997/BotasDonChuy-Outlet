@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import type { Product } from "@/lib/getProducts";
 import { useCartStore } from "@/store/cartStore";
+import { fadeUp, EASE_LUXE } from "@/lib/motion";
 
 const CATEGORY_LABELS: Record<string, string> = {
   bota: "Botas",
@@ -87,35 +89,76 @@ export default function ProductInfo({ product }: ProductInfoProps) {
       </nav>
 
       {/* Contenido principal: dos columnas en desktop, apilado en móvil */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-8 md:px-16 py-6 sm:py-8 flex flex-col md:flex-row gap-8 md:gap-12 lg:gap-2 my-20">
-        {/* ── Columna izquierda — imagen, compacta en móvil, ~38% en desktop ── */}
-        <figure className="w-full sm:w-56 md:w-[38%] md:max-w-sm shrink-0 m-0 mx-auto sm:mx-0">
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 md:px-16 py-6 sm:py-8 flex flex-col md:flex-row gap-8 md:gap-12 lg:gap-12 my-20">
+        {/* ── Columna izquierda — imagen, compacta en móvil, ~42% en desktop ── */}
+        <motion.figure
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.7, ease: EASE_LUXE }}
+          className="w-full sm:w-72 md:w-[42%] md:max-w-md shrink-0 m-0 mx-auto sm:mx-0"
+        >
           <div
             role="img"
             aria-label={`Fotografía de ${product.name}`}
-            className="relative w-full aspect-square rounded-sm overflow-hidden border border-amber-400/10"
+            className="group relative w-full aspect-square rounded-sm overflow-hidden border border-amber-400/15"
             style={{
-              backgroundImage: product.imageSrc
-                ? `url(${product.imageSrc})`
-                : undefined,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
               backgroundColor: "#1c1209",
             }}
           >
+            <motion.div
+              className="absolute inset-0"
+              style={{
+                backgroundImage: product.imageSrc
+                  ? `url(${product.imageSrc})`
+                  : undefined,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }}
+              whileHover={{ scale: 1.05 }}
+              transition={{ duration: 0.6, ease: EASE_LUXE }}
+            />
+
             {/* Viñeta decorativa */}
             <div
               aria-hidden="true"
-              className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#2c1a08_0%,#0d0a06_70%)]"
+              className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#2c1a08_0%,#0d0a06_70%)] pointer-events-none"
             />
+
+            {/* Discount badge */}
+            <div className="absolute top-3 left-3 bg-stone-950/80 border border-amber-400/35 px-3 py-1.5 backdrop-blur-sm">
+              <span className="font-sans text-amber-400 text-xs tracking-[0.12em] font-medium">
+                −{product.discountPercent}%
+              </span>
+            </div>
           </div>
-        </figure>
+
+          {/* Selling-point chips below image */}
+          <div className="flex flex-wrap gap-2 mt-4 justify-center sm:justify-start">
+            <span className="font-sans text-[10px] tracking-[0.15em] uppercase text-amber-100/45 border border-amber-400/15 px-2.5 py-1 rounded-sm">
+              Pieza única
+            </span>
+            <span className="font-sans text-[10px] tracking-[0.15em] uppercase text-amber-100/45 border border-amber-400/15 px-2.5 py-1 rounded-sm">
+              Piel genuina
+            </span>
+          </div>
+        </motion.figure>
 
         {/* ── Columna derecha (flex-1, ocupa el resto) — información ── */}
-        <article className="flex flex-col gap-5 sm:gap-6 md:gap-7 flex-1 min-w-0">
-          <h1 className="font-serif text-amber-50 text-2xl sm:text-3xl md:text-4xl lg:text-5xl leading-tight">
-            {product.name}
-          </h1>
+        <motion.article
+          initial="hidden"
+          animate="visible"
+          variants={fadeUp}
+          transition={{ duration: 0.6, delay: 0.1, ease: EASE_LUXE }}
+          className="flex flex-col gap-5 sm:gap-6 md:gap-7 flex-1 min-w-0"
+        >
+          <div>
+            <p className="font-sans text-amber-400/70 text-xs tracking-[0.25em] uppercase mb-2">
+              {categoryLabel} · outlet
+            </p>
+            <h1 className="font-serif text-amber-50 text-2xl sm:text-3xl md:text-4xl lg:text-5xl leading-tight">
+              {product.name}
+            </h1>
+          </div>
 
           {product.description && (
             <p className="font-sans text-amber-100/55 text-sm leading-relaxed max-w-md">
@@ -124,7 +167,10 @@ export default function ProductInfo({ product }: ProductInfoProps) {
           )}
 
           {/* Precios — <s> marca semánticamente el precio tachado */}
-          <section aria-label="Precio">
+          <section
+            aria-label="Precio"
+            className="border-l-2 border-amber-400/40 pl-4"
+          >
             <div className="flex items-baseline gap-3 sm:gap-4 flex-wrap">
               <s className="font-sans text-amber-100/35 text-sm line-through">
                 ${formatPrice(product.originalPrice)}
@@ -133,8 +179,9 @@ export default function ProductInfo({ product }: ProductInfoProps) {
                 ${formatPrice(product.salePrice)}
               </strong>
             </div>
-            <p className="font-sans text-amber-100/35 text-xs tracking-wide mt-1">
-              −{product.discountPercent}% sobre el precio original
+            <p className="font-sans text-amber-100/40 text-xs tracking-wide mt-1.5">
+              Ahorras −{product.discountPercent}% sobre el precio original ·
+              precio final de outlet
             </p>
           </section>
 
@@ -151,13 +198,15 @@ export default function ProductInfo({ product }: ProductInfoProps) {
                 const isSelected = selectedSize === size;
 
                 return (
-                  <button
+                  <motion.button
                     key={size}
                     type="button"
                     aria-pressed={isSelected}
                     disabled={isExhausted}
                     onClick={() => setSelectedSize(isSelected ? null : size)}
-                    className={`relative w-12 h-12 sm:w-14 sm:h-14 border font-sans text-sm transition-all duration-150 flex flex-col items-center justify-center gap-0.5 ${
+                    whileHover={isExhausted ? undefined : { y: -2 }}
+                    whileTap={isExhausted ? undefined : { scale: 0.95 }}
+                    className={`relative w-12 h-12 sm:w-14 sm:h-14 border font-sans text-sm transition-colors duration-150 flex flex-col items-center justify-center gap-0.5 ${
                       isExhausted
                         ? "border-amber-900/20 text-amber-100/15 cursor-not-allowed"
                         : isSelected
@@ -171,7 +220,7 @@ export default function ProductInfo({ product }: ProductInfoProps) {
                         ×{stock - inCart}
                       </span>
                     )}
-                  </button>
+                  </motion.button>
                 );
               })}
             </div>
@@ -187,10 +236,12 @@ export default function ProductInfo({ product }: ProductInfoProps) {
               : `Solo ${product.stock} disponibles`}
           </p>
 
-          <button
+          <motion.button
             type="button"
             onClick={handleAddToCart}
             disabled={!selectedSize || added || selectedSizeAtMax}
+            whileHover={selectedSize && !added && !selectedSizeAtMax ? { scale: 1.015 } : undefined}
+            whileTap={selectedSize && !added && !selectedSizeAtMax ? { scale: 0.985 } : undefined}
             className={`w-full md:max-w-md font-sans text-xs tracking-[0.2em] sm:tracking-[0.25em] uppercase py-3.5 sm:py-4 transition-all duration-200 border ${
               added
                 ? "bg-amber-400/20 border-amber-400/60 text-amber-400 cursor-default"
@@ -208,14 +259,14 @@ export default function ProductInfo({ product }: ProductInfoProps) {
                 : selectedSize
                   ? "Agregar al carrito"
                   : "Selecciona una talla"}
-          </button>
+          </motion.button>
 
           {/* <small> es semánticamente correcto para letra chica / avisos legales */}
           <small className="font-sans text-amber-100/25 not-italic leading-relaxed max-w-md block">
             Este producto no se repondrá. Precio de outlet final — sin cambios
             ni devoluciones.
           </small>
-        </article>
+        </motion.article>
       </div>
     </main>
   );

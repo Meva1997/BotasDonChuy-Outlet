@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { motion } from "framer-motion";
+import { fadeUp } from "@/lib/motion";
 
 const FOOTER_SECTIONS = [
   {
@@ -29,7 +33,14 @@ const FOOTER_SECTIONS = [
 export default function Footer() {
   return (
     <footer className="border-t border-yellow-600 mt-auto">
-      <div className="max-w-6xl mx-auto px-8 py-12 md:py-16">
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-60px" }}
+        variants={fadeUp}
+        transition={{ duration: 0.6 }}
+        className="max-w-6xl mx-auto px-8 py-12 md:py-16"
+      >
         {/* Top: marca + columnas de links */}
         <div className="flex flex-col md:flex-row md:justify-between gap-10 md:gap-12">
           {/* Marca */}
@@ -79,11 +90,15 @@ export default function Footer() {
             © {new Date().getFullYear()} Botas Don Chuy. Todos los derechos
             reservados.
           </p>
-          <p className="text-xs text-amber-100/20 tracking-[0.2em] uppercase">
+          <Link
+            href="/admin"
+            aria-label="Acceso administrador"
+            className="text-xs text-amber-100/20 tracking-[0.2em] uppercase hover:text-amber-100/50 transition-colors duration-300"
+          >
             Outlet
-          </p>
+          </Link>
         </div>
-      </div>
+      </motion.div>
     </footer>
   );
 }
