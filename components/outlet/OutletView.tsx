@@ -2,16 +2,24 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import OutletCard from "@/components/ui/OutletCard";
 import EmptyState from "@/components/ui/EmptyState";
 import OutletFilters from "@/components/outlet/OutletFilters";
 import OutletPagination from "@/components/outlet/OutletPagination";
+import { fadeUp, staggerContainer, EASE_LUXE } from "@/lib/motion";
 import {
   getProducts,
   productKeys,
   type ProductFilters,
   type ProductsResult,
 } from "@/lib/getProducts";
+
+const TRUST_SIGNALS = [
+  "Piezas únicas · sin reposición",
+  "Calidad de piel verificada",
+  "Envío a todo México",
+];
 
 // When adding TanStack Query, replace the useEffect block with:
 //   const { data: result } = useQuery({
@@ -77,15 +85,44 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
 
   return (
     <section className="min-dvh-screen bg-tobacco-950 px-6 md:p-10 py-12 my-20">
+      {/* Trust strip */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6 }}
+        className="max-w-7xl mx-auto mb-10 flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-amber-400/15 py-3"
+      >
+        {TRUST_SIGNALS.map((signal, i) => (
+          <span
+            key={signal}
+            className="font-sans text-[11px] tracking-[0.18em] uppercase text-amber-100/40 flex items-center gap-2"
+          >
+            {i !== 0 && (
+              <span className="hidden sm:inline text-amber-400/40">/</span>
+            )}
+            {signal}
+          </span>
+        ))}
+      </motion.div>
+
       {/* Header */}
-      <div className="mb-8 max-w-7xl mx-auto">
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={fadeUp}
+        transition={{ duration: 0.6, ease: EASE_LUXE }}
+        className="mb-8 max-w-7xl mx-auto"
+      >
+        <p className="font-sans text-amber-400/70 text-xs tracking-[0.3em] uppercase mb-3">
+          Edición de bodega
+        </p>
         <h1 className="font-serif text-amber-50 text-4xl md:text-5xl mb-2">
           {title}
         </h1>
         <p className="font-sans text-amber-100/45 text-sm tracking-wide">
           Inventario final de bodega. Lo que ves es lo que queda.
         </p>
-      </div>
+      </motion.div>
 
       {/* Filters — talla select only appears when a category is active */}
       <OutletFilters
@@ -108,19 +145,27 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
               message="No hay piezas en esta categoría por el momento. Vuelve pronto — el inventario cambia constantemente."
             />
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 max-w-6xl mx-auto">
-              {result.products.map((product) => (
-                <OutletCard
-                  key={product.id}
-                  slug={product.id}
-                  name={product.name}
-                  originalPrice={product.originalPrice}
-                  salePrice={product.salePrice}
-                  discountPercent={product.discountPercent}
-                  stock={product.stock === 1 ? "ultima" : product.stock}
-                />
-              ))}
-            </div>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`${categoria ?? "all"}-${talla ?? "all"}-${page}`}
+                initial="hidden"
+                animate="visible"
+                variants={staggerContainer}
+                className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 max-w-6xl mx-auto"
+              >
+                {result.products.map((product) => (
+                  <OutletCard
+                    key={product.id}
+                    slug={product.id}
+                    name={product.name}
+                    originalPrice={product.originalPrice}
+                    salePrice={product.salePrice}
+                    discountPercent={product.discountPercent}
+                    stock={product.stock === 1 ? "ultima" : product.stock}
+                  />
+                ))}
+              </motion.div>
+            </AnimatePresence>
           )}
 
           {result.products.length > 0 && (
