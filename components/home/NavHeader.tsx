@@ -33,9 +33,11 @@ export default function NavHeader() {
   }, [open]);
 
   return (
-    <header ref={headerRef} className="border-b border-amber-900/40 relative z-50">
+    <header
+      ref={headerRef}
+      className="border-b border-yellow-600 relative z-50"
+    >
       <div className="max-w-6xl mx-auto px-8 py-5 flex items-center justify-between">
-
         {/* Logo */}
         <Link href="/" className="font-serif text-xl shrink-0">
           <span className="text-amber-50 font-normal">Botas Don Chuy </span>
@@ -86,15 +88,67 @@ export default function NavHeader() {
             className="text-amber-100/70 hover:text-amber-100 transition-colors p-1 cursor-pointer"
           >
             {open ? (
-              <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-                <line x1="3" y1="3" x2="19" y2="19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="19" y1="3" x2="3" y2="19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 22 22"
+                fill="none"
+                aria-hidden="true"
+              >
+                <line
+                  x1="3"
+                  y1="3"
+                  x2="19"
+                  y2="19"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="19"
+                  y1="3"
+                  x2="3"
+                  y2="19"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
               </svg>
             ) : (
-              <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-                <line x1="2" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="2" y1="11" x2="20" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="2" y1="16" x2="20" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 22 22"
+                fill="none"
+                aria-hidden="true"
+              >
+                <line
+                  x1="2"
+                  y1="6"
+                  x2="20"
+                  y2="6"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="2"
+                  y1="11"
+                  x2="20"
+                  y2="11"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="2"
+                  y1="16"
+                  x2="20"
+                  y2="16"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
               </svg>
             )}
           </button>
@@ -105,7 +159,7 @@ export default function NavHeader() {
       {open && (
         <div
           id="mobile-nav"
-          className="md:hidden absolute top-full left-0 right-0 bg-stone-950 border-b border-amber-900/40"
+          className="md:hidden absolute top-full left-0 right-0 bg-tobacco-950 border-b border-amber-900/40"
         >
           <nav aria-label="Menú móvil" className="px-8 pt-4 pb-2">
             <ul className="flex flex-col list-none">
@@ -133,7 +187,10 @@ export default function NavHeader() {
             </Link>
             <button
               type="button"
-              onClick={() => { setOpen(false); toggleCart(); }}
+              onClick={() => {
+                setOpen(false);
+                toggleCart();
+              }}
               className="block w-full text-center text-xs tracking-[0.15em] uppercase border border-amber-400/60 text-amber-400 py-3 hover:bg-amber-400/10 transition-colors duration-200 cursor-pointer"
             >
               Carrito ({itemCount})

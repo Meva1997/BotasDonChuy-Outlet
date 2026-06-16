@@ -42,14 +42,28 @@ export default function UserDetails() {
       className="w-full max-w-5xl mx-auto grid lg:grid-cols-[1fr_20rem] gap-8 items-start"
     >
       {/* Columna principal: envío + pago */}
-      <div className="space-y-10">
-        <fieldset className="space-y-4">
-          <legend className="font-serif text-lg text-amber-50 mb-1">
-            Datos de envío
-          </legend>
-          <p className="text-amber-100/40 text-xs tracking-wide mb-4">
-            Los envíos solo están disponibles dentro de la República Mexicana.
-          </p>
+      <div className="space-y-8">
+        <fieldset className="space-y-5 rounded-xl border border-yellow-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 shadow-[0_0_40px_-15px_rgba(202,138,4,0.35)] animate-fade-in-up">
+          <div className="flex items-center gap-3 pb-4 border-b border-yellow-600/30">
+            <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-yellow-500/20 to-yellow-600/5 border border-yellow-600/30 text-yellow-500 shrink-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 21s-7-6.2-7-11a7 7 0 1 1 14 0c0 4.8-7 11-7 11Z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+                <circle cx="12" cy="10" r="2.25" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+            </span>
+            <div>
+              <legend className="font-serif text-lg text-amber-50">
+                Datos de envío
+              </legend>
+              <p className="text-amber-100/40 text-xs tracking-wide mt-1">
+                Los envíos solo están disponibles dentro de la República Mexicana.
+              </p>
+            </div>
+          </div>
 
           <TextField
             id="fullName"
@@ -137,20 +151,20 @@ export default function UserDetails() {
           />
         </fieldset>
 
-        <div className="border-t border-amber-900/30 pt-8">
+        <div className="rounded-xl border border-yellow-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 shadow-[0_0_40px_-15px_rgba(202,138,4,0.35)] animate-fade-in-up">
           <PaymentSection />
         </div>
       </div>
 
       {/* Columna lateral: total + acciones */}
-      <aside className="border border-amber-900/40 bg-stone-900/30 p-6 space-y-6 lg:sticky lg:top-6">
+      <aside className="rounded-xl border border-yellow-600/30 bg-linear-to-b from-stone-900/50 to-stone-900/20 p-6 space-y-6 lg:sticky lg:top-6 shadow-[0_0_40px_-15px_rgba(202,138,4,0.35)] animate-fade-in-up">
         <h3 className="font-serif text-lg text-amber-50">Tu pedido</h3>
         <OrderTotals totals={totals} />
 
         <button
           type="submit"
           disabled={isSubmitting || items.length === 0}
-          className="w-full bg-amber-400 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:bg-amber-300 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="btn-shimmer w-full rounded-md bg-linear-to-r from-yellow-400 to-yellow-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(202,138,4,0.6)] cursor-pointer disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isSubmitting && (
             <svg

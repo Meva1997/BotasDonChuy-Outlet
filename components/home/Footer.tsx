@@ -28,7 +28,7 @@ const FOOTER_SECTIONS = [
 
 export default function Footer() {
   return (
-    <footer className="border-t border-amber-900/40 mt-auto">
+    <footer className="border-t border-yellow-600 mt-auto">
       <div className="max-w-6xl mx-auto px-8 py-12 md:py-16">
         {/* Top: marca + columnas de links */}
         <div className="flex flex-col md:flex-row md:justify-between gap-10 md:gap-12">

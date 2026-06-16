@@ -76,22 +76,22 @@ export default function PrivacyPolicy() {
   const lastUpdated = "12 de junio de 2026";
 
   return (
-    <div className="min-h-screen bg-stone-950 py-16 px-4">
-      <div className="max-w-3xl mx-auto space-y-12">
+    <div className="min-h-screen bg-tobacco-950 py-16 px-4">
+      <div className="max-w-4xl mx-auto space-y-12">
         {/* Header */}
         <header className="space-y-4 border-b border-amber-900/40 pb-10">
-          <p className="text-xs tracking-[0.3em] uppercase text-amber-400/70">
+          <p className="text-sm tracking-[0.3em] uppercase text-amber-400/90">
             Botas Don Chuy Outlet
           </p>
-          <h1 className="font-serif text-3xl sm:text-4xl text-amber-50 leading-snug">
+          <h1 className="font-serif text-4xl sm:text-5xl text-amber-50 leading-snug">
             Política de Privacidad
           </h1>
-          <p className="text-amber-100/40 text-sm">
+          <p className="text-amber-200/70 text-base">
             Última actualización: {lastUpdated}
           </p>
           <div className="mt-6 bg-amber-400/8 border border-amber-400/20 p-5 rounded-sm">
-            <p className="text-amber-100/70 text-sm leading-relaxed">
-              <span className="text-amber-400 font-medium">Compromiso:</span>{" "}
+            <p className="text-amber-100/90 text-base leading-relaxed">
+              <span className="text-amber-400 font-semibold">Compromiso:</span>{" "}
               Solo recopilamos los datos necesarios para entregar tu pedido. No
               los vendemos ni los usamos para publicidad. Se eliminan poco
               después de que recibes tu compra.
@@ -103,11 +103,13 @@ export default function PrivacyPolicy() {
         <div className="space-y-10">
           {SECTIONS.map(({ title, body }) => (
             <section key={title} className="space-y-3">
-              <h2 className="font-serif text-lg text-amber-200">{title}</h2>
+              <h2 className="font-serif text-xl sm:text-2xl font-semibold text-amber-300">
+                {title}
+              </h2>
               {body.map((paragraph, i) => (
                 <p
                   key={i}
-                  className="text-sm text-amber-100/60 leading-relaxed whitespace-pre-line"
+                  className="text-base text-amber-100/80 leading-relaxed sm:leading-loose whitespace-pre-line"
                 >
                   {paragraph}
                 </p>
@@ -118,7 +120,7 @@ export default function PrivacyPolicy() {
 
         {/* Footer note */}
         <div className="border-t border-amber-900/30 pt-8 text-center">
-          <p className="text-xs text-amber-100/30 tracking-wide">
+          <p className="text-sm text-amber-200/60 tracking-wide">
             © {new Date().getFullYear()} Botas Don Chuy. Todos los derechos
             reservados.
           </p>

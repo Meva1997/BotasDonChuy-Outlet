@@ -1,13 +1,13 @@
 import { forwardRef } from "react";
 
 const fieldBase =
-  "w-full bg-stone-900/60 border px-4 py-3 text-sm text-amber-50 placeholder:text-amber-100/25 outline-none transition-colors focus:border-amber-400/70";
+  "w-full bg-stone-800/60 border px-4 py-3 text-sm text-amber-50 placeholder:text-amber-100/40 rounded-md outline-none transition-all duration-200 hover:border-yellow-500/70 focus:border-yellow-400 focus:bg-stone-800/90 focus:shadow-[0_0_0_3px_rgba(202,138,4,0.2)]";
 
 const labelBase =
-  "block text-[10px] tracking-[0.25em] uppercase text-amber-100/50 mb-2";
+  "block text-[10px] tracking-[0.25em] uppercase text-amber-100/70 mb-2";
 
 function borderClass(hasError?: boolean) {
-  return hasError ? "border-red-500/60" : "border-amber-900/40";
+  return hasError ? "border-red-500/60" : "border-yellow-600/40";
 }
 
 function FieldError({ message }: { message?: string }) {
