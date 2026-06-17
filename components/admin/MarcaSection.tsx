@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import { useState, useRef } from "react";
+import { BRAND } from "@/lib/brand";
 
 interface MarcaData {
   brandName: string;
@@ -15,11 +15,11 @@ interface MarcaData {
 type TextField = Exclude<keyof MarcaData, "logoUrl">;
 
 const DEFAULTS: MarcaData = {
-  brandName: "Botas Don Chuy",
-  heroText: "Liquidación final · Sin reposición",
-  tagline: "Piezas únicas. Sin reposición.\nCuando se acaba, se acaba.",
-  cartNotice: "Estos artículos no se reservan",
-  footerNote: "Liquidación de inventario · piezas finales · sin reposición",
+  brandName: BRAND.name,
+  heroText: BRAND.heroText,
+  tagline: BRAND.taglineLines.join("\n"),
+  cartNotice: BRAND.cartNotice,
+  footerNote: BRAND.footerNote,
   logoUrl: null,
 };
 
@@ -127,7 +127,9 @@ export default function MarcaSection() {
             {/* Crosshatch thumbnail */}
             <div className="w-14 h-14 shrink-0 bg-stone-800 flex items-center justify-center overflow-hidden">
               {data.logoUrl ? (
-                <Image
+                // Previsualización local (blob: URL) — next/image no optimiza object URLs.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
                   src={data.logoUrl}
                   alt="Logo"
                   className="w-full h-full object-contain"

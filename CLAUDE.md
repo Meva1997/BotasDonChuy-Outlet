@@ -27,10 +27,10 @@ Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependenci
 
 ```
 app/              # Next.js App Router
-  layout.tsx      # Root layout: fonts, base classes, metadata, CartProvider
+  layout.tsx      # Root layout: fonts, base classes, metadata, QueryProvider + CartProvider
   page.tsx        # Home page — composes NavHeader + Hero + Footer
   admin/
-    layout.tsx    # Admin layout: full-height stone-950 shell
+    layout.tsx    # Admin layout: AdminGuard (route protection) + full-height tobacco-950 shell
     page.tsx      # Admin dashboard — Sidebar + section routing (AdminSection type)
   (public)/
     outlet/
@@ -47,7 +47,8 @@ components/
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider, Sidebar)
   checkout/       # Multi-step checkout flow (see "Checkout flow" below)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal content pages
-  auth/           # AuthShell (split-panel layout) + LoginForm/ForgotPasswordForm — react-hook-form + zod (schemas/auth.ts), submission is mocked pending backend
+  auth/           # AuthShell (split-panel layout) + LoginForm/ForgotPasswordForm — react-hook-form + zod (schemas/auth.ts). LoginForm usa TanStack Query (useMutation), mockeada pendiente de backend. AdminGuard — protege /admin (ver "Auth & data fetching")
+  providers/      # QueryProvider — QueryClientProvider de TanStack Query (montado en root layout)
   admin/          # Panel de administración — secciones completas:
                   #   MarcaSection — editor de identidad de marca (logo, colores, copy)
                   #   ProductSection — gestión de catálogo (ProductForm, ProductCategoryView)
@@ -61,25 +62,46 @@ db/
   mockData.ts     # Datos de ejemplo del admin: KPIs, ingresos, inventario, ventas mensuales y reposición.
                   #   Deriva MOCK_MONTHLY_REPORTS y MOCK_REPLENISHMENT desde MONTHLY_UNIT_SALES + MOCK_PRODUCTS
 lib/
+  api/
+    client.ts     # instancia axios (baseURL NEXT_PUBLIC_API_URL ?? /api) + interceptors: request adjunta Bearer del authStore, response cierra sesión y va a /login en 401
   getProducts.ts  # getProducts(filters), getProductById(id), Product type
   cart.ts         # computeTotals(items) — pure subtotal/savings/total helper
+  motion.ts       # variantes framer-motion compartidas (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
   forecast.ts     # computeForecast(monthlySales) — pronóstico de demanda auto-escalado por nº de meses
+  brand.ts        # BRAND — fuente única de identidad/copy de marca (nombre, email, hero, tagline, cartNotice…). Defaults de MarcaSection y textos del storefront salen de aquí
+  categories.ts   # CATEGORIES + CategoryInfo/ProductType + categoryPlural()/categorySingular() — fuente única de categorías y etiquetas (antes duplicadas en ~10 archivos)
   utils/
-    index.ts      # formatPrice(amount) — es-MX locale formatting
+    index.ts      # formatPrice(amount) — es-MX locale formatting (incluye el símbolo $)
 schemas/
   checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list
   auth.ts         # zod loginSchema + forgotPasswordSchema + LoginData/ForgotPasswordData types
 store/
   cartStore.ts    # Zustand store (persist) — cart items, open/close, totals, stock-aware addItem
+  authStore.ts    # Zustand store (persist, key botas-don-chuy-auth) — token + user de sesión admin, login()/logout()/isAuthenticated(). Fuente única del token (axios client + AdminGuard)
 ```
 
-**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/checkout`, `/terminos`, `/privacidad`, `/envios`, `/admin`, `/login`, `/forgot-password`
+**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/botas`, `/sombreros`, `/ropa`, `/checkout`, `/terminos`, `/privacidad`, `/envios`, `/admin`, `/login`, `/forgot-password` (las 3 de categoría reutilizan `OutletView` con `defaultCategoria`)
 
-**Planned routes** (not yet built): `/botas`, `/sombreros`, `/ropa`, `/carrito`, `/nosotros`, `/devoluciones`
+**Planned routes** (not yet built): `/carrito`, `/nosotros`, `/devoluciones`
 
 ## State Management
 
 Cart state lives in a Zustand store (`store/cartStore.ts`) with `persist` middleware (localStorage key: `botas-don-chuy-cart`). The `Cart` drawer is rendered globally via `CartProvider` (dynamic import, SSR disabled) mounted in the root layout. `NavHeader` reads `totalItems()` and calls `toggleCart()`. `ProductInfo` calls `addItem()` + `openCart()` with per-size stock validation.
+
+Auth/session state lives in `store/authStore.ts` (Zustand + `persist`, key `botas-don-chuy-auth`) — ver "Auth & data fetching".
+
+## Auth & data fetching
+
+Stack de datos: **TanStack Query + Axios + Zod**. `QueryProvider` (`components/providers/QueryProvider.tsx`) monta el `QueryClientProvider` en el root layout.
+
+- **`lib/api/client.ts`** — instancia axios única. `baseURL = process.env.NEXT_PUBLIC_API_URL ?? "/api"`. El **request interceptor** adjunta `Authorization: Bearer <token>` leyendo `useAuthStore.getState().token`; el **response interceptor** en `401` llama `logout()` y redirige a `/login` (vía `window.location`, para poder usarse fuera de componentes). Toda llamada al backend debe pasar por esta instancia.
+- **Sesión** — `store/authStore.ts` guarda `{ token, user }` en localStorage. Es la fuente única que leen el interceptor y el guard.
+- **Login** — `components/auth/LoginForm.tsx` usa `useMutation`. Hoy la `mutationFn` está **mockeada** (devuelve un token `mock-<uuid>`); para el backend real, reemplazar su cuerpo por `api.post("/auth/login", credentials)` (ver `BACKEND.md`). En `onSuccess` guarda la sesión y navega a `/admin`.
+- **Protección de `/admin`** — `components/auth/AdminGuard.tsx` (en `app/admin/layout.tsx`) lee el token con un patrón hidratación-safe (`useSyncExternalStore`); sin token redirige a `/login`. **Logout** desde el botón "Cerrar Sesión" de `ConfigSection`.
+
+> Modelo de seguridad: token en localStorage + guard cliente es lo correcto para el approach axios/SPA en esta etapa sin backend. En producción (con backend) conviene cookie `httpOnly` + middleware de Next; el interceptor 401 ya deja listo el camino. `costoUnitario`/márgenes solo deben exponerse en rutas `/api/admin/*` autenticadas.
+
+Env: `NEXT_PUBLIC_API_URL` apunta al backend (sin definir → `/api`). No commitear secretos.
 
 ## Checkout flow
 
@@ -249,6 +271,7 @@ El frontend hoy lee de mocks en `db/`. El backend Express debe **reemplazar esos
 ### Endpoints sugeridos (REST)
 
 ```
+POST /api/auth/login               → { token, user }      (login admin — ver "Auth")
 GET  /api/products                 → Product[]            (público: outlet, detalle)
 GET  /api/products/:id             → Product
 POST /api/admin/products           → crea (ProductForm)
@@ -269,12 +292,14 @@ POST /api/shipping/rates           → cotización Skydropx (ver "Shipping" abaj
 - **`costoUnitario` y márgenes son datos sensibles** del negocio: exponerlos solo en rutas `/api/admin/*` autenticadas, nunca en las públicas de catálogo.
 - **Forecast en el servidor**: `lib/forecast.ts` es puro y portable — se puede copiar tal cual al backend (o llamar desde una API route Next.js) para que front y back den el mismo número.
 - **Validación**: reusar los esquemas zod de `schemas/` (p. ej. `shippingSchema`) en el backend para validar payloads de pedido y mantener una sola definición de las reglas.
+- **Auth**: `POST /api/auth/login` recibe `{ email, password }` (validar con `loginSchema` de `schemas/auth.ts`) y devuelve `{ token, user: { email } }`. El front guarda el token y lo manda como `Authorization: Bearer <token>`; el backend debe responder `401` cuando sea inválido/expirado (el axios interceptor ya cierra sesión y redirige). Proteger todas las rutas `/api/admin/*` con ese token.
 
 ## Design System
 
 The site uses a luxury dark aesthetic — all new UI should follow these conventions:
 
-- **Background**: `bg-stone-950`
+- **Background (page/shell)**: `bg-tobacco-950` — única fuente de verdad. Aplica al `<body>` (root layout), storefront, admin y auth. No usar `bg-stone-950` como fondo de página.
+- **Surfaces** (cards, drawers, dropdowns sobre el fondo): `bg-stone-900` / `bg-stone-900/60` — capa elevada sobre `tobacco-950` (mismo patrón en storefront y admin).
 - **Text primary**: `text-amber-50`
 - **Text muted**: `text-amber-100/50` (or similar opacity variants)
 - **Accent**: `text-amber-400` / `border-amber-400/70`
@@ -282,3 +307,10 @@ The site uses a luxury dark aesthetic — all new UI should follow these convent
 - **Sans font** (body/labels): `font-sans` → Jost via CSS var `--font-jost`
 - Labels use heavy letter-spacing (`tracking-[0.25em]`) and `uppercase`
 - All copy is in **Spanish** (Mexican market)
+
+### Animaciones, accesibilidad e imágenes
+
+- **Animaciones**: usar **framer-motion** (no transiciones CSS ad-hoc para entradas/salidas). Variantes compartidas en `lib/motion.ts` (`fadeUp`, `fadeIn`, `staggerContainer`, `EASE_LUXE`). Los drawers (`Cart`, `Sidebar`) usan `AnimatePresence` + `motion`. Respetar `useReducedMotion()` para desactivar slides.
+- **Foco / teclado**: `globals.css` define un anillo `:focus-visible` ámbar global para todos los controles. No usar `focus:outline-none` sin un `focus-visible` de reemplazo.
+- **Movimiento reducido**: `globals.css` neutraliza animaciones/transiciones bajo `prefers-reduced-motion: reduce`.
+- **Imágenes**: `next/image` para imágenes reales de producto (URL remota — registrar el host en `images.remotePatterns` de `next.config.ts`). `<img>` crudo **solo** para previews locales `blob:` (next/image no las optimiza), con `eslint-disable @next/next/no-img-element`. Todo `<img>` de contenido lleva `alt` descriptivo; los previews de subida pueden ir `alt=""` (decorativos).

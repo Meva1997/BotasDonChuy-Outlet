@@ -3,8 +3,8 @@ import type { CartItem } from "@/store/cartStore";
 
 function Placeholder({ type }: { type: string }) {
   return (
-    <div className="w-16 h-16 shrink-0 rounded-lg bg-linear-to-br from-stone-800 to-stone-900 border border-yellow-600/20 flex items-center justify-center">
-      <span className="text-yellow-500/40 text-xs uppercase tracking-widest">
+    <div className="w-16 h-16 shrink-0 rounded-lg bg-linear-to-br from-stone-800 to-stone-900 border border-amber-600/20 flex items-center justify-center">
+      <span className="text-amber-500/40 text-xs uppercase tracking-widest">
         {type === "bota" ? "B" : type === "sombrero" ? "S" : "R"}
       </span>
     </div>
@@ -28,13 +28,13 @@ export default function OrderItems({ items }: { items: CartItem[] }) {
                 <img
                   src={item.product.imageSrc}
                   alt={item.product.name}
-                  className="w-16 h-16 rounded-lg object-cover border border-yellow-600/20 transition-transform duration-300 group-hover:scale-105"
+                  className="w-16 h-16 rounded-lg object-cover border border-amber-600/20 transition-transform duration-300 group-hover:scale-105"
                 />
               ) : (
                 <Placeholder type={item.product.type} />
               )}
               {discountPct > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 rounded-full bg-yellow-500 text-stone-950 text-[9px] font-semibold px-1.5 py-0.5 leading-none shadow-sm">
+                <span className="absolute -top-1.5 -right-1.5 rounded-full bg-amber-500 text-stone-950 text-[9px] font-semibold px-1.5 py-0.5 leading-none shadow-sm">
                   -{discountPct}%
                 </span>
               )}
@@ -54,7 +54,7 @@ export default function OrderItems({ items }: { items: CartItem[] }) {
               <s className="block text-amber-100/25 text-[10px] not-italic">
                 {formatPrice(item.product.originalPrice * item.quantity)}
               </s>
-              <span className="text-yellow-400 text-sm font-medium">
+              <span className="text-amber-400 text-sm font-medium">
                 {formatPrice(item.product.salePrice * item.quantity)}
               </span>
             </div>

@@ -24,7 +24,7 @@ export default function OrderSummary() {
         <button
           type="button"
           onClick={() => router.push("/outlet")}
-          className="text-xs tracking-[0.2em] uppercase rounded-md border border-yellow-500/40 text-yellow-400 px-8 py-3 hover:bg-yellow-500/10 transition-colors cursor-pointer"
+          className="text-xs tracking-[0.2em] uppercase rounded-md border border-amber-500/40 text-amber-400 px-8 py-3 hover:bg-amber-500/10 transition-colors cursor-pointer"
         >
           Ver outlet
         </button>
@@ -36,9 +36,9 @@ export default function OrderSummary() {
 
   return (
     <div className="w-full max-w-lg mx-auto">
-      <div className="rounded-xl border border-yellow-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 space-y-6 shadow-[0_0_40px_-15px_rgba(202,138,4,0.35)] animate-fade-in-up">
-        <div className="flex items-center gap-3 pb-4 border-b border-yellow-600/30">
-          <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-yellow-500/20 to-yellow-600/5 border border-yellow-600/30 text-yellow-500 shrink-0">
+      <div className="rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 space-y-6 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
+        <div className="flex items-center gap-3 pb-4 border-b border-amber-600/30">
+          <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-amber-500/20 to-amber-600/5 border border-amber-600/30 text-amber-500 shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path
                 d="M6 7h12l-1 13H7L6 7Z"
@@ -59,11 +59,11 @@ export default function OrderSummary() {
 
         <OrderItems items={items} />
 
-        <div className="border-t border-yellow-600/30 pt-5">
+        <div className="border-t border-amber-600/30 pt-5">
           <OrderTotals totals={totals} />
         </div>
 
-        <div className="rounded-md border border-yellow-600/30 bg-yellow-600/5 px-4 py-3">
+        <div className="rounded-md border border-amber-600/30 bg-amber-600/5 px-4 py-3">
           <p className="text-xs leading-relaxed text-amber-100/70">
             Estas piezas son modelos descontinuados de outlet, por eso su
             precio especial.{" "}
@@ -79,7 +79,7 @@ export default function OrderSummary() {
             type="checkbox"
             checked={acceptedTerms}
             onChange={(e) => setAcceptedTerms(e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 accent-yellow-500 cursor-pointer"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-amber-500 cursor-pointer"
           />
           <span className="text-xs leading-relaxed text-amber-100/60">
             He leído y acepto los{" "}
@@ -87,7 +87,7 @@ export default function OrderSummary() {
               href="/terminos"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-yellow-500 hover:underline"
+              className="text-amber-500 hover:underline"
             >
               términos y condiciones
             </a>{" "}
@@ -96,7 +96,7 @@ export default function OrderSummary() {
               href="/privacidad"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-yellow-500 hover:underline"
+              className="text-amber-500 hover:underline"
             >
               política de privacidad
             </a>
@@ -108,7 +108,7 @@ export default function OrderSummary() {
           type="button"
           disabled={!acceptedTerms}
           onClick={goToDetails}
-          className="btn-shimmer w-full rounded-md bg-linear-to-r from-yellow-400 to-yellow-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(202,138,4,0.6)] cursor-pointer disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed"
+          className="btn-shimmer w-full rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)] cursor-pointer disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed"
         >
           Continuar a datos de envío
         </button>

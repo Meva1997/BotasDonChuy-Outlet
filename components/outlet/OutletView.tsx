@@ -14,6 +14,7 @@ import {
   type ProductFilters,
   type ProductsResult,
 } from "@/lib/getProducts";
+import { categoryPlural } from "@/lib/categories";
 
 const TRUST_SIGNALS = [
   "Piezas únicas · sin reposición",
@@ -26,12 +27,6 @@ const TRUST_SIGNALS = [
 //     queryKey: productKeys.filtered(filters),
 //     queryFn: () => getProducts(filters),
 //   })
-
-const CATEGORY_LABELS: Record<string, string> = {
-  bota: "Botas",
-  sombrero: "Sombreros",
-  ropa: "Ropa",
-};
 
 interface OutletViewProps {
   // Set on category-specific routes (/botas, /sombreros, /ropa).
@@ -80,11 +75,11 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
   );
 
   const title = categoria
-    ? `Outlet — ${CATEGORY_LABELS[categoria] ?? categoria}`
+    ? `Outlet — ${categoryPlural(categoria)}`
     : "Outlet — todo";
 
   return (
-    <section className="min-dvh-screen bg-tobacco-950 px-6 md:p-10 py-12 my-20">
+    <section className="min-h-dvh bg-tobacco-950 px-6 md:p-10 py-12 my-20">
       {/* Trust strip */}
       <motion.div
         initial={{ opacity: 0 }}

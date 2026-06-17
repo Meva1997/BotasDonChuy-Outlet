@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCartStore } from "@/store/cartStore";
 import { formatPrice } from "@/lib/utils";
+import { EASE_LUXE } from "@/lib/motion";
+import { BRAND } from "@/lib/brand";
 
 function ProductPlaceholder({ type }: { type: string }) {
   return (
@@ -29,31 +32,45 @@ export default function Cart() {
     savings,
   } = useCartStore();
 
+  const reduceMotion = useReducedMotion();
   const total = subtotal() - savings();
   const itemCount = totalItems();
 
-  useEffect(() => {
+  // Resetea el estado de carga al reabrir el carrito (p. ej. al volver desde
+  // /checkout). Ajuste de estado en render — patrón recomendado de React en vez
+  // de un efecto, evita el render en cascada de setState dentro de useEffect.
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
     if (isOpen) setNavigating(false);
-  }, [isOpen]);
-
-  if (!isOpen) return null;
+  }
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-40 animate-backdrop-in"
-        onClick={closeCart}
-        aria-hidden="true"
-      />
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-40"
+            onClick={closeCart}
+            aria-hidden="true"
+          />
 
-      {/* Panel */}
-      <aside
-        role="dialog"
-        aria-label="Carrito de compras"
-        aria-modal="true"
-        className="fixed right-0 top-0 h-full w-full max-w-sm bg-tobacco-950 z-50 flex flex-col shadow-[-24px_0_60px_-20px_rgba(0,0,0,0.7)] animate-drawer-in"
-      >
+          {/* Panel */}
+          <motion.aside
+            role="dialog"
+            aria-label="Carrito de compras"
+            aria-modal="true"
+            initial={{ x: reduceMotion ? 0 : "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: reduceMotion ? 0 : "100%" }}
+            transition={{ duration: 0.45, ease: EASE_LUXE }}
+            className="fixed right-0 top-0 h-full w-full max-w-sm bg-tobacco-950 z-50 flex flex-col shadow-[-24px_0_60px_-20px_rgba(0,0,0,0.7)]"
+          >
         {/* Gold-foil edge */}
         <div
           aria-hidden="true"
@@ -116,7 +133,7 @@ export default function Cart() {
             />
           </svg>
           <p className="text-center text-[10px] tracking-[0.2em] uppercase text-amber-400/90">
-            Estos artículos no se reservan
+            {BRAND.cartNotice}
           </p>
         </div>
 
@@ -343,7 +360,9 @@ export default function Cart() {
             </button>
           </div>
         )}
-      </aside>
-    </>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
   );
 }

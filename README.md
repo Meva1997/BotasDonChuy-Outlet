@@ -7,8 +7,10 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **Next.js** with App Router
 - **React 19**, **TypeScript**
 - **Tailwind CSS v4**
-- **Zustand v5** — cart state management (persisted to localStorage)
-- **react-hook-form + zod** — checkout form validation
+- **Zustand v5** — cart + auth session state (persisted to localStorage)
+- **TanStack Query + Axios** — data fetching / server state (axios client en `lib/api/client.ts`)
+- **react-hook-form + zod** — form validation (checkout, login)
+- **framer-motion** — animaciones (incl. drawers Cart/Sidebar)
 - **recharts** — gráficas del panel de administración
 - **pnpm** as package manager
 
@@ -38,10 +40,11 @@ app/              # Next.js App Router
 components/
   home/           # Page sections (NavHeader, Hero, Footer)
   outlet/         # OutletView — product listing with filters
-  ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider)
+  ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider, Sidebar)
+  providers/      # QueryProvider — TanStack Query
   checkout/       # Multi-step checkout wizard components
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
-  auth/           # AuthShell layout + LoginForm, ForgotPasswordForm
+  auth/           # AuthShell layout + LoginForm, ForgotPasswordForm + AdminGuard (protege /admin)
   admin/          # Secciones del panel admin: MarcaSection, ProductSection, DataSection, ReportesSection, ConfigSection
                   #   data/ — subcomponentes de métricas (KpiGrid, RevenueChart, InventoryTable, SalesTable)
                   #   reportes/ — SalesReport (histórico) y ReplenishmentReport (forecast + pedido sugerido)
@@ -49,6 +52,7 @@ db/
   mockProducts.ts # Mock data (MockProduct interface + MOCK_PRODUCTS)
   mockData.ts     # Datos del admin: KPIs, ingresos, inventario, ventas mensuales y reposición (derivados)
 lib/
+  api/client.ts   # axios instance + interceptors (Bearer token, 401 → /login)
   getProducts.ts  # getProducts(), getProductById() and types
   cart.ts         # computeShipping() + computeTotals() — shipping + order totals
   forecast.ts     # computeForecast() — pronóstico de demanda auto-escalado por nº de meses
@@ -58,6 +62,7 @@ schemas/
   auth.ts         # zod loginSchema + forgotPasswordSchema
 store/
   cartStore.ts    # Zustand cart store with localStorage persistence
+  authStore.ts    # Zustand auth store (token + user) — sesión admin, persistida
 ```
 
 ## Implemented routes
@@ -84,6 +89,12 @@ store/
 The cart is a slide-in drawer powered by a Zustand store persisted to localStorage. Opening/closing is triggered from `NavHeader` (desktop and mobile). Adding items is done from the product detail page (`ProductInfo`) with per-size stock validation — the button is disabled when the selected size is already at stock limit.
 
 Key files: `store/cartStore.ts`, `components/ui/Cart.tsx`, `components/ui/CartProvider.tsx`.
+
+## Authentication
+
+`/admin` is protected by `AdminGuard` (`components/auth/AdminGuard.tsx`): without a session token it redirects to `/login`. The session (`{ token, user }`) lives in `store/authStore.ts` (Zustand + persist). `LoginForm` uses a TanStack Query `useMutation` — currently **mocked** (stores a fake token); swap its `mutationFn` for `api.post("/auth/login", ...)` when the backend is ready. The axios client (`lib/api/client.ts`) attaches `Authorization: Bearer <token>` and, on a `401`, clears the session and redirects to `/login`. Logout lives in the admin **Configuración** section.
+
+Env: set `NEXT_PUBLIC_API_URL` to the backend URL (defaults to `/api`). See `BACKEND.md` for the full API contract.
 
 ## Checkout flow
 

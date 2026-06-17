@@ -2,6 +2,7 @@
 
 import { ReplenishmentRow } from "@/components/admin/data/types";
 import { MOCK_REPLENISHMENT, MOCK_MONTHLY_REPORTS } from "@/db/mockData";
+import { categorySingular } from "@/lib/categories";
 
 const PRIORITY_STYLES = {
   urgente: {
@@ -45,11 +46,6 @@ const TREND_ICON: Record<string, { icon: string; color: string }> = {
   bajando:   { icon: "↓", color: "text-red-400" },
 };
 
-const TYPE_LABEL: Record<string, string> = {
-  bota: "Bota",
-  sombrero: "Sombrero",
-  ropa: "Ropa",
-};
 
 function coverageColor(days: number) {
   if (days < 15) return "text-red-400";
@@ -85,7 +81,7 @@ function exportCSV(rows: ReplenishmentRow[]) {
   ];
   const data = rows.map((r) => [
     r.name,
-    TYPE_LABEL[r.type] ?? r.type,
+    categorySingular(r.type),
     r.currentStock,
     r.forecastNextMonth,
     r.trend,
@@ -239,7 +235,7 @@ export default function ReplenishmentReport() {
                             {row.name}
                           </p>
                           <p className="text-[9px] tracking-[0.15em] uppercase text-amber-100/30 mt-0.5">
-                            {TYPE_LABEL[row.type] ?? row.type}
+                            {categorySingular(row.type)}
                           </p>
                         </div>
                       </div>

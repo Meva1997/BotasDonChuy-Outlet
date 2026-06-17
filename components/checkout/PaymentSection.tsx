@@ -9,7 +9,7 @@
  * de envío.
  */
 const inputBase =
-  "w-full bg-stone-800/60 border border-yellow-600/40 px-4 py-3 text-sm text-amber-50 placeholder:text-amber-100/40 rounded-md outline-none transition-all duration-200 hover:border-yellow-500/70 focus:border-yellow-400 focus:bg-stone-800/90 focus:shadow-[0_0_0_3px_rgba(202,138,4,0.2)]";
+  "w-full bg-stone-800/60 border border-amber-600/40 px-4 py-3 text-sm text-amber-50 placeholder:text-amber-100/40 rounded-md outline-none transition-all duration-200 hover:border-amber-500/70 focus:border-amber-400 focus:bg-stone-800/90 focus:shadow-[0_0_0_3px_rgba(217,119,6,0.2)]";
 
 const labelBase =
   "block text-[10px] tracking-[0.25em] uppercase text-amber-100/70 mb-2";
@@ -17,9 +17,9 @@ const labelBase =
 export default function PaymentSection() {
   return (
     <fieldset className="space-y-5">
-      <div className="flex items-center justify-between pb-4 border-b border-yellow-600/30">
+      <div className="flex items-center justify-between pb-4 border-b border-amber-600/30">
         <div className="flex items-center gap-3">
-          <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-yellow-500/20 to-yellow-600/5 border border-yellow-600/30 text-yellow-500 shrink-0">
+          <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-amber-500/20 to-amber-600/5 border border-amber-600/30 text-amber-500 shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
               <path d="M2 10h20" stroke="currentColor" strokeWidth="1.5" />

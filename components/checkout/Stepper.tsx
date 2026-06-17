@@ -44,16 +44,16 @@ export default function Stepper({ current, onNavigate }: StepperProps) {
               {isActive && (
                 <span
                   aria-hidden="true"
-                  className="absolute inset-0 rounded-full bg-yellow-500/40 blur-md animate-glow-pulse"
+                  className="absolute inset-0 rounded-full bg-amber-500/40 blur-md animate-glow-pulse"
                 />
               )}
               <span
                 aria-current={isActive ? "step" : undefined}
                 className={`relative flex items-center justify-center w-9 h-9 rounded-full border text-xs font-medium transition-colors duration-300 ${
                   isActive
-                    ? "border-yellow-400 text-stone-950 bg-linear-to-br from-yellow-400 to-yellow-600 shadow-[0_0_0_4px_rgba(202,138,4,0.15)]"
+                    ? "border-amber-400 text-stone-950 bg-linear-to-br from-amber-400 to-amber-600 shadow-[0_0_0_4px_rgba(217,119,6,0.15)]"
                     : isDone
-                      ? "border-yellow-500/70 text-yellow-500 bg-yellow-500/10"
+                      ? "border-amber-500/70 text-amber-500 bg-amber-500/10"
                       : "border-amber-900/50 text-amber-100/30"
                 }`}
               >
@@ -101,7 +101,7 @@ export default function Stepper({ current, onNavigate }: StepperProps) {
               {!isLast && (
                 <span
                   className={`flex-1 h-px mx-3 -mt-6 transition-colors duration-500 ${
-                    isDone ? "bg-yellow-500/70" : "bg-amber-900/40"
+                    isDone ? "bg-amber-500/70" : "bg-amber-900/40"
                   }`}
                 />
               )}

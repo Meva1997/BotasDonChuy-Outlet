@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import CategoryCard from "../ui/CategoryCard";
 import { fadeUp, staggerContainer, EASE_LUXE } from "@/lib/motion";
+import { BRAND } from "@/lib/brand";
 
 export default function Hero() {
   return (
@@ -38,7 +39,7 @@ export default function Hero() {
             transition={{ duration: 0.6, ease: EASE_LUXE }}
             className="text-xs tracking-[0.35em] uppercase text-amber-400/60"
           >
-            Liquidación Final · Sin Reposición
+            {BRAND.heroText}
           </motion.p>
 
           {/* Title */}
@@ -48,9 +49,9 @@ export default function Hero() {
             className="font-serif font-bold leading-none text-amber-50"
             style={{ fontSize: "clamp(5rem, 12vw, 9rem)" }}
           >
-            Botas Don Chuy
+            {BRAND.namePrimary}
             <br />
-            <span className="italic text-amber-100/90">Outlet</span>
+            <span className="italic text-amber-100/90">{BRAND.nameAccent}</span>
           </motion.h1>
 
           {/* Subtitle */}
@@ -59,8 +60,9 @@ export default function Hero() {
             transition={{ duration: 0.6, ease: EASE_LUXE }}
             className="space-y-1 text-amber-100/50 text-sm tracking-wide"
           >
-            <p>Piezas únicas. Sin reposición.</p>
-            <p>Cuando se acaba, se acaba.</p>
+            {BRAND.taglineLines.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
           </motion.div>
 
           {/* CTA Button */}

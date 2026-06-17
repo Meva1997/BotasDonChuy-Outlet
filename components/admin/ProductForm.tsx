@@ -6,24 +6,13 @@ import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { MockProduct } from "@/db/mockProducts";
-
-interface CategoryInfo {
-  type: string;
-  label: string;
-  plural: string;
-}
+import { CATEGORIES, type CategoryInfo } from "@/lib/categories";
 
 interface Props {
   category: CategoryInfo;
   product?: MockProduct;
   onBack: () => void;
 }
-
-const CATEGORIES = [
-  { value: "bota", label: "Botas" },
-  { value: "sombrero", label: "Sombreros" },
-  { value: "ropa", label: "Ropa" },
-];
 
 const productSchema = z
   .object({
@@ -326,8 +315,8 @@ export default function ProductForm({ category, product, onBack }: Props) {
                 className={`${inputCls} appearance-none`}
               >
                 {CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
+                  <option key={c.type} value={c.type}>
+                    {c.plural}
                   </option>
                 ))}
               </select>

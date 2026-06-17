@@ -6,12 +6,8 @@ import { motion } from "framer-motion";
 import type { Product } from "@/lib/getProducts";
 import { useCartStore } from "@/store/cartStore";
 import { fadeUp, EASE_LUXE } from "@/lib/motion";
-
-const CATEGORY_LABELS: Record<string, string> = {
-  bota: "Botas",
-  sombrero: "Sombreros",
-  ropa: "Ropa",
-};
+import { formatPrice } from "@/lib/utils";
+import { categoryPlural } from "@/lib/categories";
 
 interface ProductInfoProps {
   product: Product;
@@ -51,13 +47,10 @@ export default function ProductInfo({ product }: ProductInfoProps) {
     setTimeout(() => setAdded(false), 1500);
   }
 
-  const formatPrice = (n: number) =>
-    n.toLocaleString("es-MX", { minimumFractionDigits: 0 });
-
-  const categoryLabel = CATEGORY_LABELS[product.type] ?? product.type;
+  const categoryLabel = categoryPlural(product.type);
 
   return (
-    <main className="min-dvh-screen bg-tobacco-950">
+    <main className="min-h-dvh bg-tobacco-950">
       {/* Breadcrumb — nav > ol > li es el patrón semántico correcto */}
       <nav
         aria-label="Ruta de navegación"
@@ -173,10 +166,10 @@ export default function ProductInfo({ product }: ProductInfoProps) {
           >
             <div className="flex items-baseline gap-3 sm:gap-4 flex-wrap">
               <s className="font-sans text-amber-100/35 text-sm line-through">
-                ${formatPrice(product.originalPrice)}
+                {formatPrice(product.originalPrice)}
               </s>
               <strong className="font-serif text-amber-400 text-3xl sm:text-4xl md:text-5xl leading-none font-normal">
-                ${formatPrice(product.salePrice)}
+                {formatPrice(product.salePrice)}
               </strong>
             </div>
             <p className="font-sans text-amber-100/40 text-xs tracking-wide mt-1.5">

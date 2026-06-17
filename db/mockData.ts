@@ -7,6 +7,7 @@ import {
   RevenuePoint,
 } from "../components/admin/data/types";
 import { computeForecast } from "../lib/forecast";
+import { categoryPlural } from "../lib/categories";
 import { MOCK_PRODUCTS } from "./mockProducts";
 
 function buildRevenueSeries(days: number): RevenuePoint[] {
@@ -168,12 +169,6 @@ const MONTHLY_UNIT_SALES: MonthlyUnitSales[] = [
   { key: "2026-06", label: "Junio 2026", partial: true, units: { 1: 2, 2: 2, 3: 1, 4: 1, 5: 0, 6: 0 } },
 ];
 
-const CATEGORY_LABELS: Record<string, string> = {
-  bota: "Botas",
-  sombrero: "Sombreros",
-  ropa: "Ropa",
-};
-
 // Deriva un MonthlyReport completo a partir de las unidades vendidas + el catálogo.
 function buildMonthlyReports(): MonthlyReport[] {
   return MONTHLY_UNIT_SALES.map((month) => {
@@ -200,7 +195,7 @@ function buildMonthlyReports(): MonthlyReport[] {
     const byCategory: MonthlyCategoryBreakdown[] = [...grouped.entries()]
       .map(([category, agg]) => ({
         category,
-        label: CATEGORY_LABELS[category] ?? category,
+        label: categoryPlural(category),
         revenue: agg.revenue,
         units: agg.units,
       }))

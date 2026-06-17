@@ -2,7 +2,7 @@ import AuthShell from "@/components/auth/AuthShell";
 import LoginForm from "@/components/auth/LoginForm";
 
 export const metadata = {
-  title: "Iniciar sesión | Botas Don Chuy Outlet",
+  title: "Iniciar sesión",
   description: "Inicia sesión en tu cuenta de Botas Don Chuy Outlet.",
 };
 

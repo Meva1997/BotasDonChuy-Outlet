@@ -1,18 +1,29 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { BRAND } from "@/lib/brand";
+import { useAuthStore } from "@/store/authStore";
 
 const INPUT_BASE =
-  "w-full bg-stone-800/80 border border-amber-400/20 text-amber-50 px-4 py-3 text-sm focus:outline-none focus:border-amber-400/50 transition-colors placeholder:text-amber-100/20";
+  "w-full bg-stone-800/80 border border-amber-400/20 text-amber-50 px-4 py-3 text-sm focus:outline-none focus:border-amber-400/50 focus-visible:ring-2 focus-visible:ring-amber-400/60 transition-colors placeholder:text-amber-100/20";
 
 const LABEL_BASE =
   "block text-amber-100/50 uppercase tracking-[0.25em] text-[10px] mb-2";
 
 const BTN_OUTLINE =
-  "border border-amber-400 text-amber-400 uppercase tracking-[0.25em] text-[10px] px-6 py-3 hover:bg-amber-400/10 active:bg-amber-400/20 transition-colors";
+  "border border-amber-400 text-amber-400 uppercase tracking-[0.25em] text-[10px] px-6 py-3 hover:bg-amber-400/10 active:bg-amber-400/20 focus-visible:ring-2 focus-visible:ring-amber-400/60 transition-colors cursor-pointer";
 
 export default function ConfigSection() {
-  const [email, setEmail] = useState("admin@elultimocorte.mx");
+  const router = useRouter();
+  const logout = useAuthStore((state) => state.logout);
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
+
+  const [email, setEmail] = useState<string>(BRAND.email);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -29,7 +40,9 @@ export default function ConfigSection() {
         <h2 className="font-serif text-amber-50 text-3xl tracking-wide">
           Configuración
         </h2>
-        <button className={BTN_OUTLINE}>Cerrar Sesión</button>
+        <button onClick={handleLogout} className={BTN_OUTLINE}>
+          Cerrar Sesión
+        </button>
       </div>
 
       {/* ── Two-column grid ── */}
@@ -112,9 +125,7 @@ export default function ConfigSection() {
                     Tú
                   </span>
                 </div>
-                <span className="text-amber-100/40 text-xs">
-                  admin@elultimocorte.mx
-                </span>
+                <span className="text-amber-100/40 text-xs">{BRAND.email}</span>
               </div>
             </div>
             <span className="border border-amber-400 text-amber-400 uppercase tracking-[0.2em] text-[9px] px-3 py-1.5 shrink-0">
@@ -185,7 +196,7 @@ export default function ConfigSection() {
             </div>
           </div>
 
-          <button className="mt-6 bg-amber-700/80 border border-amber-600/80 text-amber-50 uppercase tracking-[0.25em] text-[10px] px-8 py-3 hover:bg-amber-700 active:bg-amber-800 transition-colors">
+          <button className="mt-6 bg-amber-700/80 border border-amber-600/80 text-amber-50 uppercase tracking-[0.25em] text-[10px] px-8 py-3 hover:bg-amber-700 active:bg-amber-800 focus-visible:ring-2 focus-visible:ring-amber-400/60 transition-colors cursor-pointer">
             Agregar
           </button>
         </div>

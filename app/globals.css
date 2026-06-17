@@ -125,3 +125,27 @@
   animation: shimmer 1.1s ease-in-out;
 }
 
+/* Foco visible para navegación por teclado — anillo ámbar consistente en todos
+   los controles interactivos. Solo :focus-visible para no molestar con mouse. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid rgba(251, 191, 36, 0.7);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Respeta la preferencia de movimiento reducido del sistema. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+

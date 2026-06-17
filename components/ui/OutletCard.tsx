@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { fadeUp, EASE_LUXE } from "@/lib/motion";
+import { formatPrice } from "@/lib/utils";
 
 interface OutletCardProps {
   slug: number | string;
@@ -21,9 +22,6 @@ export default function OutletCard({
   stock,
   imageSrc,
 }: OutletCardProps) {
-  const formatPrice = (n: number) =>
-    n.toLocaleString("es-MX", { minimumFractionDigits: 0 });
-
   const isLastPiece = stock === "ultima";
 
   return (
@@ -95,10 +93,10 @@ export default function OutletCard({
             {/* Price row */}
             <div className="flex items-baseline gap-3">
               <span className="font-sans text-amber-100/35 text-xs line-through">
-                ${formatPrice(originalPrice)}
+                {formatPrice(originalPrice)}
               </span>
               <span className="font-serif text-amber-400 text-2xl leading-none">
-                ${formatPrice(salePrice)}
+                {formatPrice(salePrice)}
               </span>
             </div>
 

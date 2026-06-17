@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCartStore } from "@/store/cartStore";
+import { BRAND } from "@/lib/brand";
 
 const NAV_LINKS = [
   { href: "/botas", label: "Botas" },
@@ -13,12 +14,18 @@ const NAV_LINKS = [
 
 export default function NavHeader() {
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const { toggleCart, totalItems } = useCartStore();
-  const itemCount = mounted ? totalItems() : 0;
 
-  useEffect(() => setMounted(true), []);
+  // El carrito vive en localStorage: en SSR el conteo es 0 y sólo tras hidratar
+  // se puede leer el valor real. useSyncExternalStore da false en el servidor y
+  // true en el cliente sin efecto ni setState, evitando el desajuste de hidratación.
+  const hydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+  const itemCount = hydrated ? totalItems() : 0;
 
   useEffect(() => {
     if (!open) return;
@@ -39,13 +46,13 @@ export default function NavHeader() {
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="border-b border-yellow-600 relative z-50 bg-tobacco-950"
+      className="border-b border-amber-600 relative z-50 bg-tobacco-950"
     >
       <div className="max-w-6xl mx-auto px-8 py-5 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="font-serif text-xl shrink-0">
-          <span className="text-amber-50 font-normal">Botas Don Chuy </span>
-          <span className="italic text-amber-400">Outlet</span>
+          <span className="text-amber-50 font-normal">{BRAND.namePrimary} </span>
+          <span className="italic text-amber-400">{BRAND.nameAccent}</span>
         </Link>
 
         {/* Desktop — nav links (centro) */}

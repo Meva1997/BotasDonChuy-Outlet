@@ -30,7 +30,7 @@ export default function AdminPage() {
 
       <main className="flex-1 overflow-y-auto">
         {/* Mobile top bar */}
-        <div className="sticky top-0 z-30 flex items-center gap-4 px-6 py-4 bg-stone-950/80 backdrop-blur-sm border-b border-amber-400/10 md:hidden">
+        <div className="sticky top-0 z-30 flex items-center gap-4 px-6 py-4 bg-tobacco-950/80 backdrop-blur-sm border-b border-amber-400/10 md:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
             aria-label="Abrir menú"

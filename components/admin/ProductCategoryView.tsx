@@ -3,14 +3,8 @@
 import { useState } from "react";
 import { MockProduct } from "@/db/mockProducts";
 import { formatPrice } from "@/lib/utils";
+import { type CategoryInfo } from "@/lib/categories";
 import ProductForm from "./ProductForm";
-import Image from "next/image";
-
-interface CategoryInfo {
-  type: string;
-  label: string;
-  plural: string;
-}
 
 interface Props {
   category: CategoryInfo;
@@ -25,7 +19,9 @@ const PAGE_SIZE = 10;
 function Thumbnail({ src }: { src?: string }) {
   if (src) {
     return (
-      <Image
+      // Previsualización local (blob: URL) — next/image no optimiza object URLs.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
         src={src}
         alt=""
         className="w-12 h-12 object-cover bg-stone-800 shrink-0"

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { fadeUp } from "@/lib/motion";
+import { BRAND } from "@/lib/brand";
 
 const FOOTER_SECTIONS = [
   {
@@ -25,14 +26,14 @@ const FOOTER_SECTIONS = [
   {
     heading: "Contacto",
     links: [
-      { label: "Instagram", href: "https://www.instagram.com/botasdonchuy/" },
+      { label: "Instagram", href: BRAND.instagram },
     ],
   },
 ];
 
 export default function Footer() {
   return (
-    <footer className="border-t border-yellow-600 mt-auto">
+    <footer className="border-t border-amber-600 mt-auto">
       <motion.div
         initial="hidden"
         whileInView="visible"
@@ -46,11 +47,11 @@ export default function Footer() {
           {/* Marca */}
           <div className="space-y-3 shrink-0">
             <p className="font-serif text-xl">
-              <span className="text-amber-50">Botas Don Chuy </span>
-              <span className="italic text-amber-400">Outlet</span>
+              <span className="text-amber-50">{BRAND.namePrimary} </span>
+              <span className="italic text-amber-400">{BRAND.nameAccent}</span>
             </p>
             <p className="text-xs text-amber-100/40 tracking-wide max-w-48">
-              Piezas únicas. Sin reposición.
+              {BRAND.taglineLines[0]}
             </p>
           </div>
 
@@ -87,7 +88,7 @@ export default function Footer() {
         {/* Barra inferior */}
         <div className="mt-12 pt-6 border-t border-amber-900/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <p className="text-xs text-amber-100/30 tracking-wide">
-            © {new Date().getFullYear()} Botas Don Chuy. Todos los derechos
+            © {new Date().getFullYear()} {BRAND.name}. Todos los derechos
             reservados.
           </p>
           <Link

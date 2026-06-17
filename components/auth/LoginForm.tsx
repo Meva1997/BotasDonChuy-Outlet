@@ -1,26 +1,52 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
 import { loginSchema, type LoginData } from "@/schemas/auth";
 import { TextField } from "@/components/checkout/FormControls";
+import { useAuthStore } from "@/store/authStore";
+
+interface LoginResponse {
+  token: string;
+  user: { email: string };
+}
+
+// Mock mientras no hay backend. Cuando exista, reemplazar el cuerpo por:
+//   const { data } = await api.post<LoginResponse>("/auth/login", credentials);
+//   return data;
+async function loginRequest(credentials: LoginData): Promise<LoginResponse> {
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  return {
+    token: `mock-${crypto.randomUUID()}`,
+    user: { email: credentials.email },
+  };
+}
 
 export default function LoginForm() {
+  const router = useRouter();
+  const setSession = useAuthStore((state) => state.login);
+
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<LoginData>({
     resolver: zodResolver(loginSchema),
     mode: "onBlur",
   });
 
-  const onSubmit = handleSubmit(async (data) => {
-    // TODO: reemplazar por una mutación de TanStack Query cuando el backend esté listo.
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    console.log(data);
+  const mutation = useMutation({
+    mutationFn: loginRequest,
+    onSuccess: (data) => {
+      setSession(data.token, data.user);
+      router.push("/admin");
+    },
   });
+
+  const onSubmit = handleSubmit((data) => mutation.mutate(data));
 
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-5">
@@ -54,12 +80,18 @@ export default function LoginForm() {
         </div>
       </div>
 
+      {mutation.isError && (
+        <p role="alert" className="text-[12px] text-red-400/90">
+          No pudimos iniciar sesión. Inténtalo de nuevo.
+        </p>
+      )}
+
       <button
         type="submit"
-        disabled={isSubmitting}
+        disabled={mutation.isPending}
         className="btn-shimmer w-full bg-amber-400 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:bg-amber-300 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {isSubmitting ? "Ingresando…" : "Iniciar sesión"}
+        {mutation.isPending ? "Ingresando…" : "Iniciar sesión"}
       </button>
     </form>
   );

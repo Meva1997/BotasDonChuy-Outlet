@@ -10,7 +10,7 @@ export default function AuthShell({ title, subtitle, children }: AuthShellProps)
   return (
     <div className="flex-1 grid lg:grid-cols-[1.1fr_1fr]">
       {/* Panel de marca — solo en pantallas grandes */}
-      <aside className="relative hidden lg:flex flex-col justify-between overflow-hidden border-r border-amber-900/30 bg-stone-950 px-14 py-12">
+      <aside className="relative hidden lg:flex flex-col justify-between overflow-hidden border-r border-amber-900/30 bg-tobacco-950 px-14 py-12">
         <div className="absolute -top-32 -left-24 h-96 w-96 rounded-full bg-amber-700/20 blur-[120px] animate-glow-pulse" />
         <div className="absolute bottom-0 right-0 h-72 w-72 rounded-full bg-amber-500/10 blur-[100px]" />
         <div

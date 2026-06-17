@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Playfair_Display, Jost } from "next/font/google";
 import "./globals.css";
 import CartProvider from "@/components/ui/CartProvider";
+import QueryProvider from "@/components/providers/QueryProvider";
+import { BRAND } from "@/lib/brand";
 
 const playfair = Playfair_Display({
   variable: "--font-playfair",
@@ -16,8 +18,13 @@ const jost = Jost({
 });
 
 export const metadata: Metadata = {
-  title: "Botas Don Chuy",
-  description: "Outlet",
+  // Las páginas hijas definen solo su nombre; el sufijo se aplica aquí.
+  title: {
+    default: BRAND.name,
+    template: `%s | ${BRAND.name}`,
+  },
+  description:
+    "Outlet de botas, sombreros y ropa vaquera — piezas finales, sin reposición.",
 };
 
 export default function RootLayout({
@@ -31,8 +38,10 @@ export default function RootLayout({
       className={`${playfair.variable} ${jost.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-tobacco-950 text-amber-50 font-sans">
-        {children}
-        <CartProvider />
+        <QueryProvider>
+          {children}
+          <CartProvider />
+        </QueryProvider>
       </body>
     </html>
   );

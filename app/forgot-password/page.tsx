@@ -3,7 +3,7 @@ import AuthShell from "@/components/auth/AuthShell";
 import ForgotPasswordForm from "@/components/auth/ForgotPasswordForm";
 
 export const metadata = {
-  title: "Recuperar contraseña | Botas Don Chuy Outlet",
+  title: "Recuperar contraseña",
   description: "Recupera el acceso a tu cuenta de Botas Don Chuy Outlet.",
 };
 

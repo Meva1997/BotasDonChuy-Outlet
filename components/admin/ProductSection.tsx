@@ -2,19 +2,8 @@
 
 import { useState } from "react";
 import { MOCK_PRODUCTS } from "@/db/mockProducts";
+import { CATEGORIES, type CategoryInfo } from "@/lib/categories";
 import ProductCategoryView from "./ProductCategoryView";
-
-interface CategoryInfo {
-  type: string;
-  label: string;
-  plural: string;
-}
-
-const CATEGORIES: CategoryInfo[] = [
-  { type: "bota", label: "Bota", plural: "Botas" },
-  { type: "sombrero", label: "Sombrero", plural: "Sombreros" },
-  { type: "ropa", label: "Ropa", plural: "Ropa" },
-];
 
 export default function ProductSection() {
   const [selected, setSelected] = useState<CategoryInfo | null>(null);

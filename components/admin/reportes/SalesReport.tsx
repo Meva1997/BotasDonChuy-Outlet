@@ -2,12 +2,7 @@
 
 import { MonthlyReport } from "@/components/admin/data/types";
 import { MOCK_MONTHLY_REPORTS } from "@/db/mockData";
-
-const TYPE_LABEL: Record<string, string> = {
-  bota: "Bota",
-  sombrero: "Sombrero",
-  ropa: "Ropa",
-};
+import { categorySingular } from "@/lib/categories";
 
 function pct(value: number, total: number) {
   if (total === 0) return 0;
@@ -57,7 +52,7 @@ export default function SalesReport({ monthKey }: Props) {
     const rows = sortedProducts.map((p, i) => [
       i + 1,
       p.name,
-      TYPE_LABEL[p.type] ?? p.type,
+      categorySingular(p.type),
       p.unitsSold,
       p.revenue,
       `${pct(p.revenue, report!.totalRevenue)}%`,
@@ -165,7 +160,7 @@ export default function SalesReport({ monthKey }: Props) {
                         {product.name}
                       </span>
                       <span className="text-[9px] tracking-[0.15em] uppercase px-1.5 py-0.5 rounded bg-stone-700/60 text-amber-100/35 hidden sm:inline">
-                        {TYPE_LABEL[product.type] ?? product.type}
+                        {categorySingular(product.type)}
                       </span>
                     </div>
                   </td>

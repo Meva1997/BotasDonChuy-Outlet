@@ -43,9 +43,9 @@ export default function UserDetails() {
     >
       {/* Columna principal: envío + pago */}
       <div className="space-y-8">
-        <fieldset className="space-y-5 rounded-xl border border-yellow-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 shadow-[0_0_40px_-15px_rgba(202,138,4,0.35)] animate-fade-in-up">
-          <div className="flex items-center gap-3 pb-4 border-b border-yellow-600/30">
-            <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-yellow-500/20 to-yellow-600/5 border border-yellow-600/30 text-yellow-500 shrink-0">
+        <fieldset className="space-y-5 rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
+          <div className="flex items-center gap-3 pb-4 border-b border-amber-600/30">
+            <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-amber-500/20 to-amber-600/5 border border-amber-600/30 text-amber-500 shrink-0">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path
                   d="M12 21s-7-6.2-7-11a7 7 0 1 1 14 0c0 4.8-7 11-7 11Z"
@@ -151,20 +151,20 @@ export default function UserDetails() {
           />
         </fieldset>
 
-        <div className="rounded-xl border border-yellow-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 shadow-[0_0_40px_-15px_rgba(202,138,4,0.35)] animate-fade-in-up">
+        <div className="rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
           <PaymentSection />
         </div>
       </div>
 
       {/* Columna lateral: total + acciones */}
-      <aside className="rounded-xl border border-yellow-600/30 bg-linear-to-b from-stone-900/50 to-stone-900/20 p-6 space-y-6 lg:sticky lg:top-6 shadow-[0_0_40px_-15px_rgba(202,138,4,0.35)] animate-fade-in-up">
+      <aside className="rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/50 to-stone-900/20 p-6 space-y-6 lg:sticky lg:top-6 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
         <h3 className="font-serif text-lg text-amber-50">Tu pedido</h3>
         <OrderTotals totals={totals} />
 
         <button
           type="submit"
           disabled={isSubmitting || items.length === 0}
-          className="btn-shimmer w-full rounded-md bg-linear-to-r from-yellow-400 to-yellow-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(202,138,4,0.6)] cursor-pointer disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="btn-shimmer w-full rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)] cursor-pointer disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isSubmitting && (
             <svg
