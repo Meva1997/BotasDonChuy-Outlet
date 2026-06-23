@@ -9,12 +9,11 @@ function pct(value: number, total: number) {
   return Math.round((value / total) * 100);
 }
 
-function fmt(n: number) {
-  return n.toLocaleString("es-MX");
-}
-
 function fmtMXN(n: number) {
-  return `$${fmt(n)}`;
+  return `$${n.toLocaleString("es-MX", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 // Escapa un valor para CSV: si contiene coma, comilla o salto de línea,

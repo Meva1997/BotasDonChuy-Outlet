@@ -100,7 +100,10 @@ export default function RevenueChart({ dataByPeriod }: Props) {
               fontSize: 12,
             }}
             formatter={(v) => [
-              `$${Number(v).toLocaleString("es-MX")}`,
+              `$${Number(v).toLocaleString("es-MX", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}`,
               "Ingresos",
             ]}
             labelStyle={{ color: "#a8967a", marginBottom: 4 }}

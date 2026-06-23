@@ -28,8 +28,8 @@ export interface InventoryRow {
   type: string;
   stock: number;
   salePrice: number;
-  costoUnitario: number;
-  valorInventario: number; // stock × costoUnitario
+  unitCost: number;
+  valorInventario: number; // stock × unitCost
 }
 
 export interface DashboardData {
@@ -46,7 +46,7 @@ export interface MonthlyProductSales {
   type: string;
   unitsSold: number;
   revenue: number;
-  costoUnitario: number;
+  unitCost: number;
 }
 
 export interface MonthlyCategoryBreakdown {

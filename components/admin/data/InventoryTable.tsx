@@ -6,7 +6,7 @@ function formatMXN(amount: number) {
   return amount.toLocaleString("es-MX", {
     style: "currency",
     currency: "MXN",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   });
 }
 
@@ -52,7 +52,7 @@ export default function InventoryTable({ rows }: { rows: InventoryRow[] }) {
       {/* Mobile: cards */}
       <div className="flex flex-col gap-3 xl:hidden">
         {rows.map((row) => {
-          const margenUnit = row.salePrice - row.costoUnitario;
+          const margenUnit = row.salePrice - row.unitCost;
           const margenPct = Math.round((margenUnit / row.salePrice) * 100);
           return (
             <div
@@ -80,7 +80,7 @@ export default function InventoryTable({ rows }: { rows: InventoryRow[] }) {
                     Costo
                   </p>
                   <p className="text-amber-100/60 text-sm font-sans">
-                    {formatMXN(row.costoUnitario)}
+                    {formatMXN(row.unitCost)}
                   </p>
                 </div>
                 <div>
@@ -131,7 +131,7 @@ export default function InventoryTable({ rows }: { rows: InventoryRow[] }) {
           </thead>
           <tbody>
             {rows.map((row) => {
-              const margenUnit = row.salePrice - row.costoUnitario;
+              const margenUnit = row.salePrice - row.unitCost;
               const margenPct = Math.round((margenUnit / row.salePrice) * 100);
               return (
                 <tr
@@ -151,7 +151,7 @@ export default function InventoryTable({ rows }: { rows: InventoryRow[] }) {
                     {formatMXN(row.salePrice)}
                   </td>
                   <td className={`${tdR} text-amber-100/60`}>
-                    {formatMXN(row.costoUnitario)}
+                    {formatMXN(row.unitCost)}
                   </td>
                   <td className={`${tdR} whitespace-nowrap`}>
                     <span className="text-emerald-400">

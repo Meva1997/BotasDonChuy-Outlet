@@ -38,18 +38,21 @@ export const MOCK_DASHBOARD: DashboardData = {
   kpis: [
     {
       label: "INGRESOS",
-      value: "$245,506",
+      value: "$245,506.00",
       trend: { label: "+21% vs periodo anterior", positive: true },
     },
     { label: "PIEZAS VENDIDAS", value: "151" },
-    { label: "TICKET PROMEDIO", value: "$1,626" },
-    { label: "MEJOR DÍA", value: "$28,457", subtitle: "12 jun" },
+    { label: "TICKET PROMEDIO", value: "$1,626.00" },
+    { label: "MEJOR DÍA", value: "$28,457.00", subtitle: "12 jun" },
   ],
 
   profitKpis: [
     {
       label: "GANANCIA BRUTA",
-      value: `$${GANANCIA_BRUTA.toLocaleString("es-MX")}`,
+      value: `$${GANANCIA_BRUTA.toLocaleString("es-MX", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`,
       trend: { label: "+19% vs periodo anterior", positive: true },
     },
     {
@@ -59,12 +62,18 @@ export const MOCK_DASHBOARD: DashboardData = {
     },
     {
       label: "GASTOS FIJOS / MES",
-      value: `$${TOTAL_GASTOS.toLocaleString("es-MX")}`,
+      value: `$${TOTAL_GASTOS.toLocaleString("es-MX", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`,
       subtitle: "dominio · comisión pasarela",
     },
     {
       label: "GANANCIA NETA",
-      value: `$${GANANCIA_NETA.toLocaleString("es-MX")}`,
+      value: `$${GANANCIA_NETA.toLocaleString("es-MX", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`,
       trend: { label: "+18% vs periodo anterior", positive: true },
     },
   ],
@@ -129,8 +138,8 @@ export const MOCK_DASHBOARD: DashboardData = {
     type: p.type,
     stock: p.stock,
     salePrice: p.salePrice,
-    costoUnitario: p.costoUnitario,
-    valorInventario: p.stock * p.costoUnitario,
+    unitCost: p.unitCost,
+    valorInventario: p.stock * p.unitCost,
   })),
 };
 
@@ -180,7 +189,7 @@ function buildMonthlyReports(): MonthlyReport[] {
         type: product.type,
         unitsSold,
         revenue: unitsSold * product.salePrice,
-        costoUnitario: product.costoUnitario,
+        unitCost: product.unitCost,
       };
     }).sort((a, b) => b.unitsSold - a.unitsSold);
 
@@ -245,7 +254,7 @@ function buildReplenishment(): ReplenishmentRow[] {
         : 0;
     const ingresoMensual = Math.round(avgUnits * product.salePrice);
     const margenMensual = Math.round(
-      avgUnits * (product.salePrice - product.costoUnitario)
+      avgUnits * (product.salePrice - product.unitCost)
     );
 
     const diasCobertura =
@@ -273,7 +282,7 @@ function buildReplenishment(): ReplenishmentRow[] {
       ingresoMensual,
       margenMensual,
       suggestedOrder,
-      costoEstimadoPedido: suggestedOrder * product.costoUnitario,
+      costoEstimadoPedido: suggestedOrder * product.unitCost,
       priority,
     };
   }).sort(

@@ -6,7 +6,7 @@ function formatMXN(amount: number) {
   return amount.toLocaleString("es-MX", {
     style: "currency",
     currency: "MXN",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   });
 }
 

@@ -99,7 +99,7 @@ Stack de datos: **TanStack Query + Axios + Zod**. `QueryProvider` (`components/p
 - **Login** — `components/auth/LoginForm.tsx` usa `useMutation`. Hoy la `mutationFn` está **mockeada** (devuelve un token `mock-<uuid>`); para el backend real, reemplazar su cuerpo por `api.post("/auth/login", credentials)` (ver `BACKEND.md`). En `onSuccess` guarda la sesión y navega a `/admin`.
 - **Protección de `/admin`** — `components/auth/AdminGuard.tsx` (en `app/admin/layout.tsx`) lee el token con un patrón hidratación-safe (`useSyncExternalStore`); sin token redirige a `/login`. **Logout** desde el botón "Cerrar Sesión" de `ConfigSection`.
 
-> Modelo de seguridad: token en localStorage + guard cliente es lo correcto para el approach axios/SPA en esta etapa sin backend. En producción (con backend) conviene cookie `httpOnly` + middleware de Next; el interceptor 401 ya deja listo el camino. `costoUnitario`/márgenes solo deben exponerse en rutas `/api/admin/*` autenticadas.
+> Modelo de seguridad: token en localStorage + guard cliente es lo correcto para el approach axios/SPA en esta etapa sin backend. En producción (con backend) conviene cookie `httpOnly` + middleware de Next; el interceptor 401 ya deja listo el camino. `unitCost`/márgenes solo deben exponerse en rutas `/api/admin/*` autenticadas.
 
 Env: `NEXT_PUBLIC_API_URL` apunta al backend (sin definir → `/api`). No commitear secretos.
 
@@ -242,8 +242,8 @@ Devuelve `{ forecastNextMonth, method, methodLabel, trend, confidence }`. Con m�
 `buildReplenishment()` (`db/mockData.ts`) calcula por producto:
 - `diasCobertura = stock / forecastNextMonth × 30`
 - `suggestedOrder = max(0, forecastNextMonth × 2 − stock)` (objetivo: ~60 días de cobertura)
-- `costoEstimadoPedido = suggestedOrder × costoUnitario`
-- `ingresoMensual = unidadesProm/mes × salePrice` y `margenMensual = unidadesProm/mes × (salePrice − costoUnitario)`
+- `costoEstimadoPedido = suggestedOrder × unitCost`
+- `ingresoMensual = unidadesProm/mes × salePrice` y `margenMensual = unidadesProm/mes × (salePrice − unitCost)`
 - `priority`: `urgente` (<15 días) · `pronto` (<45) · `ok` (≥45)
 
 **Orden de la tabla**: por urgencia de cobertura primero (un stock-out no se entierra), y **dentro de cada nivel, por `margenMensual` desc** — primero los productos que más ganancia generan. El dinero (margen) es **tie-breaker**, no el driver de urgencia: repones por demanda (unidades), no por facturación. Para ordenar por ingreso bruto en lugar de margen, cambiar `b.margenMensual` por `b.ingresoMensual` en el `.sort()`.
@@ -264,8 +264,8 @@ El frontend hoy lee de mocks en `db/`. El backend Express debe **reemplazar esos
 
 | Modelo | Campos clave (ver tipos exactos en el front) | Sirve a |
 |---|---|---|
-| `Product` | `id, name, salePrice, costoUnitario, stock, type, weightKg, lengthCm, widthCm, heightCm, sizes/stock por talla` | catálogo, inventario, forecast, envío |
-| `Sale` / `OrderItem` | `productId, unitsSold, revenue, costoUnitario, date` | ventas mensuales, KPIs |
+| `Product` | `id, name, salePrice, unitCost, stock, type, weightKg, lengthCm, widthCm, heightCm, sizes/stock por talla` | catálogo, inventario, forecast, envío |
+| `Sale` / `OrderItem` | `productId, unitsSold, revenue, unitCost, date` | ventas mensuales, KPIs |
 | `Order` | snapshot de carrito + `ShippingData` + totales + envío elegido | checkout, confirmación |
 
 ### Endpoints sugeridos (REST)
@@ -289,7 +289,7 @@ POST /api/shipping/rates           → cotización Skydropx (ver "Shipping" abaj
 
 - **`MonthlyReport`** se calcula agrupando ventas por mes; marcar `partial: true` el mes en curso. La reposición **debe excluir los meses parciales** del historial que pasa a `computeForecast` (igual que `buildReplenishment` filtra `!r.partial`).
 - **`ReplenishmentRow`** no es persistente: se computa on-the-fly desde ventas históricas + stock actual + costo. Reusar la fórmula documentada arriba (cobertura, suggestedOrder, margen, priority y el orden con margen como tie-breaker).
-- **`costoUnitario` y márgenes son datos sensibles** del negocio: exponerlos solo en rutas `/api/admin/*` autenticadas, nunca en las públicas de catálogo.
+- **`unitCost` y márgenes son datos sensibles** del negocio: exponerlos solo en rutas `/api/admin/*` autenticadas, nunca en las públicas de catálogo.
 - **Forecast en el servidor**: `lib/forecast.ts` es puro y portable — se puede copiar tal cual al backend (o llamar desde una API route Next.js) para que front y back den el mismo número.
 - **Validación**: reusar los esquemas zod de `schemas/` (p. ej. `shippingSchema`) en el backend para validar payloads de pedido y mantener una sola definición de las reglas.
 - **Auth**: `POST /api/auth/login` recibe `{ email, password }` (validar con `loginSchema` de `schemas/auth.ts`) y devuelve `{ token, user: { email } }`. El front guarda el token y lo manda como `Authorization: Bearer <token>`; el backend debe responder `401` cuando sea inválido/expirado (el axios interceptor ya cierra sesión y redirige). Proteger todas las rutas `/api/admin/*` con ese token.

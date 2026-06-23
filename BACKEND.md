@@ -49,7 +49,7 @@ Documento de contrato para construir el backend con **Node.js + Express.js**. De
 **Convenciones de API:**
 - Base URL sugerida: `/api`
 - Todas las respuestas en JSON.
-- Precios: enteros en **MXN** (sin centavos), tal como los mocks actuales (`salePrice: 1920`). Si se migra a `Decimal`, el frontend espera números, no strings.
+- Precios: números en **MXN** que **pueden tener hasta 2 decimales** (centavos), p. ej. `salePrice: 1920.50`. Se guardan como `DECIMAL(10,2)` y se sirven como **número** (no string); el frontend los formatea con 2 decimales.
 - Fechas: ISO 8601 (`2026-06-17T07:33:00Z`) en payloads nuevos; los reportes mensuales usan claves `"2026-06"`.
 - Idioma de los mensajes de error visibles: **español** (el front muestra el `message` de zod directamente).
 
@@ -104,10 +104,10 @@ Fuente del tipo: `db/mockProducts.ts` (`MockProduct`). Es el modelo central: ali
 | `id` | `int` PK | El front usa IDs numéricos (`getProductById(id: number)`). |
 | `name` | `string` | Requerido. |
 | `description` | `string?` | Opcional. |
-| `originalPrice` | `int` (MXN) | Precio tachado. |
-| `salePrice` | `int` (MXN) | Precio outlet. **Debe ser ≤ `originalPrice`** (validado en el form). |
+| `originalPrice` | `decimal(10,2)` (MXN) | Precio tachado. Admite centavos. |
+| `salePrice` | `decimal(10,2)` (MXN) | Precio outlet. Admite centavos. **Debe ser ≤ `originalPrice`** (validado en el form). |
 | `discountPercent` | `int` | Derivable: `round((originalPrice - salePrice) / originalPrice * 100)`. El front lo recibe ya calculado. |
-| `costoUnitario` | `int` (MXN) | **SENSIBLE** — costo de adquisición. Solo en rutas `/admin/*`. |
+| `unitCost` | `decimal(10,2)` (MXN) | **SENSIBLE** — costo de adquisición, admite centavos. Solo en rutas `/admin/*`. |
 | `stock` | `int` | Existencias totales. |
 | `type` | `enum('bota','sombrero','ropa')` | Categoría. |
 | `sizes` | `int[]` | Tallas. **Un valor repetido = stock de esa talla** (ver nota abajo). |
@@ -127,10 +127,10 @@ model Product {
   id             Int      @id @default(autoincrement())
   name           String
   description    String?
-  originalPrice  Int
-  salePrice      Int
+  originalPrice  Decimal  @db.Decimal(10, 2)
+  salePrice      Decimal  @db.Decimal(10, 2)
   discountPercent Int
-  costoUnitario  Int
+  unitCost       Decimal  @db.Decimal(10, 2)
   stock          Int
   type           String   // 'bota' | 'sombrero' | 'ropa'
   sizes          Int[]
@@ -184,9 +184,9 @@ Fuente: `CompletedOrder` (`CheckoutContext.tsx`) = `{ items: CartItem[], totals:
 | `nameSnapshot` | `string` | nombre al momento de compra |
 | `size` | `int` | `CartItem.size` |
 | `quantity` | `int` | `CartItem.quantity` |
-| `unitOriginalPrice` | `int` | `product.originalPrice` (congelado) |
-| `unitSalePrice` | `int` | `product.salePrice` (congelado) |
-| `unitCosto` | `int` | `product.costoUnitario` (congelado, para márgenes) |
+| `unitOriginalPrice` | `decimal(10,2)` | `product.originalPrice` (congelado) |
+| `unitSalePrice` | `decimal(10,2)` | `product.salePrice` (congelado) |
+| `unitCosto` | `decimal(10,2)` | `product.unitCost` (congelado, para márgenes) |
 
 > Los precios se **congelan** en el OrderItem: un pedido histórico no debe cambiar si luego se reajusta el precio del producto.
 
@@ -194,10 +194,10 @@ Fuente: `CompletedOrder` (`CheckoutContext.tsx`) = `{ items: CartItem[], totals:
 model Order {
   id              String   @id @default(uuid())
   status          String   @default("pending")
-  subtotal        Int
-  savings         Int
-  shipping        Int
-  total           Int
+  subtotal        Decimal  @db.Decimal(10, 2)
+  savings         Decimal  @db.Decimal(10, 2)
+  shipping        Decimal  @db.Decimal(10, 2)
+  total           Decimal  @db.Decimal(10, 2)
   customerName    String
   customerEmail   String
   customerPhone   String
@@ -221,9 +221,9 @@ model OrderItem {
   nameSnapshot      String
   size              Int
   quantity          Int
-  unitOriginalPrice Int
-  unitSalePrice     Int
-  unitCosto         Int
+  unitOriginalPrice Decimal @db.Decimal(10, 2)
+  unitSalePrice     Decimal @db.Decimal(10, 2)
+  unitCosto         Decimal @db.Decimal(10, 2)
 }
 ```
 
@@ -233,7 +233,7 @@ Esta es la **única matriz "fuente de verdad"**: unidades vendidas por producto 
 
 Forma cruda que necesita el reporte (`MonthlyProductSales` por mes):
 ```ts
-{ productId, unitsSold, revenue, costoUnitario, monthKey: "2026-06" }
+{ productId, unitsSold, revenue, unitCost, monthKey: "2026-06" }
 ```
 
 > Si los pedidos reales aún no existen y se quiere arrancar con histórico cargado a mano, crear una tabla simple `MonthlySale { monthKey, productId, unitsSold }` y derivar `revenue`/`costo` cruzando con `Product` (igual que `buildMonthlyReports()`).
@@ -302,7 +302,7 @@ model BrandSettings {
 - **Rutas públicas** (sin token): catálogo (`GET /api/products`, `GET /api/products/:id`), creación de pedido (`POST /api/orders`), cotización de envío (`POST /api/shipping/rates`).
 - **Rutas admin** (`/api/admin/*`): requieren JWT válido. Middleware `requireAuth`.
 - **Roles:** `owner` > `admin` > `editor`. Crear/eliminar administradores: solo `owner`. Editar productos/marca/config: `admin` y `owner`. `editor` solo lectura del dashboard (ajustar según necesidad de negocio).
-- **`costoUnitario` y todos los márgenes son datos sensibles**: jamás exponerlos en rutas públicas.
+- **`unitCost` y todos los márgenes son datos sensibles**: jamás exponerlos en rutas públicas.
 
 ---
 
@@ -321,7 +321,7 @@ GET    /api/products/:id                       → Product               (públi
 POST   /api/orders                             → { order }             (público)
 POST   /api/shipping/rates                     → { rates: ShippingRate[] } (público)
 
-GET    /api/admin/products            [auth]  → Product[]              (incluye costoUnitario)
+GET    /api/admin/products            [auth]  → Product[]              (incluye unitCost)
 POST   /api/admin/products            [auth]  → Product
 PUT    /api/admin/products/:id         [auth]  → Product
 DELETE /api/admin/products/:id         [auth]  → { ok }
@@ -368,7 +368,7 @@ Devuelve el usuario del token: `{ "user": { id, name, email, role } }`.
 ### 5.2 Catálogo público
 
 #### `GET /api/products`
-Reemplaza `getProducts(filters)`. **Debe filtrar `visible = true`** y **omitir `costoUnitario`**.
+Reemplaza `getProducts(filters)`. **Debe filtrar `visible = true`** y **omitir `unitCost`**.
 
 Query params (`ProductFilters`):
 | Param | Tipo | Default | Efecto |
@@ -381,7 +381,7 @@ Query params (`ProductFilters`):
 Respuesta `200` (`ProductsResult`):
 ```json
 {
-  "products": [ /* Product[] sin costoUnitario */ ],
+  "products": [ /* Product[] sin unitCost */ ],
   "total": 6,
   "page": 1,
   "perPage": 9,
@@ -393,7 +393,7 @@ Respuesta `200` (`ProductsResult`):
 - `page` se ajusta al rango `[1, totalPages]`.
 
 #### `GET /api/products/:id`
-Reemplaza `getProductById(id)`. Respuesta `200`: `Product` (sin `costoUnitario`). `404` si no existe o no es visible.
+Reemplaza `getProductById(id)`. Respuesta `200`: `Product` (sin `unitCost`). `404` si no existe o no es visible.
 
 ---
 
@@ -500,10 +500,10 @@ Respuesta normalizada al front (`ShippingRate[]`):
 
 ### 5.5 Admin — productos
 
-Reemplazan el flujo de `ProductForm.tsx` / `ProductSection.tsx`. **Incluyen `costoUnitario`.**
+Reemplazan el flujo de `ProductForm.tsx` / `ProductSection.tsx`. **Incluyen `unitCost`.**
 
 #### `GET /api/admin/products` `[auth]`
-Todos los productos (incluye `visible=false` y `costoUnitario`).
+Todos los productos (incluye `visible=false` y `unitCost`).
 
 #### `POST /api/admin/products` `[auth]`
 Body (del `ProductForm`, valida con `productSchema` de [7.3](#73-productschema-admin)):
@@ -518,7 +518,7 @@ Body (del `ProductForm`, valida con `productSchema` de [7.3](#73-productschema-a
   "sizes": "25, 26, 27, 28",
   "description": "...",
   "imageUrl": "https://res.cloudinary.com/...",
-  "costoUnitario": 800,
+  "unitCost": 800,
   "weightKg": 2.5, "lengthCm": 35, "widthCm": 30, "heightCm": 20,
   "code": null
 }
@@ -527,7 +527,7 @@ Body (del `ProductForm`, valida con `productSchema` de [7.3](#73-productschema-a
 - `discountPercent` se **calcula en el backend**: `round((originalPrice - salePrice) / originalPrice * 100)`.
 - Validar `salePrice ≤ originalPrice`.
 
-> El `ProductForm` actual **no captura** `costoUnitario` ni las dimensiones (`weightKg`, etc.); esos campos existen en el modelo pero el form los omite. Al conectar el backend, **agregar esos inputs al form** o asignar defaults por categoría. Sin `costoUnitario` real, los márgenes/reposición salen incorrectos.
+> El `ProductForm` actual **no captura** `unitCost` ni las dimensiones (`weightKg`, etc.); esos campos existen en el modelo pero el form los omite. Al conectar el backend, **agregar esos inputs al form** o asignar defaults por categoría. Sin `unitCost` real, los márgenes/reposición salen incorrectos.
 
 Respuesta `201`: `Product`.
 
@@ -558,11 +558,11 @@ Donde:
 KpiData      = { label: string; value: string; trend?: { label: string; positive: boolean }; subtitle?: string }
 RevenuePoint = { date: string; revenue: number }   // date es etiqueta legible "12 jun"
 SaleRow      = { id: string; date: string; pieces: number; items: string; savings: number; total: number; costoTotal: number }
-InventoryRow = { id: number; name: string; type: string; stock: number; salePrice: number; costoUnitario: number; valorInventario: number }
+InventoryRow = { id: number; name: string; type: string; stock: number; salePrice: number; unitCost: number; valorInventario: number }
 ```
 - `value` de los KPIs es **string ya formateado** (`"$245,506"`, `"58%"`). El front lo pinta tal cual. Formatear en es-MX en el backend.
 - `Period` solo admite `"7" | "30" | "90"`.
-- `valorInventario = stock × costoUnitario`.
+- `valorInventario = stock × unitCost`.
 - `recentSales`: últimos pedidos resumidos (concatenar nombres en `items`, p. ej. `"Bota Ranchera 1972, Bota Exótica ×2"`).
 
 #### `GET /api/admin/orders` `[auth]`
@@ -586,7 +586,7 @@ MonthlyReport = {
   byProduct: MonthlyProductSales[];      // ordenado por unitsSold desc
   byCategory: MonthlyCategoryBreakdown[]; // ordenado por revenue desc
 }
-MonthlyProductSales      = { productId, name, type, unitsSold, revenue, costoUnitario }
+MonthlyProductSales      = { productId, name, type, unitsSold, revenue, unitCost }
 MonthlyCategoryBreakdown = { category, label, revenue, units }
 ```
 - `revenue = unitsSold × salePrice` (cruzar con `Product`).
@@ -661,12 +661,12 @@ monthlySales      = [unitsSold por mes, en orden cronológico]
 forecast          = computeForecast(monthlySales)            // ver 6.4
 avgUnits          = promedio(monthlySales)
 ingresoMensual    = round(avgUnits × salePrice)
-margenMensual     = round(avgUnits × (salePrice − costoUnitario))
+margenMensual     = round(avgUnits × (salePrice − unitCost))
 diasCobertura     = forecast.forecastNextMonth > 0
                       ? round(stock / forecast.forecastNextMonth × 30)
                       : 999
 suggestedOrder    = max(0, round(forecast.forecastNextMonth × 2) − stock)  // objetivo ~60 días
-costoEstimadoPedido = suggestedOrder × costoUnitario
+costoEstimadoPedido = suggestedOrder × unitCost
 priority          = diasCobertura < 15 ? "urgente"
                   : diasCobertura < 45 ? "pronto" : "ok"
 ```
@@ -742,13 +742,13 @@ forgotPasswordSchema = { email: email válido }
 }
 .refine(salePrice ≤ originalPrice)
 ```
-**El backend debe extender este esquema** con los campos que el form aún no captura pero el modelo necesita: `costoUnitario`, `weightKg`, `lengthCm`, `widthCm`, `heightCm`, `code`.
+**El backend debe extender este esquema** con los campos que el form aún no captura pero el modelo necesita: `unitCost`, `weightKg`, `lengthCm`, `widthCm`, `heightCm`, `code`.
 
 ---
 
 ## 8. Notas de seguridad
 
-- **`costoUnitario`, `margenMensual`, `costoTotal`, `valorInventario`, `costoEstimadoPedido` son datos sensibles del negocio.** Exponerlos **solo** en rutas `/api/admin/*` autenticadas. Las rutas públicas de catálogo nunca deben incluirlos.
+- **`unitCost`, `margenMensual`, `costoTotal`, `valorInventario`, `costoEstimadoPedido` son datos sensibles del negocio.** Exponerlos **solo** en rutas `/api/admin/*` autenticadas. Las rutas públicas de catálogo nunca deben incluirlos.
 - **Recalcular siempre los totales en el servidor** al crear pedidos. El cliente envía qué quiere comprar; el backend decide cuánto cuesta.
 - **Verificar stock por talla** en el servidor antes de confirmar el pedido (el front valida, pero no es autoritativo).
 - **Contraseñas con bcrypt** (nunca texto plano). `forgot-password` no debe revelar si un correo existe.
@@ -801,9 +801,9 @@ Revisé **todos** los componentes y rutas, no solo los mocks. Hallazgos que afin
 - [ ] Copiar `lib/forecast.ts` y la lógica de `lib/cart.ts` al backend
 - [ ] Middleware `requireAuth` + verificación de rol
 - [ ] Auth: `/login`, `/forgot-password`, `/me`
-- [ ] Catálogo público: `GET /products`, `GET /products/:id` (filtrar `visible`, ocultar `costoUnitario`)
+- [ ] Catálogo público: `GET /products`, `GET /products/:id` (filtrar `visible`, ocultar `unitCost`)
 - [ ] Checkout: `POST /orders` (recalcular totales, verificar stock, congelar precios)
-- [ ] Admin productos: GET/POST/PUT/DELETE (extender form con `costoUnitario` + dimensiones)
+- [ ] Admin productos: GET/POST/PUT/DELETE (extender form con `unitCost` + dimensiones)
 - [ ] Admin dashboard: `GET /dashboard` (KPIs formateados, inventario, ventas recientes)
 - [ ] Admin reportes: `GET /reports/monthly`, `GET /reports/replenishment` (excluir meses `partial`)
 - [ ] Admin marca: `GET/PUT /brand` (lectura pública)
