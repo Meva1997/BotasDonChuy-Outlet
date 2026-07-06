@@ -64,7 +64,7 @@ db/
 lib/
   api/
     client.ts     # instancia axios (baseURL NEXT_PUBLIC_API_URL ?? /api) + interceptors: request adjunta Bearer del authStore, response cierra sesión y va a /login en 401
-  getProducts.ts  # getProducts(filters), getProductById(id), Product type
+  getProducts.ts  # getProducts(filters), getProductById(id) — YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible). 404 → null. El storefront ya no usa mocks; db/mockProducts sigue vivo solo para el admin.
   cart.ts         # computeTotals(items) — pure subtotal/savings/total helper
   motion.ts       # variantes framer-motion compartidas (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
   forecast.ts     # computeForecast(monthlySales) — pronóstico de demanda auto-escalado por nº de meses
@@ -256,7 +256,7 @@ Ambos reportes exportan CSV con un helper `csvField()` (escapado RFC 4180: envue
 
 ## Backend (Express.js) — contrato base
 
-El frontend hoy lee de mocks en `db/`. El backend Express debe **reemplazar esos mocks exponiendo las mismas formas de datos** (los tipos viven en `components/admin/data/types.ts` y `db/mockProducts.ts`). Mientras los contratos se respeten, los componentes no cambian.
+El backend (NestJS, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El catálogo del storefront ya está conectado**: `lib/getProducts.ts` consume `GET /api/products` y `GET /api/products/{id}` (ver "Auth & data fetching"). El **admin** (`components/admin/*`, `db/mockData.ts`) todavía lee de mocks en `db/` — pendiente de migrar a las rutas `/api/admin/*`. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `db/mockProducts.ts`); mientras los contratos se respeten, los componentes no cambian.
 
 > **Principio:** la lógica de negocio (forecast, reposición, totales de carrito, envío) ya está en `lib/` como funciones puras que reciben números. El backend solo debe **persistir y servir los datos crudos**; puede reusar esa misma lógica o reimplementarla. La única matriz "fuente de verdad" es ventas-por-mes-por-producto.
 

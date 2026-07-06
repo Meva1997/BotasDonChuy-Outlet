@@ -1,27 +1,51 @@
-import { MOCK_PRODUCTS, type MockProduct } from "@/db/mockProducts";
+import axios from "axios";
+import { z } from "zod";
+import { api } from "@/lib/api/client";
 
-// Re-export the type so consumers never import from db/ directly.
-// When the backend is ready:
-//   1. Replace MockProduct with a Zod-inferred type (z.infer<typeof ProductSchema>)
-//   2. Replace the mock implementation below with:
-//        const { data } = await axios.get("/api/products", { params: filters })
-//        return ProductsResultSchema.parse(data)
-export type Product = MockProduct;
+// Forma pública de un producto (GET /api/products). Refleja el schema `Product`
+// del backend: NO incluye `unitCost` (dato sensible, solo en /api/admin/products).
+// `imageSrc`/`code` pueden venir null; `deletedAt` null cuando el producto está activo.
+export const ProductSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  description: z.string().nullable().optional(),
+  originalPrice: z.number(),
+  salePrice: z.number(),
+  discountPercent: z.number(),
+  stock: z.number(),
+  type: z.string(),
+  sizes: z.array(z.number()),
+  imageSrc: z.string().nullable().optional(),
+  code: z.string().nullable().optional(),
+  // Dimensiones del paquete — requeridas por la API de Skydropx para cotizar envíos.
+  weightKg: z.number(),
+  lengthCm: z.number(),
+  widthCm: z.number(),
+  heightCm: z.number(),
+  visible: z.boolean().optional(),
+  deletedAt: z.string().nullable().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+
+export type Product = z.infer<typeof ProductSchema>;
+
+export const ProductListResponseSchema = z.object({
+  products: z.array(ProductSchema),
+  total: z.number(),
+  page: z.number(),
+  perPage: z.number(),
+  totalPages: z.number(),
+  availableSizes: z.array(z.number()),
+});
+
+export type ProductsResult = z.infer<typeof ProductListResponseSchema>;
 
 export interface ProductFilters {
   categoria?: string;
   talla?: number;
   page?: number;
   perPage?: number;
-}
-
-export interface ProductsResult {
-  products: Product[];
-  total: number;
-  page: number;
-  perPage: number;
-  totalPages: number;
-  availableSizes: number[];
 }
 
 // Query key factory — drop-in ready for TanStack Query:
@@ -31,45 +55,24 @@ export const productKeys = {
   filtered: (filters: ProductFilters) => ["products", filters] as const,
 };
 
+// GET /api/products/{id} — devuelve null en 404 (producto inexistente/no visible).
 export async function getProductById(id: number): Promise<Product | null> {
-  return MOCK_PRODUCTS.find((p) => p.id === id) ?? null;
+  try {
+    const { data } = await api.get(`/products/${id}`);
+    return ProductSchema.parse(data);
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return null;
+    }
+    throw error;
+  }
 }
 
+// GET /api/products — el backend aplica filtros, paginación y calcula availableSizes.
+// axios omite automáticamente los params `undefined`.
 export async function getProducts(
   filters: ProductFilters = {}
 ): Promise<ProductsResult> {
-  const { categoria, talla, page = 1, perPage = 9 } = filters;
-
-  let results = [...MOCK_PRODUCTS];
-
-  if (categoria) {
-    results = results.filter((p) => p.type === categoria);
-  }
-
-  if (talla) {
-    results = results.filter((p) => p.sizes.includes(talla));
-  }
-
-  const availableSizes = [
-    ...new Set(
-      (categoria
-        ? MOCK_PRODUCTS.filter((p) => p.type === categoria)
-        : MOCK_PRODUCTS
-      ).flatMap((p) => p.sizes)
-    ),
-  ].sort((a, b) => a - b);
-
-  const total = results.length;
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
-  const safePage = Math.min(Math.max(1, page), totalPages);
-  const start = (safePage - 1) * perPage;
-
-  return {
-    products: results.slice(start, start + perPage),
-    total,
-    page: safePage,
-    perPage,
-    totalPages,
-    availableSizes,
-  };
+  const { data } = await api.get("/products", { params: filters });
+  return ProductListResponseSchema.parse(data);
 }

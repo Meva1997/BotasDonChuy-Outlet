@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import OutletCard from "@/components/ui/OutletCard";
 import EmptyState from "@/components/ui/EmptyState";
@@ -12,7 +13,6 @@ import {
   getProducts,
   productKeys,
   type ProductFilters,
-  type ProductsResult,
 } from "@/lib/getProducts";
 import { categoryPlural } from "@/lib/categories";
 
@@ -21,12 +21,6 @@ const TRUST_SIGNALS = [
   "Calidad de piel verificada",
   "Envío a todo México",
 ];
-
-// When adding TanStack Query, replace the useEffect block with:
-//   const { data: result } = useQuery({
-//     queryKey: productKeys.filtered(filters),
-//     queryFn: () => getProducts(filters),
-//   })
 
 interface OutletViewProps {
   // Set on category-specific routes (/botas, /sombreros, /ropa).
@@ -49,16 +43,12 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
 
   const filters: ProductFilters = { categoria, talla, page };
 
-  const [result, setResult] = useState<ProductsResult | null>(null);
-
-  useEffect(() => {
-    // Intentionally not void-wrapped so eslint exhaustive-deps is explicit.
-    // Replace this entire effect with useQuery when adding TanStack Query.
-    getProducts(filters).then(setResult);
-    // productKeys.filtered(filters) documents the shape for future cache keys.
-    void productKeys;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoria, talla, page]);
+  const { data: result } = useQuery({
+    queryKey: productKeys.filtered(filters),
+    queryFn: () => getProducts(filters),
+    // Mantiene visible la página/filtro anterior mientras carga el nuevo → sin flash a vacío.
+    placeholderData: keepPreviousData,
+  });
 
   const updateParam = useCallback(
     (key: string, value: string | null) => {
