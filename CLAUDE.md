@@ -256,7 +256,7 @@ Ambos reportes exportan CSV con un helper `csvField()` (escapado RFC 4180: envue
 
 ## Backend (Express.js) — contrato base
 
-El backend (NestJS, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El catálogo del storefront ya está conectado**: `lib/getProducts.ts` consume `GET /api/products` y `GET /api/products/{id}` (ver "Auth & data fetching"). El **admin** (`components/admin/*`, `db/mockData.ts`) todavía lee de mocks en `db/` — pendiente de migrar a las rutas `/api/admin/*`. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `db/mockProducts.ts`); mientras los contratos se respeten, los componentes no cambian.
+El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El catálogo del storefront ya está conectado**: `lib/getProducts.ts` consume `GET /api/products` y `GET /api/products/{id}` (ver "Auth & data fetching"). El **admin** (`components/admin/*`, `db/mockData.ts`) todavía lee de mocks en `db/` — pendiente de migrar a las rutas `/api/admin/*`. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `db/mockProducts.ts`); mientras los contratos se respeten, los componentes no cambian.
 
 > **Principio:** la lógica de negocio (forecast, reposición, totales de carrito, envío) ya está en `lib/` como funciones puras que reciben números. El backend solo debe **persistir y servir los datos crudos**; puede reusar esa misma lógica o reimplementarla. La única matriz "fuente de verdad" es ventas-por-mes-por-producto.
 
