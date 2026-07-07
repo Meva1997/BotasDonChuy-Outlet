@@ -5,24 +5,20 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
+import axios from "axios";
 import { loginSchema, type LoginData } from "@/schemas/auth";
+import { login } from "@/lib/api/auth";
 import { TextField } from "@/components/checkout/FormControls";
 import { useAuthStore } from "@/store/authStore";
 
-interface LoginResponse {
-  token: string;
-  user: { email: string };
-}
-
-// Mock mientras no hay backend. Cuando exista, reemplazar el cuerpo por:
-//   const { data } = await api.post<LoginResponse>("/auth/login", credentials);
-//   return data;
-async function loginRequest(credentials: LoginData): Promise<LoginResponse> {
-  await new Promise((resolve) => setTimeout(resolve, 600));
-  return {
-    token: `mock-${crypto.randomUUID()}`,
-    user: { email: credentials.email },
-  };
+// Traduce el error de axios en un mensaje para el usuario.
+function loginErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    if (error.response?.status === 401) return "Correo o contraseña incorrectos.";
+    if (error.response?.status === 429)
+      return "Demasiados intentos. Espera unos minutos e inténtalo de nuevo.";
+  }
+  return "No pudimos iniciar sesión. Inténtalo de nuevo.";
 }
 
 export default function LoginForm() {
@@ -39,7 +35,7 @@ export default function LoginForm() {
   });
 
   const mutation = useMutation({
-    mutationFn: loginRequest,
+    mutationFn: login,
     onSuccess: (data) => {
       setSession(data.token, data.user);
       router.push("/admin");
@@ -82,7 +78,7 @@ export default function LoginForm() {
 
       {mutation.isError && (
         <p role="alert" className="text-[12px] text-red-400/90">
-          No pudimos iniciar sesión. Inténtalo de nuevo.
+          {loginErrorMessage(mutation.error)}
         </p>
       )}
 

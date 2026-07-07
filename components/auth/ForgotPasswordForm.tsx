@@ -3,10 +3,13 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
+import axios from "axios";
 import {
   forgotPasswordSchema,
   type ForgotPasswordData,
 } from "@/schemas/auth";
+import { forgotPassword } from "@/lib/api/auth";
 import { TextField } from "@/components/checkout/FormControls";
 
 export default function ForgotPasswordForm() {
@@ -15,17 +18,23 @@ export default function ForgotPasswordForm() {
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<ForgotPasswordData>({
     resolver: zodResolver(forgotPasswordSchema),
     mode: "onBlur",
   });
 
-  const onSubmit = handleSubmit(async (data) => {
-    // TODO: reemplazar por una mutación de TanStack Query cuando el backend esté listo.
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    setSentTo(data.email);
+  const mutation = useMutation({
+    mutationFn: forgotPassword,
+    onSuccess: (_data, variables) => setSentTo(variables.email),
   });
+
+  const onSubmit = handleSubmit((data) => mutation.mutate(data));
+
+  const errorMessage =
+    axios.isAxiosError(mutation.error) && mutation.error.response?.status === 429
+      ? "Demasiados intentos. Espera unos minutos e inténtalo de nuevo."
+      : "No pudimos enviar el correo. Inténtalo de nuevo.";
 
   if (sentTo) {
     return (
@@ -70,12 +79,18 @@ export default function ForgotPasswordForm() {
         {...register("email")}
       />
 
+      {mutation.isError && (
+        <p role="alert" className="text-[12px] text-red-400/90">
+          {errorMessage}
+        </p>
+      )}
+
       <button
         type="submit"
-        disabled={isSubmitting}
+        disabled={mutation.isPending}
         className="btn-shimmer w-full bg-amber-400 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:bg-amber-300 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {isSubmitting ? "Enviando…" : "Enviar instrucciones"}
+        {mutation.isPending ? "Enviando…" : "Enviar instrucciones"}
       </button>
     </form>
   );

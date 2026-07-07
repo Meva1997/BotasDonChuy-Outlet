@@ -47,7 +47,7 @@ components/
   ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider, Sidebar)
   checkout/       # Multi-step checkout flow (see "Checkout flow" below)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal content pages
-  auth/           # AuthShell (split-panel layout) + LoginForm/ForgotPasswordForm — react-hook-form + zod (schemas/auth.ts). LoginForm usa TanStack Query (useMutation), mockeada pendiente de backend. AdminGuard — protege /admin (ver "Auth & data fetching")
+  auth/           # AuthShell (split-panel layout) + LoginForm/ForgotPasswordForm — react-hook-form + zod (schemas/auth.ts) + TanStack Query (useMutation), YA conectados al backend vía lib/api/auth. AdminGuard — protege /admin y valida el token contra GET /auth/me (ver "Auth & data fetching")
   providers/      # QueryProvider — QueryClientProvider de TanStack Query (montado en root layout)
   admin/          # Panel de administración — secciones completas:
                   #   MarcaSection — editor de identidad de marca (logo, colores, copy)
@@ -64,6 +64,7 @@ db/
 lib/
   api/
     client.ts     # instancia axios (baseURL NEXT_PUBLIC_API_URL ?? /api) + interceptors: request adjunta Bearer del authStore, response cierra sesión y va a /login en 401
+    auth.ts       # contratos de auth (patrón getProducts): schemas Zod + login()/forgotPassword()/getMe() + authKeys. Fuente única del tipo AuthUser ({ id, name, email, role }). YA conectado al backend (POST /auth/login, POST /auth/forgot-password, GET /auth/me)
   getProducts.ts  # getProducts(filters), getProductById(id) — YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible). 404 → null. El storefront ya no usa mocks; db/mockProducts sigue vivo solo para el admin.
   cart.ts         # computeTotals(items) — pure subtotal/savings/total helper
   motion.ts       # variantes framer-motion compartidas (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
@@ -77,7 +78,7 @@ schemas/
   auth.ts         # zod loginSchema + forgotPasswordSchema + LoginData/ForgotPasswordData types
 store/
   cartStore.ts    # Zustand store (persist) — cart items, open/close, totals, stock-aware addItem
-  authStore.ts    # Zustand store (persist, key botas-don-chuy-auth) — token + user de sesión admin, login()/logout()/isAuthenticated(). Fuente única del token (axios client + AdminGuard)
+  authStore.ts    # Zustand store (persist, key botas-don-chuy-auth) — token + user ({ id, name, email, role }) de sesión admin, login()/setUser()/logout()/isAuthenticated(). Fuente única del token (axios client + AdminGuard). El tipo AuthUser vive en lib/api/auth.ts
 ```
 
 **Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/botas`, `/sombreros`, `/ropa`, `/checkout`, `/terminos`, `/privacidad`, `/envios`, `/admin`, `/login`, `/forgot-password` (las 3 de categoría reutilizan `OutletView` con `defaultCategoria`)
@@ -95,9 +96,11 @@ Auth/session state lives in `store/authStore.ts` (Zustand + `persist`, key `bota
 Stack de datos: **TanStack Query + Axios + Zod**. `QueryProvider` (`components/providers/QueryProvider.tsx`) monta el `QueryClientProvider` en el root layout.
 
 - **`lib/api/client.ts`** — instancia axios única. `baseURL = process.env.NEXT_PUBLIC_API_URL ?? "/api"`. El **request interceptor** adjunta `Authorization: Bearer <token>` leyendo `useAuthStore.getState().token`; el **response interceptor** en `401` llama `logout()` y redirige a `/login` (vía `window.location`, para poder usarse fuera de componentes). Toda llamada al backend debe pasar por esta instancia.
-- **Sesión** — `store/authStore.ts` guarda `{ token, user }` en localStorage. Es la fuente única que leen el interceptor y el guard.
-- **Login** — `components/auth/LoginForm.tsx` usa `useMutation`. Hoy la `mutationFn` está **mockeada** (devuelve un token `mock-<uuid>`); para el backend real, reemplazar su cuerpo por `api.post("/auth/login", credentials)` (ver `BACKEND.md`). En `onSuccess` guarda la sesión y navega a `/admin`.
-- **Protección de `/admin`** — `components/auth/AdminGuard.tsx` (en `app/admin/layout.tsx`) lee el token con un patrón hidratación-safe (`useSyncExternalStore`); sin token redirige a `/login`. **Logout** desde el botón "Cerrar Sesión" de `ConfigSection`.
+- **`lib/api/auth.ts`** — contratos de auth centralizados (patrón `getProducts.ts`): schemas Zod (`AuthUserSchema`, `LoginResponseSchema`, `MeResponseSchema`) + `login()`, `forgotPassword()`, `getMe()` + `authKeys`. Toda respuesta se valida con Zod en runtime. `AuthUser` = `{ id, name, email, role: "owner"|"admin" }` — fuente única del tipo (el `authStore` lo reimporta).
+- **Sesión** — `store/authStore.ts` guarda `{ token, user }` en localStorage. Es la fuente única que leen el interceptor y el guard. `setUser()` rehidrata el usuario tras validar el token.
+- **Login** — `components/auth/LoginForm.tsx` usa `useMutation({ mutationFn: login })` (**conectado al backend real**). Mapea `401`→credenciales, `429`→rate-limit. En `onSuccess` guarda la sesión y navega a `/admin`.
+- **Olvidé mi contraseña** — `components/auth/ForgotPasswordForm.tsx` usa `useMutation({ mutationFn: forgotPassword })`. El backend siempre responde `{ ok: true }` (sin enumerar usuarios); tras éxito muestra la pantalla de confirmación.
+- **Protección de `/admin`** — `components/auth/AdminGuard.tsx` (en `app/admin/layout.tsx`) lee el token con un patrón hidratación-safe (`useSyncExternalStore`); sin token redirige a `/login`. Además valida el token contra `GET /api/auth/me` (`useQuery`, `staleTime` 5 min) y rehidrata `user`. Mientras la validación está en vuelo (`isPending`) muestra "Verificando sesión…". Token inválido → `401` → el interceptor cierra sesión y redirige. Un error **no-401** (500/red/parseo) **no bloquea** el acceso: se renderiza el panel igual que el guard previo solo-token, para no dejar al admin atrapado por una caída transitoria del backend. **Logout** desde el botón "Cerrar Sesión" de `ConfigSection`.
 
 > Modelo de seguridad: token en localStorage + guard cliente es lo correcto para el approach axios/SPA en esta etapa sin backend. En producción (con backend) conviene cookie `httpOnly` + middleware de Next; el interceptor 401 ya deja listo el camino. `unitCost`/márgenes solo deben exponerse en rutas `/api/admin/*` autenticadas.
 

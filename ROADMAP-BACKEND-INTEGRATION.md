@@ -19,9 +19,9 @@ migración.
 
 | Endpoint backend | Consumidor en el frontend | Estado | Acción |
 |---|---|---|---|
-| `POST /api/auth/login` | `components/auth/LoginForm.tsx` (`mutationFn` mockeada, token `mock-<uuid>`) | 🔴 | Reemplazar cuerpo por `api.post("/auth/login", credentials)` |
-| `POST /api/auth/forgot-password` | `components/auth/ForgotPasswordForm.tsx` (`onSubmit` con TODO) | 🔴 | `useMutation` → `api.post("/auth/forgot-password", data)` |
-| `GET /api/auth/me` | `components/auth/AdminGuard.tsx` (hoy solo valida presencia de token) | 🔴 | Validar token contra el backend; refrescar `user` en `authStore` |
+| `POST /api/auth/login` | `components/auth/LoginForm.tsx` → `login()` de `lib/api/auth.ts` | ✅ | — |
+| `POST /api/auth/forgot-password` | `components/auth/ForgotPasswordForm.tsx` → `forgotPassword()` (`useMutation`) | ✅ | — |
+| `GET /api/auth/me` | `components/auth/AdminGuard.tsx` → `getMe()` (valida token + rehidrata `user`) | ✅ | — |
 | `GET /api/products` | `lib/getProducts.ts` → `getProducts()` | ✅ | — |
 | `GET /api/products/:id` | `lib/getProducts.ts` → `getProductById()` | ✅ | — |
 | `POST /api/orders` | `components/checkout/CheckoutContext.tsx` → `completeOrder()` (solo snapshot local) | 🔴 | Postear el carrito antes de confirmar; el backend es autoridad de precios y stock |
@@ -43,11 +43,13 @@ migración.
 
 ## Fases (orden sugerido)
 
-### Fase 1 — Autenticación *(desbloquea todo el admin)*
-- `POST /api/auth/login` — quitar el mock de `LoginForm`.
-- `POST /api/auth/forgot-password` — conectar `ForgotPasswordForm`.
-- `GET /api/auth/me` — que `AdminGuard` valide el token real y rehidrate `user`.
-- **Salida:** sesión real de admin; el interceptor `401` ya cierra sesión y redirige.
+### Fase 1 — Autenticación ✅ *(desbloquea todo el admin)*
+- ✅ `POST /api/auth/login` — `LoginForm` usa `login()` de `lib/api/auth.ts` (sin mock).
+- ✅ `POST /api/auth/forgot-password` — `ForgotPasswordForm` con `useMutation` → `forgotPassword()`.
+- ✅ `GET /api/auth/me` — `AdminGuard` valida el token real (`getMe()`) y rehidrata `user`;
+  render bloqueante con `staleTime` de 5 min.
+- **Salida:** sesión real de admin; el interceptor `401` cierra sesión y redirige.
+- Contratos y validación Zod centralizados en `lib/api/auth.ts` (patrón `getProducts.ts`).
 
 ### Fase 2 — Checkout público *(ruta de ingresos)*
 - `POST /api/orders` — en `completeOrder()`, postear `{ items, customer }` **sin montos**
