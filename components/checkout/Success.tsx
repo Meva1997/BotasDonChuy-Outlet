@@ -26,7 +26,7 @@ export default function Success() {
     );
   }
 
-  const { items, totals, customer } = order;
+  const { orderId, items, totals, customer } = order;
 
   return (
     <div className="w-full max-w-lg mx-auto space-y-10 animate-fade-in-up">
@@ -58,6 +58,9 @@ export default function Success() {
         <h2 className="relative font-serif text-3xl text-amber-50">
           ¡Pago completado!
         </h2>
+        <p className="relative text-[11px] tracking-[0.25em] uppercase text-amber-400/90">
+          Pedido #{orderId}
+        </p>
         <p className="relative text-amber-100/60 text-sm leading-relaxed max-w-sm mx-auto">
           Gracias por tu compra, {customer.fullName.split(" ")[0]}. Tu pedido ya
           está en preparación y enviaremos la confirmación a{" "}

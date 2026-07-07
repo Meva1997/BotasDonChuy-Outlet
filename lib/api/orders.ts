@@ -1,0 +1,108 @@
+import { z } from "zod";
+import { api } from "@/lib/api/client";
+import type { CartItem } from "@/store/cartStore";
+import type { ShippingData } from "@/schemas/checkout";
+
+// Renglón de la orden que devuelve el backend (POST /api/orders). Refleja
+// `OrderItem` de ../backend/src/models/OrderItem.ts pero SIN `unitCost`: la ruta
+// pública lo excluye (costo interno / margen solo va en /api/admin/*).
+export const OrderItemResponseSchema = z.object({
+  id: z.number(),
+  orderId: z.number(),
+  productId: z.number(),
+  nameSnapshot: z.string(),
+  size: z.number(),
+  quantity: z.number(),
+  unitOriginalPrice: z.number(),
+  unitSalePrice: z.number(),
+});
+
+// Orden persistida que devuelve el backend. Totales recalculados en el servidor
+// (autoridad de precios); `clientSecret` es null hasta activar Stripe (Fase 8).
+export const OrderResponseSchema = z.object({
+  id: z.number(),
+  status: z.enum(["pending", "paid", "shipped", "delivered", "cancelled"]),
+  paymentStatus: z.enum(["unpaid", "processing", "paid", "failed"]),
+  subtotal: z.number(),
+  savings: z.number(),
+  shipping: z.number(),
+  total: z.number(),
+  customerName: z.string(),
+  customerEmail: z.string(),
+  customerPhone: z.string(),
+  street: z.string(),
+  neighborhood: z.string(),
+  city: z.string(),
+  state: z.string(),
+  postalCode: z.string(),
+  references: z.string().nullable().optional(),
+  shippingCarrier: z.string().nullable().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  items: z.array(OrderItemResponseSchema),
+});
+
+export type OrderResponse = z.infer<typeof OrderResponseSchema>;
+
+// POST /api/orders → { order, clientSecret }
+export const CreateOrderResponseSchema = z.object({
+  order: OrderResponseSchema,
+  clientSecret: z.string().nullable(),
+});
+
+export type CreateOrderResponse = z.infer<typeof CreateOrderResponseSchema>;
+
+// Payload del checkout: identificadores + cliente, NUNCA montos. El backend
+// recalcula totales y descuenta stock por talla de forma atómica.
+export interface CreateOrderPayload {
+  items: Array<{ productId: number; size: number; quantity: number }>;
+  customer: ShippingData;
+  shippingCarrier?: string;
+}
+
+// Query key factory (mismo patrón que productKeys / authKeys). Sin consumo
+// público todavía; la vista de pedidos del admin llega en la Fase 7.
+export const orderKeys = {
+  all: ["orders"] as const,
+};
+
+// Convierte el carrito local en los renglones que espera el backend. `CartItem.id`
+// es un id compuesto de cliente (`"12-28"`); se envía el `product.id` numérico.
+export function buildOrderPayload(
+  items: CartItem[],
+  customer: ShippingData,
+  shippingCarrier?: string
+): CreateOrderPayload {
+  return {
+    items: items.map((item) => ({
+      productId: item.product.id,
+      size: item.size,
+      quantity: item.quantity,
+    })),
+    customer,
+    ...(shippingCarrier ? { shippingCarrier } : {}),
+  };
+}
+
+// El backend respondió 2xx (pedido creado y stock descontado) pero el body no
+// calza con el esquema. Distinto de un fallo de red/validación: NO se debe
+// reintentar, o se crearía un pedido duplicado. La UI muestra un mensaje aparte.
+export class OrderResponseParseError extends Error {
+  constructor() {
+    super("La orden se creó pero la respuesta del servidor no pudo validarse.");
+    this.name = "OrderResponseParseError";
+  }
+}
+
+// POST /api/orders — 409 sin stock / producto no disponible, 400 carrito vacío o
+// datos de cliente inválidos. Los errores propagan a la mutación (no se capturan).
+export async function createOrder(
+  payload: CreateOrderPayload
+): Promise<CreateOrderResponse> {
+  const { data } = await api.post("/orders", payload);
+  // safeParse (no parse): si el pedido ya se creó (2xx) pero la forma derivó,
+  // señalamos un error específico en vez de invitar a reintentar → sin duplicados.
+  const parsed = CreateOrderResponseSchema.safeParse(data);
+  if (!parsed.success) throw new OrderResponseParseError();
+  return parsed.data;
+}

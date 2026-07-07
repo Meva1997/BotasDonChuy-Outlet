@@ -14,9 +14,14 @@ export const api = axios.create({
 
 // Request — adjunta el Bearer token de la sesión a cada petición.
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  // El token se persiste en localStorage (solo cliente): en SSR no hay token que
+  // adjuntar y el catálogo público no lo requiere. Por eso solo se adjunta en el
+  // navegador.
+  if (typeof window !== "undefined") {
+    const token = useAuthStore.getState().token;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
   }
   return config;
 });
@@ -27,9 +32,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // Mismo motivo que en el request: el store/redirección solo aplican en el
+    // navegador (localStorage + window.location no existen en SSR).
+    if (error.response?.status === 401 && typeof window !== "undefined") {
       useAuthStore.getState().logout();
-      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      if (window.location.pathname !== "/login") {
         window.location.assign("/login");
       }
     }
