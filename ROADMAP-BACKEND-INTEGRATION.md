@@ -24,7 +24,7 @@ migración.
 | `GET /api/auth/me` | `components/auth/AdminGuard.tsx` → `getMe()` (valida token + rehidrata `user`) | ✅ | — |
 | `GET /api/products` | `lib/getProducts.ts` → `getProducts()` | ✅ | — |
 | `GET /api/products/:id` | `lib/getProducts.ts` → `getProductById()` | ✅ | — |
-| `POST /api/orders` | `components/checkout/CheckoutContext.tsx` → `completeOrder()` (solo snapshot local) | 🔴 | Postear el carrito antes de confirmar; el backend es autoridad de precios y stock |
+| `POST /api/orders` | `components/checkout/UserDetails.tsx` → `createOrder()` de `lib/api/orders.ts` (`useMutation`); `completeOrder()` congela la respuesta `201` | ✅ | — |
 | `GET /api/admin/products` | `components/admin/ProductSection.tsx` (`MOCK_PRODUCTS`) | 🔴 | `useQuery` → `api.get("/admin/products")` (trae `unitCost` + stock por talla) |
 | `POST /api/admin/products` | `components/admin/ProductForm.tsx` (sin envío a API) | 🔴 | `useMutation` de creación + invalidar query de productos |
 | `PUT /api/admin/products/:id` | `components/admin/ProductForm.tsx` | 🔴 | `useMutation` de edición parcial |
@@ -51,11 +51,18 @@ migración.
 - **Salida:** sesión real de admin; el interceptor `401` cierra sesión y redirige.
 - Contratos y validación Zod centralizados en `lib/api/auth.ts` (patrón `getProducts.ts`).
 
-### Fase 2 — Checkout público *(ruta de ingresos)*
-- `POST /api/orders` — en `completeOrder()`, postear `{ items, customer }` **sin montos**
-  (el backend recalcula totales y descuenta stock por talla). Manejar `409`
-  (sin stock / no disponible) mostrando el ítem en conflicto, y `400` (carrito vacío).
-- El snapshot local sigue alimentando `Success`; solo se congela con la respuesta `201`.
+### Fase 2 — Checkout público ✅ *(ruta de ingresos)*
+- ✅ `POST /api/orders` — `UserDetails` usa `useMutation({ mutationFn: createOrder })`
+  (`lib/api/orders.ts`). `buildOrderPayload()` envía `{ items: [{ productId, size, quantity }],
+  customer }` **sin montos** (el backend recalcula totales y descuenta stock por talla
+  atómicamente). `409` (sin stock / no disponible) muestra el mensaje del backend inline
+  —incluye el ítem en conflicto—, `400` mapea a un mensaje de datos; ambos dejan al
+  usuario en el formulario.
+- El pedido se congela **solo con el `201`**: `completeOrder(customer, order)` guarda
+  `orderId` + los totales autoritativos del servidor en el snapshot que alimenta `Success`
+  (muestra "Pedido #<id>"). El `clientSecret` es `null` hasta Stripe (Fase 8).
+- Contrato validado con Zod en `lib/api/orders.ts` (patrón `getProducts.ts` / `auth.ts`):
+  `OrderResponseSchema` refleja la orden pública (items **sin `unitCost`**).
 
 ### Fase 3 — Admin: catálogo y dashboard
 - `GET /api/admin/products` + CRUD (`POST`/`PUT`/`DELETE`) — `ProductSection`,

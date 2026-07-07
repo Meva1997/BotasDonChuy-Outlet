@@ -92,7 +92,7 @@ Key files: `store/cartStore.ts`, `components/ui/Cart.tsx`, `components/ui/CartPr
 
 ## Authentication
 
-`/admin` is protected by `AdminGuard` (`components/auth/AdminGuard.tsx`): without a session token it redirects to `/login`. The session (`{ token, user }`) lives in `store/authStore.ts` (Zustand + persist). `LoginForm` uses a TanStack Query `useMutation` — currently **mocked** (stores a fake token); swap its `mutationFn` for `api.post("/auth/login", ...)` when the backend is ready. The axios client (`lib/api/client.ts`) attaches `Authorization: Bearer <token>` and, on a `401`, clears the session and redirects to `/login`. Logout lives in the admin **Configuración** section.
+`/admin` is protected by `AdminGuard` (`components/auth/AdminGuard.tsx`): without a session token it redirects to `/login`. The session (`{ token, user }`) lives in `store/authStore.ts` (Zustand + persist). `LoginForm` uses a TanStack Query `useMutation` **connected to the real backend** (`POST /auth/login`); `AdminGuard` also validates the token against `GET /auth/me`. The axios client (`lib/api/client.ts`) attaches `Authorization: Bearer <token>` and, on a `401`, clears the session and redirects to `/login`. Logout lives in the admin **Configuración** section.
 
 Env: set `NEXT_PUBLIC_API_URL` to the backend URL (defaults to `/api`). See `BACKEND.md` for the full API contract.
 
@@ -101,10 +101,10 @@ Env: set `NEXT_PUBLIC_API_URL` to the backend URL (defaults to `/api`). See `BAC
 `/checkout` is a 3-step wizard (state held in React context, resets on refresh):
 
 1. **Resumen** — read-only cart review; requires accepting terms & privacy before continuing.
-2. **Datos de envío** — shipping form validated with react-hook-form + zod (Mexico only). Payment section is a placeholder for future Stripe Elements integration.
-3. **Confirmación** — frozen order snapshot with shipping address.
+2. **Datos de envío** — shipping form validated with react-hook-form + zod (Mexico only). On submit it **posts the order to the backend** (`POST /api/orders` via `createOrder` in `lib/api/orders.ts`): only `{ items: [{ productId, size, quantity }], customer }` is sent — no amounts. The backend recalculates totals and atomically decrements stock; a `409` (out of stock) or `400` keeps the user on the form. Payment section is a placeholder for future Stripe Elements integration.
+3. **Confirmación** — frozen order snapshot (with `Pedido #<id>` and the server's authoritative totals) plus shipping address.
 
-Key files: `app/(public)/checkout/page.tsx`, `components/checkout/`, `schemas/checkout.ts`, `lib/cart.ts`.
+Key files: `app/(public)/checkout/page.tsx`, `components/checkout/`, `schemas/checkout.ts`, `lib/cart.ts`, `lib/api/orders.ts`.
 
 ## Shipping
 

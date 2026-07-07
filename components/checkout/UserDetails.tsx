@@ -1,9 +1,16 @@
 "use client";
 
+import axios from "axios";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
 import { useCartStore } from "@/store/cartStore";
 import { computeTotals } from "@/lib/cart";
+import {
+  createOrder,
+  buildOrderPayload,
+  OrderResponseParseError,
+} from "@/lib/api/orders";
 import {
   shippingSchema,
   MEXICAN_STATES,
@@ -14,6 +21,26 @@ import { TextField, SelectField } from "./FormControls";
 import PaymentSection from "./PaymentSection";
 import OrderTotals from "./OrderTotals";
 
+// Traduce el error de axios en un mensaje para el usuario. El backend responde
+// 409 con el artículo en conflicto en `message` (se muestra tal cual).
+function orderErrorMessage(error: unknown): string {
+  // El pedido SÍ se creó (2xx) pero la respuesta no validó: pedir que reintente
+  // duplicaría el pedido. Se le indica explícitamente que no lo reenvíe.
+  if (error instanceof OrderResponseParseError)
+    return "Tu pedido se registró correctamente, pero no pudimos mostrar la confirmación. No vuelvas a enviarlo; te contactaremos para confirmar los detalles.";
+  if (axios.isAxiosError(error)) {
+    const message = error.response?.data?.message as string | undefined;
+    if (error.response?.status === 409)
+      return (
+        message ??
+        "Uno o más artículos se quedaron sin stock. Revisa tu carrito."
+      );
+    if (error.response?.status === 400)
+      return "Revisa los datos del pedido e inténtalo de nuevo.";
+  }
+  return "No pudimos completar tu pedido. Inténtalo de nuevo.";
+}
+
 export default function UserDetails() {
   const items = useCartStore((s) => s.items);
   const { goToReview, completeOrder } = useCheckout();
@@ -21,16 +48,21 @@ export default function UserDetails() {
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<ShippingData>({
     resolver: zodResolver(shippingSchema),
     mode: "onBlur",
   });
 
-  const onSubmit = handleSubmit(async (data) => {
-    // El cobro real ocurrirá aquí con Stripe. Por ahora simulamos el proceso.
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    completeOrder(data);
+  // POST /api/orders: el backend recalcula totales y descuenta stock. Solo se
+  // congela el snapshot (completeOrder) tras el 201.
+  const mutation = useMutation({ mutationFn: createOrder });
+
+  const onSubmit = handleSubmit((data) => {
+    const payload = buildOrderPayload(items, data);
+    mutation.mutate(payload, {
+      onSuccess: (res) => completeOrder(data, res.order),
+    });
   });
 
   const totals = computeTotals(items);
@@ -161,12 +193,21 @@ export default function UserDetails() {
         <h3 className="font-serif text-lg text-amber-50">Tu pedido</h3>
         <OrderTotals totals={totals} />
 
+        {mutation.isError && (
+          <p
+            role="alert"
+            className="text-[12px] leading-relaxed text-red-400/90 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2"
+          >
+            {orderErrorMessage(mutation.error)}
+          </p>
+        )}
+
         <button
           type="submit"
-          disabled={isSubmitting || items.length === 0}
+          disabled={mutation.isPending || items.length === 0}
           className="btn-shimmer w-full rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)] cursor-pointer disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          {isSubmitting && (
+          {mutation.isPending && (
             <svg
               fill="none"
               aria-hidden="true"
@@ -188,7 +229,7 @@ export default function UserDetails() {
               />
             </svg>
           )}
-          {isSubmitting ? "Procesando…" : "Pagar y confirmar"}
+          {mutation.isPending ? "Procesando…" : "Pagar y confirmar"}
         </button>
 
         <button

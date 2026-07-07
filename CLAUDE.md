@@ -65,6 +65,7 @@ lib/
   api/
     client.ts     # instancia axios (baseURL NEXT_PUBLIC_API_URL ?? /api) + interceptors: request adjunta Bearer del authStore, response cierra sesión y va a /login en 401
     auth.ts       # contratos de auth (patrón getProducts): schemas Zod + login()/forgotPassword()/getMe() + authKeys. Fuente única del tipo AuthUser ({ id, name, email, role }). YA conectado al backend (POST /auth/login, POST /auth/forgot-password, GET /auth/me)
+    orders.ts     # contrato del checkout (patrón getProducts): OrderResponseSchema (Zod, items SIN unitCost) + buildOrderPayload(items, customer) + createOrder() + orderKeys. YA conectado (POST /api/orders): envía { items, customer } sin montos; el backend recalcula totales y descuenta stock por talla
   getProducts.ts  # getProducts(filters), getProductById(id) — YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible). 404 → null. El storefront ya no usa mocks; db/mockProducts sigue vivo solo para el admin.
   cart.ts         # computeTotals(items) — pure subtotal/savings/total helper
   motion.ts       # variantes framer-motion compartidas (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
@@ -111,8 +112,8 @@ Env: `NEXT_PUBLIC_API_URL` apunta al backend (sin definir → `/api`). No commit
 `/checkout` is a 3-step wizard. Step state is held in a React context (`components/checkout/CheckoutContext.tsx`, scoped via `CheckoutProvider` in the page — not persisted, so a refresh restarts at step 0):
 
 1. **Resumen** (`OrderSummary`) — read-only cart review + **required** terms & privacy checkbox; "Continuar" is disabled until accepted.
-2. **Datos de envío** (`UserDetails`) — shipping form validated with `react-hook-form` + `zodResolver` against `schemas/checkout.ts`. Shipping is restricted to Mexico via the `MEXICAN_STATES` enum. Payment (`PaymentSection`) is a presentational placeholder to be replaced by **Stripe Elements** later — its fields are not validated or submitted. On submit, `completeOrder()` snapshots the cart + totals + customer into the context, clears the Zustand cart, and advances.
-3. **Confirmación** (`Success`) — renders the frozen order snapshot + shipping address.
+2. **Datos de envío** (`UserDetails`) — shipping form validated with `react-hook-form` + `zodResolver` against `schemas/checkout.ts`. Shipping is restricted to Mexico via the `MEXICAN_STATES` enum. Payment (`PaymentSection`) is a presentational placeholder to be replaced by **Stripe Elements** later — its fields are not validated or submitted. On submit **postea el pedido al backend** vía `useMutation({ mutationFn: createOrder })` (`lib/api/orders.ts`): `buildOrderPayload()` envía `{ items: [{ productId, size, quantity }], customer }` **sin montos** (el backend recalcula totales y descuenta stock por talla atómicamente). Errores mapeados: `409` (sin stock / no disponible) muestra el mensaje del backend inline, `400` un mensaje de datos; el usuario permanece en el formulario. Solo tras el `201` se llama `completeOrder(customer, order)`, que congela el snapshot (con `orderId` + los **totales autoritativos del servidor**), vacía el carrito y avanza.
+3. **Confirmación** (`Success`) — renders the frozen order snapshot (con "Pedido #<id>") + shipping address.
 
 Shared, prop-driven pieces: `Stepper` (wizard indicator), `OrderItems`, `OrderTotals`, and `FormControls` (`TextField`/`SelectField` — `forwardRef` inputs that take RHF `register()` spread + an `error` string).
 
