@@ -2,15 +2,18 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { AuthUser } from "@/lib/api/auth";
 
-export interface AuthUser {
-  email: string;
-}
+// `AuthUser` ({ id, name, email, role }) es la forma que devuelve el backend;
+// vive en lib/api/auth.ts como schema Zod. Import de solo-tipo → sin ciclo en
+// runtime (client → authStore, auth → client).
+export type { AuthUser };
 
 interface AuthStore {
   token: string | null;
   user: AuthUser | null;
   login: (token: string, user: AuthUser) => void;
+  setUser: (user: AuthUser) => void;
   logout: () => void;
   isAuthenticated: () => boolean;
 }
@@ -30,6 +33,7 @@ export const useAuthStore = create<AuthStore>()(
       user: null,
 
       login: (token, user) => set({ token, user }),
+      setUser: (user) => set({ user }),
       logout: () => set({ token: null, user: null }),
       isAuthenticated: () => !!get().token,
     }),
