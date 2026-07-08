@@ -51,8 +51,8 @@ components/
   providers/      # QueryProvider — QueryClientProvider de TanStack Query (montado en root layout)
   admin/          # Panel de administración — secciones completas:
                   #   MarcaSection — editor de identidad de marca (logo, colores, copy)
-                  #   ProductSection — gestión de catálogo (ProductForm, ProductCategoryView)
-                  #   DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable)
+                  #   ProductSection — gestión de catálogo (ProductForm, ProductCategoryView). YA conectado al backend vía lib/api/adminProducts (useQuery lista + useMutation CRUD)
+                  #   DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable). YA conectado vía lib/api/dashboard (GET /api/admin/dashboard)
                   #   ReportesSection — análisis mensual con pestañas Ventas / Reposición + selector de mes
                   #   ConfigSection — ajustes generales de la tienda
                   #   data/ — subcomponentes de gráficas y tablas (recharts) + types.ts (contratos de datos del admin)
@@ -66,7 +66,9 @@ lib/
     client.ts     # instancia axios (baseURL NEXT_PUBLIC_API_URL ?? /api) + interceptors: request adjunta Bearer del authStore, response cierra sesión y va a /login en 401
     auth.ts       # contratos de auth (patrón getProducts): schemas Zod + login()/forgotPassword()/getMe() + authKeys. Fuente única del tipo AuthUser ({ id, name, email, role }). YA conectado al backend (POST /auth/login, POST /auth/forgot-password, GET /auth/me)
     orders.ts     # contrato del checkout (patrón getProducts): OrderResponseSchema (Zod, items SIN unitCost) + buildOrderPayload(items, customer) + createOrder() + orderKeys. YA conectado (POST /api/orders): envía { items, customer } sin montos; el backend recalcula totales y descuenta stock por talla
-  getProducts.ts  # getProducts(filters), getProductById(id) — YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible). 404 → null. El storefront ya no usa mocks; db/mockProducts sigue vivo solo para el admin.
+    adminProducts.ts # contrato del catálogo admin (patrón getProducts): AdminProductSchema (SÍ trae unitCost) + adminProductKeys + getAdminProducts()/createProduct()/updateProduct()/deleteProduct(). YA conectado (GET/POST/PUT/DELETE /api/admin/products). AdminProductInput manda sizes como CSV donde repetir talla = unidades de stock (el backend agrupa en filas ProductSize)
+    dashboard.ts  # contrato de métricas admin (patrón getProducts): DashboardSchema (Zod, valida la forma de components/admin/data/types.ts) + dashboardKeys + getAdminDashboard(). YA conectado (GET /api/admin/dashboard)
+  getProducts.ts  # getProducts(filters), getProductById(id) — YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible). 404 → null. El storefront ya no usa mocks; db/mockProducts sigue vivo solo para el admin (reportes).
   cart.ts         # computeTotals(items) — pure subtotal/savings/total helper
   motion.ts       # variantes framer-motion compartidas (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
   forecast.ts     # computeForecast(monthlySales) — pronóstico de demanda auto-escalado por nº de meses
@@ -260,7 +262,7 @@ Ambos reportes exportan CSV con un helper `csvField()` (escapado RFC 4180: envue
 
 ## Backend (Express.js) — contrato base
 
-El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El catálogo del storefront ya está conectado**: `lib/getProducts.ts` consume `GET /api/products` y `GET /api/products/{id}` (ver "Auth & data fetching"). El **admin** (`components/admin/*`, `db/mockData.ts`) todavía lee de mocks en `db/` — pendiente de migrar a las rutas `/api/admin/*`. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `db/mockProducts.ts`); mientras los contratos se respeten, los componentes no cambian.
+El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El catálogo del storefront y el admin de catálogo + dashboard ya están conectados**: `lib/getProducts.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`) y `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`). Lo que **todavía lee de mocks** es la sección **Reportes** (`ReportesSection`, `db/mockData.ts` → `MOCK_MONTHLY_REPORTS`/`MOCK_REPLENISHMENT`) — pendiente en la Fase 4; por eso `db/mockProducts.ts` y `db/mockData.ts` siguen vivos. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `db/mockProducts.ts`); mientras los contratos se respeten, los componentes no cambian.
 
 > **Principio:** la lógica de negocio (forecast, reposición, totales de carrito, envío) ya está en `lib/` como funciones puras que reciben números. El backend solo debe **persistir y servir los datos crudos**; puede reusar esa misma lógica o reimplementarla. La única matriz "fuente de verdad" es ventas-por-mes-por-producto.
 
