@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Sidebar from "@/components/ui/Sidebar";
 import MarcaSection from "@/components/admin/MarcaSection";
 import ProductSection from "@/components/admin/ProductSection";
@@ -15,15 +16,39 @@ export type AdminSection =
   | "reportes"
   | "configuracion";
 
+const VALID_SECTIONS: AdminSection[] = [
+  "marca",
+  "productos",
+  "datos",
+  "reportes",
+  "configuracion",
+];
+
 export default function AdminPage() {
-  const [active, setActive] = useState<AdminSection>("datos");
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // La sección activa vive en la URL (?seccion=...) para sobrevivir al refresh.
+  // Param inválido o ausente → "datos".
+  const param = searchParams.get("seccion");
+  const active: AdminSection = VALID_SECTIONS.includes(param as AdminSection)
+    ? (param as AdminSection)
+    : "datos";
+
+  const handleChange = (section: AdminSection) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("seccion", section);
+    // Al salir de una sección se descarta su sub-vista (categoría de Productos).
+    params.delete("categoria");
+    router.push(`?${params.toString()}`);
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
       <Sidebar
         active={active}
-        onChange={setActive}
+        onChange={handleChange}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />

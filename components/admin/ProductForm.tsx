@@ -1,37 +1,87 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import axios from "axios";
 import Image from "next/image";
 import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { MockProduct } from "@/db/mockProducts";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  adminProductKeys,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  type AdminProduct,
+  type AdminProductInput,
+} from "@/lib/api/adminProducts";
 import { CATEGORIES, type CategoryInfo } from "@/lib/categories";
 
 interface Props {
   category: CategoryInfo;
-  product?: MockProduct;
+  product?: AdminProduct;
   onBack: () => void;
 }
+
+// Tallas se capturan como texto CSV donde repetir una talla suma unidades de
+// stock ("25, 26, 26" → talla 26 con 2 unidades). Este helper extrae las tallas
+// válidas (enteros positivos); su longitud es el stock total derivado.
+function parseSizes(raw: string): number[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0);
+}
+
+// Campo numérico ≥ 0. Un input vaciado (valueAsNumber) llega como NaN, que Zod
+// rechaza a nivel de tipo; damos un mensaje en español (el default es inglés)
+// sin perder el de `.nonnegative`, que es más específico y gana para su check.
+const nonNegNumber = z
+  .number({ error: "Ingresa un número válido" })
+  .nonnegative("Debe ser ≥ 0");
 
 const productSchema = z
   .object({
     name: z.string().min(1, "El nombre es requerido"),
     visible: z.boolean(),
     type: z.enum(["bota", "sombrero", "ropa"]),
-    originalPrice: z.number().nonnegative("Debe ser ≥ 0"),
-    salePrice: z.number().nonnegative("Debe ser ≥ 0"),
-    stock: z.number().int().nonnegative("Debe ser ≥ 0"),
+    originalPrice: nonNegNumber,
+    salePrice: nonNegNumber,
+    unitCost: nonNegNumber,
     sizes: z.string(),
+    code: z.string(),
+    weightKg: nonNegNumber,
+    lengthCm: nonNegNumber,
+    widthCm: nonNegNumber,
+    heightCm: nonNegNumber,
     description: z.string(),
     imageUrl: z.string().nullable(),
   })
   .refine((d) => d.salePrice <= d.originalPrice, {
     message: "El precio outlet no puede superar el precio original",
     path: ["salePrice"],
+  })
+  .refine((d) => parseSizes(d.sizes).length >= 1, {
+    message: "Agrega al menos una talla",
+    path: ["sizes"],
   });
 
 type ProductFormData = z.infer<typeof productSchema>;
+
+// Traduce el error de axios en un mensaje para el usuario. El backend responde
+// 400 con el detalle en `message` (p. ej. salePrice > originalPrice).
+function productErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const message = error.response?.data?.message as string | undefined;
+    if (error.response?.status === 400)
+      return message ?? "Revisa los datos del producto e inténtalo de nuevo.";
+    if (error.response?.status === 404)
+      return "El producto ya no existe. Vuelve al listado.";
+  }
+  return "No pudimos guardar el producto. Inténtalo de nuevo.";
+}
 
 const inputCls =
   "w-full bg-stone-800/80 border border-stone-700/60 px-3 py-2.5 " +
@@ -80,23 +130,30 @@ function CrosshatchPlaceholder() {
 export default function ProductForm({ category, product, onBack }: Props) {
   const isEditing = !!product;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const queryClient = useQueryClient();
 
   const {
     register,
     control,
     handleSubmit,
     setValue,
-    formState: { errors, isSubmitting, isSubmitSuccessful },
+    formState: { errors },
   } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
     defaultValues: {
       name: product?.name ?? "Nueva pieza",
-      visible: true,
+      visible: product?.visible ?? true,
       type: (product?.type ?? category.type) as ProductFormData["type"],
       originalPrice: product?.originalPrice ?? 1000,
       salePrice: product?.salePrice ?? 400,
-      stock: product?.stock ?? 1,
+      unitCost: product?.unitCost ?? 0,
       sizes: product?.sizes?.join(", ") ?? "",
+      code: product?.code ?? "",
+      weightKg: product?.weightKg ?? 0,
+      lengthCm: product?.lengthCm ?? 0,
+      widthCm: product?.widthCm ?? 0,
+      heightCm: product?.heightCm ?? 0,
       description: product?.description ?? "",
       imageUrl: product?.imageSrc ?? null,
     },
@@ -106,31 +163,63 @@ export default function ProductForm({ category, product, onBack }: Props) {
   const salePrice = useWatch({ control, name: "salePrice" });
   const imageUrl = useWatch({ control, name: "imageUrl" });
   const name = useWatch({ control, name: "name" });
+  const sizesValue = useWatch({ control, name: "sizes" });
 
   const orig = Number(originalPrice) || 0;
   const sale = Number(salePrice) || 0;
   const discount = orig > 0 ? Math.round(((orig - sale) / orig) * 100) : 0;
+  // Stock derivado de las tallas repetidas (fuente única; el backend lo calcula igual).
+  const derivedStock = parseSizes(sizesValue || "").length;
+
+  // Persistencia real: crear o editar según el modo. Se envía `sizes` como CSV
+  // (repetición = stock); el backend agrupa en filas ProductSize y recalcula stock.
+  const mutation = useMutation({
+    mutationFn: (input: AdminProductInput) =>
+      isEditing ? updateProduct(product.id, input) : createProduct(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminProductKeys.all });
+      onBack();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteProduct(product!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminProductKeys.all });
+      onBack();
+    },
+  });
 
   function handleImageFile(file: File) {
     if (!file.type.startsWith("image/")) return;
     setValue("imageUrl", URL.createObjectURL(file));
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  function onSubmit(_data: ProductFormData) {
-    // TODO: persist to backend
-  }
+  const onSubmit = handleSubmit((data) => {
+    const input: AdminProductInput = {
+      name: data.name,
+      description: data.description || undefined,
+      originalPrice: data.originalPrice,
+      salePrice: data.salePrice,
+      unitCost: data.unitCost,
+      type: data.type,
+      sizes: data.sizes,
+      imageSrc: data.imageUrl ?? undefined,
+      code: data.code || undefined,
+      weightKg: data.weightKg,
+      lengthCm: data.lengthCm,
+      widthCm: data.widthCm,
+      heightCm: data.heightCm,
+      visible: data.visible,
+    };
+    mutation.mutate(input);
+  });
 
   const breadcrumbThird = isEditing ? product.name : "Nueva pieza";
-
-  const saveLabel = isSubmitting
-    ? "Guardando…"
-    : isSubmitSuccessful
-      ? "Guardado"
-      : null;
+  const isBusy = mutation.isPending || deleteMutation.isPending;
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
+    <form onSubmit={onSubmit}>
       {/* Breadcrumb */}
       <nav className="mb-7 flex items-center gap-2.5 flex-wrap">
         <button
@@ -160,15 +249,9 @@ export default function ProductForm({ category, product, onBack }: Props) {
           <h2 className="font-serif text-amber-50 text-3xl">
             {isEditing ? "Editar producto" : "Agregar producto"}
           </h2>
-          {isSubmitting && (
+          {mutation.isPending && (
             <span className="text-[9px] tracking-[0.2em] uppercase text-amber-100/30">
               Guardando…
-            </span>
-          )}
-          {isSubmitSuccessful && !isSubmitting && (
-            <span className="flex items-center gap-1.5 text-[9px] tracking-[0.2em] uppercase text-amber-400/60">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400/60 inline-block" />
-              Guardado
             </span>
           )}
         </div>
@@ -287,14 +370,38 @@ export default function ProductForm({ category, product, onBack }: Props) {
               )}
             />
 
-            {isEditing && (
-              <button
-                type="button"
-                className="border border-amber-400/50 text-amber-400/80 text-[10px] tracking-[0.2em] uppercase px-4 py-2 hover:bg-amber-400/10 transition-all cursor-pointer"
-              >
-                Eliminar
-              </button>
-            )}
+            {isEditing &&
+              (confirmDelete ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] tracking-[0.15em] uppercase text-amber-100/45">
+                    {deleteMutation.isPending ? "Eliminando…" : "¿Eliminar?"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={deleteMutation.isPending}
+                    className="text-[10px] tracking-[0.2em] uppercase text-red-400/80 hover:text-red-400 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Sí
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={deleteMutation.isPending}
+                    className="text-[10px] tracking-[0.2em] uppercase text-amber-100/35 hover:text-amber-100/70 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    No
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="border border-amber-400/50 text-amber-400/80 text-[10px] tracking-[0.2em] uppercase px-4 py-2 hover:bg-amber-400/10 transition-all cursor-pointer"
+                >
+                  Eliminar
+                </button>
+              ))}
           </div>
         </div>
 
@@ -331,6 +438,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
                 id="field-original"
                 type="number"
                 min={0}
+                step="any"
                 {...register("originalPrice", { valueAsNumber: true })}
                 className={inputCls}
               />
@@ -348,6 +456,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
                 id="field-sale"
                 type="number"
                 min={0}
+                step="any"
                 {...register("salePrice", { valueAsNumber: true })}
                 className={inputCls}
               />
@@ -364,21 +473,15 @@ export default function ProductForm({ category, product, onBack }: Props) {
               </div>
             </div>
 
-            {/* Existencias */}
+            {/* Existencias (derivado de las tallas) */}
             <div>
-              <label htmlFor="field-stock" className={labelCls}>
-                Existencias
-              </label>
-              <input
-                id="field-stock"
-                type="number"
-                min={0}
-                {...register("stock", { valueAsNumber: true })}
-                className={inputCls}
-              />
-              {errors.stock && (
-                <p className={errorCls}>{errors.stock.message}</p>
-              )}
+              <label className={labelCls}>Existencias</label>
+              <div
+                className={`${inputCls} text-amber-100/60 select-none tabular-nums`}
+                title="Se calcula de las tallas capturadas (repetir una talla suma unidades)"
+              >
+                {derivedStock}
+              </div>
             </div>
           </div>
 
@@ -393,19 +496,141 @@ export default function ProductForm({ category, product, onBack }: Props) {
         {/* Divider */}
         <div className="border-t border-stone-700/40" />
 
+        {/* Costo y empaque */}
+        <div>
+          <p className="text-[10px] tracking-[0.25em] uppercase text-amber-100/30 mb-4">
+            Costo y empaque
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {/* Costo unitario */}
+            <div>
+              <label htmlFor="field-unitcost" className={labelCls}>
+                Costo unit.
+              </label>
+              <input
+                id="field-unitcost"
+                type="number"
+                min={0}
+                step="any"
+                {...register("unitCost", { valueAsNumber: true })}
+                className={inputCls}
+              />
+              {errors.unitCost && (
+                <p className={errorCls}>{errors.unitCost.message}</p>
+              )}
+            </div>
+
+            {/* Código / SKU */}
+            <div>
+              <label htmlFor="field-code" className={labelCls}>
+                Código
+              </label>
+              <input
+                id="field-code"
+                type="text"
+                placeholder="SKU"
+                {...register("code")}
+                className={inputCls}
+              />
+            </div>
+
+            {/* Peso */}
+            <div>
+              <label htmlFor="field-weight" className={labelCls}>
+                Peso (kg)
+              </label>
+              <input
+                id="field-weight"
+                type="number"
+                min={0}
+                step="any"
+                {...register("weightKg", { valueAsNumber: true })}
+                className={inputCls}
+              />
+              {errors.weightKg && (
+                <p className={errorCls}>{errors.weightKg.message}</p>
+              )}
+            </div>
+
+            {/* Largo */}
+            <div>
+              <label htmlFor="field-length" className={labelCls}>
+                Largo (cm)
+              </label>
+              <input
+                id="field-length"
+                type="number"
+                min={0}
+                step="any"
+                {...register("lengthCm", { valueAsNumber: true })}
+                className={inputCls}
+              />
+              {errors.lengthCm && (
+                <p className={errorCls}>{errors.lengthCm.message}</p>
+              )}
+            </div>
+
+            {/* Ancho */}
+            <div>
+              <label htmlFor="field-width" className={labelCls}>
+                Ancho (cm)
+              </label>
+              <input
+                id="field-width"
+                type="number"
+                min={0}
+                step="any"
+                {...register("widthCm", { valueAsNumber: true })}
+                className={inputCls}
+              />
+              {errors.widthCm && (
+                <p className={errorCls}>{errors.widthCm.message}</p>
+              )}
+            </div>
+
+            {/* Alto */}
+            <div>
+              <label htmlFor="field-height" className={labelCls}>
+                Alto (cm)
+              </label>
+              <input
+                id="field-height"
+                type="number"
+                min={0}
+                step="any"
+                {...register("heightCm", { valueAsNumber: true })}
+                className={inputCls}
+              />
+              {errors.heightCm && (
+                <p className={errorCls}>{errors.heightCm.message}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-stone-700/40" />
+
         {/* Tallas + Descripción */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div>
             <label htmlFor="field-sizes" className={labelCls}>
-              Tallas (separadas por coma)
+              Tallas — repite una talla para sumar unidades
             </label>
             <input
               id="field-sizes"
               type="text"
-              placeholder="25, 26, 27, 28"
+              placeholder="25, 26, 26, 27"
               {...register("sizes")}
               className={inputCls}
             />
+            {errors.sizes ? (
+              <p className={errorCls}>{errors.sizes.message}</p>
+            ) : (
+              <p className="mt-1 text-[11px] text-amber-100/30">
+                Ej. «25, 26, 26» = 1 unidad de la 25 y 2 de la 26 · {derivedStock} en total
+              </p>
+            )}
           </div>
 
           <div>
@@ -422,16 +647,34 @@ export default function ProductForm({ category, product, onBack }: Props) {
           </div>
         </div>
 
+        {/* Error de guardado */}
+        {mutation.isError && (
+          <p
+            role="alert"
+            className="text-[12px] leading-relaxed text-red-400/90 border border-red-500/30 bg-red-500/5 rounded-md px-4 py-2.5"
+          >
+            {productErrorMessage(mutation.error)}
+          </p>
+        )}
+        {deleteMutation.isError && (
+          <p
+            role="alert"
+            className="text-[12px] leading-relaxed text-red-400/90 border border-red-500/30 bg-red-500/5 rounded-md px-4 py-2.5"
+          >
+            {productErrorMessage(deleteMutation.error)}
+          </p>
+        )}
+
         {/* Save button */}
         <div className="flex justify-end pt-2">
-          {saveLabel && (
+          {mutation.isPending && (
             <span className="self-center mr-4 text-[9px] tracking-[0.2em] uppercase text-amber-100/40">
-              {saveLabel}
+              Guardando…
             </span>
           )}
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isBusy}
             className="border border-amber-400/60 text-amber-400 text-[10px] tracking-[0.25em] uppercase px-8 py-3 hover:bg-amber-400/10 transition-colors cursor-pointer disabled:opacity-50"
           >
             {isEditing ? "Guardar cambios" : "Crear producto"}

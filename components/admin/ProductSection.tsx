@@ -1,20 +1,75 @@
 "use client";
 
-import { useState } from "react";
-import { MOCK_PRODUCTS } from "@/db/mockProducts";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { adminProductKeys, getAdminProducts } from "@/lib/api/adminProducts";
 import { CATEGORIES, type CategoryInfo } from "@/lib/categories";
 import ProductCategoryView from "./ProductCategoryView";
 
 export default function ProductSection() {
-  const [selected, setSelected] = useState<CategoryInfo | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // La categoría abierta vive en la URL (?categoria=bota) para sobrevivir al refresh.
+  const categoriaParam = searchParams.get("categoria");
+  const selected = categoriaParam
+    ? CATEGORIES.find((c) => c.type === categoriaParam) ?? null
+    : null;
+
+  const selectCategory = (cat: CategoryInfo | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (cat) {
+      params.set("categoria", cat.type);
+    } else {
+      params.delete("categoria");
+    }
+    router.push(`?${params.toString()}`);
+  };
+
+  // Una sola query trae el catálogo admin completo; el filtrado por categoría se
+  // hace en memoria (mismo modelo que antes con MOCK_PRODUCTS, ahora desde el backend).
+  const {
+    data: allProducts,
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: adminProductKeys.all,
+    queryFn: getAdminProducts,
+  });
+
+  if (isPending) {
+    return (
+      <p className="text-amber-100/40 text-sm tracking-[0.15em] uppercase">
+        Cargando catálogo…
+      </p>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="max-w-md space-y-4">
+        <p className="text-red-400/90 text-sm border border-red-500/30 bg-red-500/5 rounded-md px-4 py-3">
+          No pudimos cargar el catálogo. Revisa tu conexión e inténtalo de nuevo.
+        </p>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="border border-amber-400/60 text-amber-400 text-[10px] tracking-[0.25em] uppercase px-6 py-2.5 hover:bg-amber-400/10 transition-colors cursor-pointer"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
 
   if (selected) {
-    const products = MOCK_PRODUCTS.filter((p) => p.type === selected.type);
+    const products = allProducts.filter((p) => p.type === selected.type);
     return (
       <ProductCategoryView
         category={selected}
         products={products}
-        onBack={() => setSelected(null)}
+        onBack={() => selectCategory(null)}
       />
     );
   }
@@ -32,13 +87,13 @@ export default function ProductSection() {
       {/* Category grid */}
       <section className="grid sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 max-w-6xl">
         {CATEGORIES.map((cat) => {
-          const products = MOCK_PRODUCTS.filter((p) => p.type === cat.type);
+          const products = allProducts.filter((p) => p.type === cat.type);
           const totalStock = products.reduce((acc, p) => acc + p.stock, 0);
 
           return (
             <button
               key={cat.type}
-              onClick={() => setSelected(cat)}
+              onClick={() => selectCategory(cat)}
               className="group bg-stone-900 border border-amber-400/15 p-6 text-left hover:border-amber-400/40 hover:bg-stone-800/70 transition-all duration-200 cursor-pointer"
             >
               <div className="flex items-start justify-between mb-5">

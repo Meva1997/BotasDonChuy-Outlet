@@ -25,11 +25,11 @@ migración.
 | `GET /api/products` | `lib/getProducts.ts` → `getProducts()` | ✅ | — |
 | `GET /api/products/:id` | `lib/getProducts.ts` → `getProductById()` | ✅ | — |
 | `POST /api/orders` | `components/checkout/UserDetails.tsx` → `createOrder()` de `lib/api/orders.ts` (`useMutation`); `completeOrder()` congela la respuesta `201` | ✅ | — |
-| `GET /api/admin/products` | `components/admin/ProductSection.tsx` (`MOCK_PRODUCTS`) | 🔴 | `useQuery` → `api.get("/admin/products")` (trae `unitCost` + stock por talla) |
-| `POST /api/admin/products` | `components/admin/ProductForm.tsx` (sin envío a API) | 🔴 | `useMutation` de creación + invalidar query de productos |
-| `PUT /api/admin/products/:id` | `components/admin/ProductForm.tsx` | 🔴 | `useMutation` de edición parcial |
-| `DELETE /api/admin/products/:id` | `components/admin/ProductCategoryView.tsx` (sin acción) | 🔴 | `useMutation` de borrado (soft/hard lo decide el backend) |
-| `GET /api/admin/dashboard` | `components/admin/DataSection.tsx` (`MOCK_DASHBOARD`) | 🔴 | `useQuery` → `api.get("/admin/dashboard")` |
+| `GET /api/admin/products` | `components/admin/ProductSection.tsx` → `getAdminProducts()` de `lib/api/adminProducts.ts` (`useQuery`) | ✅ | — |
+| `POST /api/admin/products` | `components/admin/ProductForm.tsx` → `createProduct()` (`useMutation` + invalidación) | ✅ | — |
+| `PUT /api/admin/products/:id` | `components/admin/ProductForm.tsx` → `updateProduct()` (`useMutation`) | ✅ | — |
+| `DELETE /api/admin/products/:id` | `ProductCategoryView.tsx` / `ProductForm.tsx` → `deleteProduct()` (`useMutation`; soft/hard lo decide el backend) | ✅ | — |
+| `GET /api/admin/dashboard` | `components/admin/DataSection.tsx` → `getAdminDashboard()` de `lib/api/dashboard.ts` (`useQuery`) | ✅ | — |
 | `GET /api/admin/reports/monthly` | `components/admin/ReportesSection.tsx`, `reportes/SalesReport.tsx` (`MOCK_MONTHLY_REPORTS`) | 🔴 | `useQuery` → `api.get("/admin/reports/monthly")` |
 | `GET /api/admin/reports/replenishment` | `components/admin/reportes/ReplenishmentReport.tsx` (`MOCK_REPLENISHMENT`) | 🔴 | `useQuery` → `api.get("/admin/reports/replenishment")` |
 | `GET /api/admin/brand` | `lib/brand.ts` (`BRAND` estático) — storefront (`Hero`, footer…) + `MarcaSection` | 🔴 | Hidratar la marca desde la API (lectura pública); `BRAND` queda como fallback |
@@ -64,11 +64,23 @@ migración.
 - Contrato validado con Zod en `lib/api/orders.ts` (patrón `getProducts.ts` / `auth.ts`):
   `OrderResponseSchema` refleja la orden pública (items **sin `unitCost`**).
 
-### Fase 3 — Admin: catálogo y dashboard
-- `GET /api/admin/products` + CRUD (`POST`/`PUT`/`DELETE`) — `ProductSection`,
-  `ProductForm`, `ProductCategoryView`. Usar `useMutation` con invalidación de la query.
-- `GET /api/admin/dashboard` — `DataSection`.
-- Al terminar, retirar `db/mockProducts.ts` y `MOCK_DASHBOARD` de estos componentes.
+### Fase 3 — Admin: catálogo y dashboard ✅
+- ✅ `GET /api/admin/products` + CRUD (`POST`/`PUT`/`DELETE`) — contratos centralizados en
+  `lib/api/adminProducts.ts` (patrón `getProducts.ts`): `AdminProductSchema` (incluye `unitCost`),
+  `adminProductKeys`, `getAdminProducts()`/`createProduct()`/`updateProduct()`/`deleteProduct()`.
+  `ProductSection` lista con `useQuery`; `ProductForm` crea/edita con `useMutation` + invalidación;
+  `ProductCategoryView` y `ProductForm` borran con confirmación inline (soft/hard lo decide el backend).
+- ✅ `GET /api/admin/dashboard` — `DataSection` con `useQuery` → `getAdminDashboard()`
+  (`lib/api/dashboard.ts`, `DashboardSchema` valida la forma de `data/types.ts`).
+- **Tallas/stock**: el form captura tallas como CSV donde la repetición = unidades
+  (`"25,26,26"` → talla 26 con 2). "Existencias" es un total derivado de solo lectura; el
+  backend agrupa en filas `ProductSize` y recalcula stock. `ProductForm` ahora captura los campos
+  que el backend exige: `unitCost` + dimensiones de empaque + `code`.
+- Los imports de mocks se retiraron de `ProductSection`/`DataSection`. **`db/mockProducts.ts` y
+  `db/mockData.ts` siguen vivos** porque la sección Reportes (Fase 4) aún depende de ellos; se
+  limpian al cerrar la Fase 4.
+- **Imagen (pendiente)**: no hay endpoint de subida en el contrato; el form envía `imageSrc` como
+  string (las previews `blob:` locales no persisten). Upload real con Cloudinary = trabajo futuro.
 
 ### Fase 4 — Admin: reportes
 - `GET /api/admin/reports/monthly` — `ReportesSection` + `SalesReport`.
