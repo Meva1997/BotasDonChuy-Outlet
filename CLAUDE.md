@@ -56,11 +56,7 @@ components/
                   #   ReportesSection — análisis mensual con pestañas Ventas / Reposición + selector de mes
                   #   ConfigSection — ajustes generales de la tienda
                   #   data/ — subcomponentes de gráficas y tablas (recharts) + types.ts (contratos de datos del admin)
-                  #   reportes/ — SalesReport (histórico por mes) y ReplenishmentReport (forecast + pedido sugerido)
-db/
-  mockProducts.ts # MockProduct interface + MOCK_PRODUCTS array
-  mockData.ts     # Datos de ejemplo del admin: KPIs, ingresos, inventario, ventas mensuales y reposición.
-                  #   Deriva MOCK_MONTHLY_REPORTS y MOCK_REPLENISHMENT desde MONTHLY_UNIT_SALES + MOCK_PRODUCTS
+                  #   reportes/ — SalesReport (histórico por mes) y ReplenishmentReport (forecast + pedido sugerido). YA conectados vía lib/api/reports (GET /api/admin/reports/*)
 lib/
   api/
     client.ts     # instancia axios (baseURL NEXT_PUBLIC_API_URL ?? /api) + interceptors: request adjunta Bearer del authStore, response cierra sesión y va a /login en 401
@@ -68,10 +64,10 @@ lib/
     orders.ts     # contrato del checkout (patrón getProducts): OrderResponseSchema (Zod, items SIN unitCost) + buildOrderPayload(items, customer) + createOrder() + orderKeys. YA conectado (POST /api/orders): envía { items, customer } sin montos; el backend recalcula totales y descuenta stock por talla
     adminProducts.ts # contrato del catálogo admin (patrón getProducts): AdminProductSchema (SÍ trae unitCost) + adminProductKeys + getAdminProducts()/createProduct()/updateProduct()/deleteProduct(). YA conectado (GET/POST/PUT/DELETE /api/admin/products). AdminProductInput manda sizes como CSV donde repetir talla = unidades de stock (el backend agrupa en filas ProductSize)
     dashboard.ts  # contrato de métricas admin (patrón getProducts): DashboardSchema (Zod, valida la forma de components/admin/data/types.ts) + dashboardKeys + getAdminDashboard(). YA conectado (GET /api/admin/dashboard)
-  getProducts.ts  # getProducts(filters), getProductById(id) — YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible). 404 → null. El storefront ya no usa mocks; db/mockProducts sigue vivo solo para el admin (reportes).
+    reports.ts    # contrato de reportes admin (patrón getProducts): MonthlyReportSchema/ReplenishmentRowSchema (Zod, reflejan components/admin/data/types.ts) + reportKeys + getMonthlyReport()/getReplenishmentReport(). YA conectado (GET /api/admin/reports/monthly, GET /api/admin/reports/replenishment). Ambos endpoints devuelven un array plano ya derivado/ordenado por el backend
+  getProducts.ts  # getProducts(filters), getProductById(id) — YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible). 404 → null. El storefront ya no usa mocks (db/ eliminado en la Fase 4).
   cart.ts         # computeTotals(items) — pure subtotal/savings/total helper
   motion.ts       # variantes framer-motion compartidas (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
-  forecast.ts     # computeForecast(monthlySales) — pronóstico de demanda auto-escalado por nº de meses
   brand.ts        # BRAND — fuente única de identidad/copy de marca (nombre, email, hero, tagline, cartNotice…). Defaults de MarcaSection y textos del storefront salen de aquí
   categories.ts   # CATEGORIES + CategoryInfo/ProductType + categoryPlural()/categorySingular() — fuente única de categorías y etiquetas (antes duplicadas en ~10 archivos)
   utils/
@@ -213,27 +209,26 @@ Insertar un paso entre "Datos de envío" y "Confirmación":
 
 ## Reportes, forecast y reposición
 
-La sección **Reportes** (`components/admin/ReportesSection.tsx`) tiene dos pestañas que comparten **una sola fuente de datos** y están encadenadas: el reporte de ventas alimenta al de reposición.
+La sección **Reportes** (`components/admin/ReportesSection.tsx`) tiene dos pestañas encadenadas: el reporte de ventas (histórico) alimenta al de reposición (forecast). **Ambas consumen el backend real** vía `lib/api/reports.ts` (Fase 4); el frontend ya no deriva nada — el backend hace todo el cálculo y devuelve las filas listas.
 
-### Flujo de datos (todo derivado, nada escrito a mano)
+### Flujo de datos (todo derivado en el backend)
 
 ```
-MONTHLY_UNIT_SALES (db/mockData.ts)        ← única matriz manual: unidades vendidas por mes/producto
+Órdenes pagadas (backend)                          ← fuente real: ventas por mes por producto
         │
-        ├──► buildMonthlyReports() ──► MOCK_MONTHLY_REPORTS ──► SalesReport
-        │        (cruza unidades × MOCK_PRODUCTS para precio/categoría)   (histórico: qué se vendió)
+        ├──► GET /api/admin/reports/monthly ──► getMonthlyReport() ──► ReportesSection ──► SalesReport
+        │        (MonthlyReport[]: byProduct + byCategory, mes en curso con partial=true)   (histórico: qué se vendió)
         │
-        └──► buildReplenishment() ──► MOCK_REPLENISHMENT ──► ReplenishmentReport
-                 │                                              (futuro: qué comprar)
-                 └─ toma SOLO los meses completos (no `partial`) de MOCK_MONTHLY_REPORTS,
-                    extrae unitsSold por producto → computeForecast(monthlySales)
+        └──► GET /api/admin/reports/replenishment ──► getReplenishmentReport() ──► ReplenishmentReport
+                 (ReplenishmentRow[] ya ordenado por urgencia → margen; el backend corre       (futuro: qué comprar)
+                  computeForecast sobre los meses completos por producto)
 ```
 
-Cambiar `MONTHLY_UNIT_SALES` recalcula automáticamente ambos reportes, los KPIs y el pedido sugerido. **No hay números duplicados que mantener sincronizados.**
+`ReportesSection` es dueño de la query mensual (`reportKeys.monthly()`): con ella pinta el selector de mes, el mes por defecto (último no parcial) y la nota de mes parcial, y pasa el array `reports` como prop a `SalesReport` (que lo usa para el lookup + `trendVsPrev`) y a `ReplenishmentReport` (solo para el banner de rango de historial). `ReplenishmentReport` tiene su propia query (`reportKeys.replenishment()`), que se monta lazy al abrir la pestaña.
 
-### `lib/forecast.ts` — pronóstico auto-escalado
+### Forecast auto-escalado (ahora en el backend)
 
-`computeForecast(monthlySales: number[])` elige el algoritmo según cuántos meses de historial reciba (la función no sabe si los datos son mock o reales — solo recibe números):
+El pronóstico vive en `backend/src/services/forecast.ts` (`computeForecast(monthlySales: number[])`) — el frontend ya no lo calcula. Elige el algoritmo según cuántos meses de historial completo reciba:
 
 | Meses | Nivel | Algoritmo | Confianza |
 |---|---|---|---|
@@ -241,30 +236,23 @@ Cambiar `MONTHLY_UNIT_SALES` recalcula automáticamente ambos reportes, los KPIs
 | 3 | 2 | Promedio ponderado + detector de tendencia (±15%) | media |
 | 4+ | 3 | Suavización exponencial de Holt (α=0.4, β=0.3) | alta |
 
-Devuelve `{ forecastNextMonth, method, methodLabel, trend, confidence }`. Con más meses, el sistema sube de nivel solo.
+Devuelve `{ forecastNextMonth, method, methodLabel, trend, confidence }` — los campos que `ReplenishmentRow` refleja tal cual.
 
 ### Reposición — cobertura primero, margen como desempate
 
-`buildReplenishment()` (`db/mockData.ts`) calcula por producto:
-- `diasCobertura = stock / forecastNextMonth × 30`
-- `suggestedOrder = max(0, forecastNextMonth × 2 − stock)` (objetivo: ~60 días de cobertura)
-- `costoEstimadoPedido = suggestedOrder × unitCost`
-- `ingresoMensual = unidadesProm/mes × salePrice` y `margenMensual = unidadesProm/mes × (salePrice − unitCost)`
-- `priority`: `urgente` (<15 días) · `pronto` (<45) · `ok` (≥45)
-
-**Orden de la tabla**: por urgencia de cobertura primero (un stock-out no se entierra), y **dentro de cada nivel, por `margenMensual` desc** — primero los productos que más ganancia generan. El dinero (margen) es **tie-breaker**, no el driver de urgencia: repones por demanda (unidades), no por facturación. Para ordenar por ingreso bruto en lugar de margen, cambiar `b.margenMensual` por `b.ingresoMensual` en el `.sort()`.
+El backend (`reports.service.ts`) calcula por producto: `diasCobertura`, `suggestedOrder = max(0, forecast × 2 − stock)` (~60 días de cobertura), `costoEstimadoPedido`, `ingresoMensual`, `margenMensual` y `priority` (`urgente` <15 días · `pronto` <45 · `ok` ≥45). **Orden de la tabla**: urgencia de cobertura primero (un stock-out no se entierra), y **dentro de cada nivel, por `margenMensual` desc** — el margen es tie-breaker, no el driver de urgencia. El front solo pinta las filas ya ordenadas.
 
 ### Exportación CSV
 
 Ambos reportes exportan CSV con un helper `csvField()` (escapado RFC 4180: envuelve en comillas y duplica las internas si hay `,`/`"`/salto de línea) y BOM `﻿` para que Excel respete acentos. Son **documentos distintos**:
-- **Ventas** → `ventas-<YYYY-MM>.csv` (mes seleccionado): Pos, Producto, Tipo, Unidades, Ingresos, % del total.
+- **Ventas** → `ventas-<YYYY-MM>.csv` (mes seleccionado): Pos, Producto, Tipo, Unidades, Ingresos, % del total, Utilidad, Margen %.
 - **Reposición** → `reposicion-<YYYY-MM>.csv` (mes actual): Producto, Tipo, Stock, Forecast, Tendencia, Método, Días Cobertura, Ingreso Mensual, Margen Mensual, Prioridad, Sugerido Comprar, Costo Est.
 
 ## Backend (Express.js) — contrato base
 
-El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El catálogo del storefront y el admin de catálogo + dashboard ya están conectados**: `lib/getProducts.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`) y `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`). Lo que **todavía lee de mocks** es la sección **Reportes** (`ReportesSection`, `db/mockData.ts` → `MOCK_MONTHLY_REPORTS`/`MOCK_REPLENISHMENT`) — pendiente en la Fase 4; por eso `db/mockProducts.ts` y `db/mockData.ts` siguen vivos. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `db/mockProducts.ts`); mientras los contratos se respeten, los componentes no cambian.
+El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/getProducts.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Pendientes: marca (Fase 5), usuarios/cuenta (Fase 6), pedidos (Fase 7), pagos (Fase 8).
 
-> **Principio:** la lógica de negocio (forecast, reposición, totales de carrito, envío) ya está en `lib/` como funciones puras que reciben números. El backend solo debe **persistir y servir los datos crudos**; puede reusar esa misma lógica o reimplementarla. La única matriz "fuente de verdad" es ventas-por-mes-por-producto.
+> **Principio:** la lógica de negocio (forecast, reposición, totales de carrito, envío) es de funciones puras que reciben números. Forecast y reposición ya viven en el backend (`backend/src/services/`); el frontend solo pinta las filas ya calculadas. La única matriz "fuente de verdad" es ventas-por-mes-por-producto (las órdenes pagadas).
 
 ### Modelos / tablas mínimas
 
@@ -293,10 +281,10 @@ POST /api/shipping/rates           → cotización Skydropx (ver "Shipping" abaj
 
 ### Notas de implementación para el backend
 
-- **`MonthlyReport`** se calcula agrupando ventas por mes; marcar `partial: true` el mes en curso. La reposición **debe excluir los meses parciales** del historial que pasa a `computeForecast` (igual que `buildReplenishment` filtra `!r.partial`).
-- **`ReplenishmentRow`** no es persistente: se computa on-the-fly desde ventas históricas + stock actual + costo. Reusar la fórmula documentada arriba (cobertura, suggestedOrder, margen, priority y el orden con margen como tie-breaker).
+- **`MonthlyReport`** se calcula agrupando ventas por mes; marcar `partial: true` el mes en curso. La reposición **excluye los meses parciales** del historial que pasa a `computeForecast` (`reports.service.ts` filtra `!r.partial`).
+- **`ReplenishmentRow`** no es persistente: se computa on-the-fly desde ventas históricas + stock actual + costo (cobertura, suggestedOrder, margen, priority y el orden con margen como tie-breaker) — ya implementado en `backend/src/services/reports.service.ts`.
 - **`unitCost` y márgenes son datos sensibles** del negocio: exponerlos solo en rutas `/api/admin/*` autenticadas, nunca en las públicas de catálogo.
-- **Forecast en el servidor**: `lib/forecast.ts` es puro y portable — se puede copiar tal cual al backend (o llamar desde una API route Next.js) para que front y back den el mismo número.
+- **Forecast en el servidor**: `backend/src/services/forecast.ts` es la fuente única del pronóstico (el frontend ya no lo calcula). El contrato `ForecastResult` = los campos `forecast*`/`trend`/`confidence` de `ReplenishmentRow`.
 - **Validación**: reusar los esquemas zod de `schemas/` (p. ej. `shippingSchema`) en el backend para validar payloads de pedido y mantener una sola definición de las reglas.
 - **Auth**: `POST /api/auth/login` recibe `{ email, password }` (validar con `loginSchema` de `schemas/auth.ts`) y devuelve `{ token, user: { email } }`. El front guarda el token y lo manda como `Authorization: Bearer <token>`; el backend debe responder `401` cuando sea inválido/expirado (el axios interceptor ya cierra sesión y redirige). Proteger todas las rutas `/api/admin/*` con ese token.
 
