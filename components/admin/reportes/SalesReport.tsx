@@ -1,7 +1,6 @@
 "use client";
 
 import { MonthlyReport } from "@/components/admin/data/types";
-import { MOCK_MONTHLY_REPORTS } from "@/db/mockData";
 import { categorySingular } from "@/lib/categories";
 
 function pct(value: number, total: number) {
@@ -28,34 +27,59 @@ function trendVsPrev(current: MonthlyReport, reports: MonthlyReport[]) {
   if (idx <= 0) return null;
   const prev = reports[idx - 1];
   const diff = current.totalRevenue - prev.totalRevenue;
+  // Sin mes previo con ingresos no hay base de comparación (evita Infinity/NaN).
+  if (prev.totalRevenue === 0) return null;
   const pctChange = Math.round((diff / prev.totalRevenue) * 100);
   return { pctChange, positive: diff >= 0 };
 }
 
 interface Props {
   monthKey: string;
+  reports: MonthlyReport[];
 }
 
-export default function SalesReport({ monthKey }: Props) {
-  const report = MOCK_MONTHLY_REPORTS.find((r) => r.key === monthKey);
+export default function SalesReport({ monthKey, reports }: Props) {
+  const report = reports.find((r) => r.key === monthKey);
   if (!report) return null;
 
-  const trend = trendVsPrev(report, MOCK_MONTHLY_REPORTS);
+  const trend = trendVsPrev(report, reports);
   const maxRevenue = Math.max(...report.byCategory.map((c) => c.revenue));
   const sortedProducts = [...report.byProduct].sort(
     (a, b) => b.unitsSold - a.unitsSold
   );
 
+  // Utilidad bruta del mes = ingresos − costo (unitCost llega solo por rutas admin autenticadas).
+  const totalCost = report.byProduct.reduce(
+    (s, p) => s + p.unitCost * p.unitsSold,
+    0
+  );
+  const utilidad = report.totalRevenue - totalCost;
+  const margenPct = pct(utilidad, report.totalRevenue);
+
   function exportCSV() {
-    const headers = ["Pos", "Producto", "Tipo", "Unidades", "Ingresos", "% del total"];
-    const rows = sortedProducts.map((p, i) => [
-      i + 1,
-      p.name,
-      categorySingular(p.type),
-      p.unitsSold,
-      p.revenue,
-      `${pct(p.revenue, report!.totalRevenue)}%`,
-    ]);
+    const headers = [
+      "Pos",
+      "Producto",
+      "Tipo",
+      "Unidades",
+      "Ingresos",
+      "% del total",
+      "Utilidad",
+      "Margen %",
+    ];
+    const rows = sortedProducts.map((p, i) => {
+      const utilidadProd = p.revenue - p.unitCost * p.unitsSold;
+      return [
+        i + 1,
+        p.name,
+        categorySingular(p.type),
+        p.unitsSold,
+        p.revenue,
+        `${pct(p.revenue, report!.totalRevenue)}%`,
+        utilidadProd,
+        `${pct(utilidadProd, p.revenue)}%`,
+      ];
+    });
     const csv = [headers, ...rows]
       .map((r) => r.map(csvField).join(","))
       .join("\n");
@@ -71,7 +95,7 @@ export default function SalesReport({ monthKey }: Props) {
   return (
     <div className="flex flex-col gap-6">
       {/* KPIs resumen */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="rounded-lg border border-amber-400/15 bg-stone-900/60 p-4">
           <p className="text-[9px] tracking-[0.25em] uppercase text-amber-100/40 font-sans mb-1.5">
             Ingresos
@@ -98,12 +122,22 @@ export default function SalesReport({ monthKey }: Props) {
 
         <div className="rounded-lg border border-amber-400/15 bg-stone-900/60 p-4">
           <p className="text-[9px] tracking-[0.25em] uppercase text-amber-100/40 font-sans mb-1.5">
+            Utilidad del mes
+          </p>
+          <p className="font-serif text-2xl text-amber-50">{fmtMXN(utilidad)}</p>
+          <p className="text-xs font-sans mt-1 text-amber-100/40">
+            {margenPct}% de margen
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-amber-400/15 bg-stone-900/60 p-4">
+          <p className="text-[9px] tracking-[0.25em] uppercase text-amber-100/40 font-sans mb-1.5">
             Piezas vendidas
           </p>
           <p className="font-serif text-2xl text-amber-50">{report.totalUnits}</p>
         </div>
 
-        <div className="rounded-lg border border-amber-400/15 bg-stone-900/60 col-span-2 lg:col-span-1 p-4">
+        <div className="rounded-lg border border-amber-400/15 bg-stone-900/60 p-4">
           <p className="text-[9px] tracking-[0.25em] uppercase text-amber-100/40 font-sans mb-1.5">
             Precio promedio / pieza
           </p>
@@ -140,11 +174,16 @@ export default function SalesReport({ monthKey }: Props) {
               <th className="text-right px-5 py-3 text-[9px] tracking-[0.25em] uppercase text-amber-100/30">Uds.</th>
               <th className="text-right px-5 py-3 text-[9px] tracking-[0.25em] uppercase text-amber-100/30 hidden sm:table-cell">Ingresos</th>
               <th className="text-right px-5 py-3 text-[9px] tracking-[0.25em] uppercase text-amber-100/30 hidden md:table-cell">% total</th>
+              <th className="text-right px-5 py-3 text-[9px] tracking-[0.25em] uppercase text-amber-100/30 hidden lg:table-cell">Margen</th>
             </tr>
           </thead>
           <tbody>
             {sortedProducts.map((product, idx) => {
               const share = pct(product.revenue, report.totalRevenue);
+              const margenProd = pct(
+                product.revenue - product.unitCost * product.unitsSold,
+                product.revenue
+              );
               return (
                 <tr
                   key={product.productId}
@@ -181,6 +220,11 @@ export default function SalesReport({ monthKey }: Props) {
                         {share}%
                       </span>
                     </div>
+                  </td>
+                  <td className="px-5 py-3.5 text-right hidden lg:table-cell">
+                    <span className="text-amber-100/50 text-[13px] font-mono">
+                      {margenProd}%
+                    </span>
                   </td>
                 </tr>
               );

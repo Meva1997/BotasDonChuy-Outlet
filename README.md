@@ -47,15 +47,12 @@ components/
   auth/           # AuthShell layout + LoginForm, ForgotPasswordForm + AdminGuard (protege /admin)
   admin/          # Secciones del panel admin: MarcaSection, ProductSection, DataSection, ReportesSection, ConfigSection
                   #   data/ — subcomponentes de métricas (KpiGrid, RevenueChart, InventoryTable, SalesTable)
-                  #   reportes/ — SalesReport (histórico) y ReplenishmentReport (forecast + pedido sugerido)
-db/
-  mockProducts.ts # Mock data (MockProduct interface + MOCK_PRODUCTS)
-  mockData.ts     # Datos del admin: KPIs, ingresos, inventario, ventas mensuales y reposición (derivados)
+                  #   reportes/ — SalesReport (histórico) y ReplenishmentReport (forecast + pedido sugerido) — conectados al backend
 lib/
   api/client.ts   # axios instance + interceptors (Bearer token, 401 → /login)
+  api/reports.ts  # getMonthlyReport(), getReplenishmentReport() + Zod schemas (GET /api/admin/reports/*)
   getProducts.ts  # getProducts(), getProductById() and types
   cart.ts         # computeShipping() + computeTotals() — shipping + order totals
-  forecast.ts     # computeForecast() — pronóstico de demanda auto-escalado por nº de meses
   utils/index.ts  # formatPrice() helper
 schemas/
   checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list

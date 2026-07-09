@@ -30,8 +30,8 @@ migración.
 | `PUT /api/admin/products/:id` | `components/admin/ProductForm.tsx` → `updateProduct()` (`useMutation`) | ✅ | — |
 | `DELETE /api/admin/products/:id` | `ProductCategoryView.tsx` / `ProductForm.tsx` → `deleteProduct()` (`useMutation`; soft/hard lo decide el backend) | ✅ | — |
 | `GET /api/admin/dashboard` | `components/admin/DataSection.tsx` → `getAdminDashboard()` de `lib/api/dashboard.ts` (`useQuery`) | ✅ | — |
-| `GET /api/admin/reports/monthly` | `components/admin/ReportesSection.tsx`, `reportes/SalesReport.tsx` (`MOCK_MONTHLY_REPORTS`) | 🔴 | `useQuery` → `api.get("/admin/reports/monthly")` |
-| `GET /api/admin/reports/replenishment` | `components/admin/reportes/ReplenishmentReport.tsx` (`MOCK_REPLENISHMENT`) | 🔴 | `useQuery` → `api.get("/admin/reports/replenishment")` |
+| `GET /api/admin/reports/monthly` | `components/admin/ReportesSection.tsx` → `getMonthlyReport()` de `lib/api/reports.ts` (`useQuery`); pasa `reports` a `SalesReport` | ✅ | — |
+| `GET /api/admin/reports/replenishment` | `components/admin/reportes/ReplenishmentReport.tsx` → `getReplenishmentReport()` (`useQuery`) | ✅ | — |
 | `GET /api/admin/brand` | `lib/brand.ts` (`BRAND` estático) — storefront (`Hero`, footer…) + `MarcaSection` | 🔴 | Hidratar la marca desde la API (lectura pública); `BRAND` queda como fallback |
 | `PUT /api/admin/brand` | `components/admin/MarcaSection.tsx` (editor sin guardado) | 🔴 | `useMutation` → `api.put("/admin/brand", data)` |
 | `GET /api/admin/users` | `components/admin/ConfigSection.tsx` (sin listado) | 🔴 | `useQuery` de usuarios del panel |
@@ -82,11 +82,18 @@ migración.
 - **Imagen (pendiente)**: no hay endpoint de subida en el contrato; el form envía `imageSrc` como
   string (las previews `blob:` locales no persisten). Upload real con Cloudinary = trabajo futuro.
 
-### Fase 4 — Admin: reportes
-- `GET /api/admin/reports/monthly` — `ReportesSection` + `SalesReport`.
-- `GET /api/admin/reports/replenishment` — `ReplenishmentReport`.
-- La lógica pura (`lib/forecast.ts`, reposición) ya vive en front y back; solo cambia
-  el origen de los números. Retirar `MOCK_MONTHLY_REPORTS` / `MOCK_REPLENISHMENT`.
+### Fase 4 — Admin: reportes ✅
+- ✅ `GET /api/admin/reports/monthly` + `GET /api/admin/reports/replenishment` — contratos
+  centralizados en `lib/api/reports.ts` (patrón `getProducts.ts`): `MonthlyReportSchema` /
+  `ReplenishmentRowSchema` (Zod, reflejan `components/admin/data/types.ts`), `reportKeys`,
+  `getMonthlyReport()` / `getReplenishmentReport()`. Ambos endpoints devuelven un array plano
+  ya derivado/ordenado por el backend.
+- ✅ `ReportesSection` es dueño de la query mensual (selector de mes + mes por defecto + nota
+  parcial) y pasa `reports` a `SalesReport` (lookup + `trendVsPrev`) y a `ReplenishmentReport`
+  (banner de historial). `ReplenishmentReport` tiene su propia query (lazy al abrir la pestaña).
+- ✅ Forecast/reposición ahora se calculan **en el backend** (`backend/src/services/`); el
+  frontend solo pinta filas. Se eliminaron `db/mockData.ts`, `db/mockProducts.ts` y `lib/forecast.ts`
+  (**el frontend ya no tiene mocks**).
 
 ### Fase 5 — Marca (identidad de tienda)
 - `GET /api/admin/brand` (público) — hidratar el storefront; `lib/brand.ts` (`BRAND`)

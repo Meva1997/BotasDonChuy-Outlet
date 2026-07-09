@@ -1,7 +1,8 @@
 "use client";
 
-import { ReplenishmentRow } from "@/components/admin/data/types";
-import { MOCK_REPLENISHMENT, MOCK_MONTHLY_REPORTS } from "@/db/mockData";
+import { useQuery } from "@tanstack/react-query";
+import { MonthlyReport, ReplenishmentRow } from "@/components/admin/data/types";
+import { reportKeys, getReplenishmentReport } from "@/lib/api/reports";
 import { categorySingular } from "@/lib/categories";
 
 const PRIORITY_STYLES = {
@@ -108,15 +109,49 @@ function exportCSV(rows: ReplenishmentRow[]) {
   URL.revokeObjectURL(url);
 }
 
-export default function ReplenishmentReport() {
-  const rows = MOCK_REPLENISHMENT;
+interface Props {
+  reports: MonthlyReport[];
+}
+
+export default function ReplenishmentReport({ reports }: Props) {
+  const { data, isPending, isError, refetch } = useQuery({
+    queryKey: reportKeys.replenishment(),
+    queryFn: getReplenishmentReport,
+  });
+
+  if (isPending) {
+    return (
+      <p className="text-amber-100/40 text-sm tracking-[0.15em] uppercase">
+        Cargando reposición…
+      </p>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="max-w-md space-y-4">
+        <p className="text-red-400/90 text-sm border border-red-500/30 bg-red-500/5 rounded-md px-4 py-3">
+          No pudimos cargar la reposición. Revisa tu conexión e inténtalo de nuevo.
+        </p>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="border border-amber-400/60 text-amber-400 text-[10px] tracking-[0.25em] uppercase px-6 py-2.5 hover:bg-amber-400/10 transition-colors cursor-pointer"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
+  const rows = data;
   const urgentes = rows.filter((r) => r.priority === "urgente").length;
   const totalCosto = rows.reduce((s, r) => s + r.costoEstimadoPedido, 0);
 
   // El método activo viene del primer producto (todos usan el mismo historial de meses)
   const activeMethod = rows[0]?.forecastMethod ?? "promedio-simple";
   const methodStyle = METHOD_STYLES[activeMethod];
-  const fullMonths = MOCK_MONTHLY_REPORTS.filter((r) => !r.partial);
+  const fullMonths = reports.filter((r) => !r.partial);
   const fullMonthsCount = fullMonths.length;
   const historialRange =
     fullMonthsCount > 0
