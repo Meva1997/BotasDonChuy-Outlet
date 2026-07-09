@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCartStore } from "@/store/cartStore";
 import { formatPrice } from "@/lib/utils";
 import { EASE_LUXE } from "@/lib/motion";
-import { BRAND } from "@/lib/brand";
+import { useBrand } from "@/components/providers/BrandProvider";
 
 function ProductPlaceholder({ type }: { type: string }) {
   return (
@@ -31,6 +31,7 @@ export default function Cart() {
     subtotal,
     savings,
   } = useCartStore();
+  const brand = useBrand();
 
   const reduceMotion = useReducedMotion();
   const total = subtotal() - savings();
@@ -133,7 +134,7 @@ export default function Cart() {
                 />
               </svg>
               <p className="text-center text-[10px] tracking-[0.2em] uppercase text-amber-400/90">
-                {BRAND.cartNotice}
+                {brand.cartNotice}
               </p>
             </div>
 

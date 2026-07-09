@@ -32,8 +32,8 @@ migración.
 | `GET /api/admin/dashboard` | `components/admin/DataSection.tsx` → `getAdminDashboard()` de `lib/api/dashboard.ts` (`useQuery`) | ✅ | — |
 | `GET /api/admin/reports/monthly` | `components/admin/ReportesSection.tsx` → `getMonthlyReport()` de `lib/api/reports.ts` (`useQuery`); pasa `reports` a `SalesReport` | ✅ | — |
 | `GET /api/admin/reports/replenishment` | `components/admin/reportes/ReplenishmentReport.tsx` → `getReplenishmentReport()` (`useQuery`) | ✅ | — |
-| `GET /api/admin/brand` | `lib/brand.ts` (`BRAND` estático) — storefront (`Hero`, footer…) + `MarcaSection` | 🔴 | Hidratar la marca desde la API (lectura pública); `BRAND` queda como fallback |
-| `PUT /api/admin/brand` | `components/admin/MarcaSection.tsx` (editor sin guardado) | 🔴 | `useMutation` → `api.put("/admin/brand", data)` |
+| `GET /api/admin/brand` | `components/providers/BrandProvider.tsx` → `getBrandSettings()` de `lib/api/brand.ts` (`useQuery`); `useBrand()` alimenta `Hero`/`Footer`/`NavHeader`/`Cart`. `BRAND` = fallback SSR | ✅ | — |
+| `PUT /api/admin/brand` | `components/admin/MarcaSection.tsx` → `updateBrandSettings()` (`useMutation`, autosave con debounce) | ✅ | — |
 | `GET /api/admin/users` | `components/admin/ConfigSection.tsx` (sin listado) | 🔴 | `useQuery` de usuarios del panel |
 | `POST /api/admin/users` | `components/admin/ConfigSection.tsx` (formulario no conectado) | 🔴 | `useMutation` de alta con contraseña temporal |
 | `DELETE /api/admin/users/:id` | `components/admin/ConfigSection.tsx` | 🔴 | `useMutation` de baja |
@@ -95,10 +95,21 @@ migración.
   frontend solo pinta filas. Se eliminaron `db/mockData.ts`, `db/mockProducts.ts` y `lib/forecast.ts`
   (**el frontend ya no tiene mocks**).
 
-### Fase 5 — Marca (identidad de tienda)
-- `GET /api/admin/brand` (público) — hidratar el storefront; `lib/brand.ts` (`BRAND`)
-  queda como valor por defecto/fallback SSR.
-- `PUT /api/admin/brand` — guardado desde `MarcaSection`.
+### Fase 5 — Marca (identidad de tienda) ✅
+- ✅ `GET /api/admin/brand` (público) — contrato centralizado en `lib/api/brand.ts`
+  (patrón `getProducts.ts`): `BrandSettingsSchema` (Zod), `brandKeys`, `getBrandSettings()`.
+  `BrandProvider` (root layout) hidrata con `useQuery` y expone `useBrand()`; `Hero`/`Footer`/
+  `NavHeader`/`Cart` consumen la marca resuelta. `BRAND` (`lib/brand.ts`) queda como fallback SSR.
+- ✅ `PUT /api/admin/brand` — `MarcaSection` usa `useMutation({ mutationFn: updateBrandSettings })`
+  con autosave (debounce 700ms) + invalidación de `brandKeys.all`. `updateBrandSettings` usa
+  `safeParse` (un 2xx ya persistió).
+- **Mapeo:** `BrandSettings` es un **subconjunto** de `BRAND`. `resolveBrand(settings)` mergea
+  backend ← `BRAND`: mapea `tagline` (string `\n`) → `taglineLines[]` y conserva
+  `namePrimary`/`nameAccent`/`email`/`instagram` (que el backend no modela).
+- **Pendientes documentados:** el **logo** es preview local (`blob:`), no se persiste — subida
+  real (Cloudinary) = trabajo futuro (igual que las imágenes de producto en Fase 3). La
+  **metadata** (título del navegador) sigue estática en `BRAND.name` para no volver dinámico el
+  render de todas las rutas.
 
 ### Fase 6 — Admin: usuarios y cuenta
 - `GET`/`POST`/`DELETE /api/admin/users` — gestión de usuarios del panel.

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCartStore } from "@/store/cartStore";
-import { BRAND } from "@/lib/brand";
+import { useBrand } from "@/components/providers/BrandProvider";
 
 const NAV_LINKS = [
   { href: "/botas", label: "Botas" },
@@ -16,6 +16,7 @@ export default function NavHeader() {
   const [open, setOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const { toggleCart, totalItems } = useCartStore();
+  const brand = useBrand();
 
   // El carrito vive en localStorage: en SSR el conteo es 0 y sólo tras hidratar
   // se puede leer el valor real. useSyncExternalStore da false en el servidor y
@@ -51,8 +52,8 @@ export default function NavHeader() {
       <div className="max-w-6xl mx-auto px-8 py-5 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="font-serif text-xl shrink-0">
-          <span className="text-amber-50 font-normal">{BRAND.namePrimary} </span>
-          <span className="italic text-amber-400">{BRAND.nameAccent}</span>
+          <span className="text-amber-50 font-normal">{brand.namePrimary} </span>
+          <span className="italic text-amber-400">{brand.nameAccent}</span>
         </Link>
 
         {/* Desktop — nav links (centro) */}

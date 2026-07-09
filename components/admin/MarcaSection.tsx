@@ -1,7 +1,15 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { BRAND } from "@/lib/brand";
+import {
+  brandKeys,
+  getBrandSettings,
+  updateBrandSettings,
+  type BrandSettings,
+  type BrandInput,
+} from "@/lib/api/brand";
 
 interface MarcaData {
   brandName: string;
@@ -23,6 +31,18 @@ const DEFAULTS: MarcaData = {
   logoUrl: null,
 };
 
+// BrandSettings del backend → estado del form (mapeo 1:1).
+function toForm(s: BrandSettings): MarcaData {
+  return {
+    brandName: s.brandName,
+    heroText: s.heroText,
+    tagline: s.tagline,
+    cartNotice: s.cartNotice,
+    footerNote: s.footerNote,
+    logoUrl: s.logoUrl ?? null,
+  };
+}
+
 const FIELDS: { key: TextField; label: string; multiline?: true }[] = [
   { key: "brandName", label: "Nombre de la marca" },
   { key: "heroText", label: "Texto superior del hero" },
@@ -41,23 +61,65 @@ const inputCls =
   "focus:outline-none focus:border-amber-400/50 focus:bg-stone-800 transition-colors duration-150";
 
 export default function MarcaSection() {
+  const queryClient = useQueryClient();
+  const { data: settings } = useQuery({
+    queryKey: brandKeys.detail(),
+    queryFn: getBrandSettings,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const [data, setData] = useState<MarcaData>(DEFAULTS);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">(
-    "idle",
-  );
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seededRef = useRef(false);
+  const touchedRef = useRef(false);
 
-  function triggerSave() {
-    setSaveState("saving");
+  const mutation = useMutation({
+    mutationFn: updateBrandSettings,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: brandKeys.all }),
+  });
+
+  // Sembrar el form desde el backend una sola vez y solo si el usuario aún no ha
+  // tocado nada: si empieza a escribir antes de que resuelva la query (carga en
+  // frío de /admin), sus ediciones no deben ser pisadas por la respuesta tardía.
+  useEffect(() => {
+    if (settings && !seededRef.current && !touchedRef.current) {
+      seededRef.current = true;
+      setData(toForm(settings));
+    }
+  }, [settings]);
+
+  // Limpiar el timer de autosave al desmontar.
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  // Autosave con debounce de 700ms — envía solo los campos de texto (el logo es
+  // preview local: no hay endpoint de subida, ver CLAUDE.md).
+  function scheduleSave(next: MarcaData) {
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setSaveState("saved"), 700);
+    timerRef.current = setTimeout(() => {
+      const payload: BrandInput = {
+        brandName: next.brandName,
+        heroText: next.heroText,
+        tagline: next.tagline,
+        cartNotice: next.cartNotice,
+        footerNote: next.footerNote,
+      };
+      mutation.mutate(payload);
+    }, 700);
   }
 
   function handleField(key: TextField, value: string) {
-    setData((prev) => ({ ...prev, [key]: value }));
-    triggerSave();
+    touchedRef.current = true;
+    const next = { ...data, [key]: value };
+    setData(next);
+    scheduleSave(next);
   }
 
   function handleLogoFile(file: File) {
@@ -76,12 +138,17 @@ export default function MarcaSection() {
           </p>
         </div>
         <div className="pt-1 min-w-20 text-right">
-          {saveState === "saving" && (
+          {mutation.isPending && (
             <span className="text-[9px] tracking-[0.2em] uppercase text-amber-100/30">
               Guardando…
             </span>
           )}
-          {saveState === "saved" && (
+          {mutation.isError && !mutation.isPending && (
+            <span className="text-[9px] tracking-[0.2em] uppercase text-red-400/70">
+              Error al guardar
+            </span>
+          )}
+          {mutation.isSuccess && !mutation.isPending && (
             <span className="flex items-center justify-end gap-1.5 text-[9px] tracking-[0.2em] uppercase text-amber-400/60">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400/60" />
               Guardado
