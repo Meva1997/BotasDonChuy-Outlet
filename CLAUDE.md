@@ -49,8 +49,12 @@ components/
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal content pages
   auth/           # AuthShell (split-panel layout) + LoginForm/ForgotPasswordForm — react-hook-form + zod (schemas/auth.ts) + TanStack Query (useMutation), YA conectados al backend vía lib/api/auth. AdminGuard — protege /admin y valida el token contra GET /auth/me (ver "Auth & data fetching")
   providers/      # QueryProvider — QueryClientProvider de TanStack Query (montado en root layout)
+                  # BrandProvider — hidrata la marca desde GET /api/admin/brand (público) y la
+                  #   expone vía useBrand(); BRAND (lib/brand.ts) es el fallback SSR (montado en root layout)
   admin/          # Panel de administración — secciones completas:
-                  #   MarcaSection — editor de identidad de marca (logo, colores, copy)
+                  #   MarcaSection — editor de identidad de marca (logo + copy). YA conectado vía
+                  #     lib/api/brand (useQuery carga + useMutation autosave con debounce). El logo es
+                  #     preview local (blob:), no se persiste — subida real = trabajo futuro
                   #   ProductSection — gestión de catálogo (ProductForm, ProductCategoryView). YA conectado al backend vía lib/api/adminProducts (useQuery lista + useMutation CRUD)
                   #   DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable). YA conectado vía lib/api/dashboard (GET /api/admin/dashboard)
                   #   ReportesSection — análisis mensual con pestañas Ventas / Reposición + selector de mes
@@ -65,10 +69,11 @@ lib/
     adminProducts.ts # contrato del catálogo admin (patrón getProducts): AdminProductSchema (SÍ trae unitCost) + adminProductKeys + getAdminProducts()/createProduct()/updateProduct()/deleteProduct(). YA conectado (GET/POST/PUT/DELETE /api/admin/products). AdminProductInput manda sizes como CSV donde repetir talla = unidades de stock (el backend agrupa en filas ProductSize)
     dashboard.ts  # contrato de métricas admin (patrón getProducts): DashboardSchema (Zod, valida la forma de components/admin/data/types.ts) + dashboardKeys + getAdminDashboard(). YA conectado (GET /api/admin/dashboard)
     reports.ts    # contrato de reportes admin (patrón getProducts): MonthlyReportSchema/ReplenishmentRowSchema (Zod, reflejan components/admin/data/types.ts) + reportKeys + getMonthlyReport()/getReplenishmentReport(). YA conectado (GET /api/admin/reports/monthly, GET /api/admin/reports/replenishment). Ambos endpoints devuelven un array plano ya derivado/ordenado por el backend
+    brand.ts      # contrato de marca (patrón getProducts): BrandSettingsSchema (Zod) + brandKeys + getBrandSettings()/updateBrandSettings(). YA conectado (GET público /api/admin/brand, PUT protegido). BrandSettings es un SUBCONJUNTO de BRAND (brandName/heroText/tagline/cartNotice/footerNote/logoUrl); namePrimary/nameAccent/email/instagram NO existen en el backend. updateBrandSettings usa safeParse (un 2xx ya persistió)
   getProducts.ts  # getProducts(filters), getProductById(id) — YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible). 404 → null. El storefront ya no usa mocks (db/ eliminado en la Fase 4).
   cart.ts         # computeTotals(items) — pure subtotal/savings/total helper
   motion.ts       # variantes framer-motion compartidas (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
-  brand.ts        # BRAND — fuente única de identidad/copy de marca (nombre, email, hero, tagline, cartNotice…). Defaults de MarcaSection y textos del storefront salen de aquí
+  brand.ts        # BRAND — defaults/fallback de identidad/copy de marca (nombre, email, hero, tagline, cartNotice…). El storefront se hidrata desde el backend vía BrandProvider/useBrand; BRAND es el fallback SSR. resolveBrand(settings) mergea BrandSettings (backend) ← BRAND: mapea tagline (string \n) → taglineLines[] y conserva namePrimary/nameAccent/email/instagram (que el backend no tiene). ResolvedBrand = forma que consume el storefront
   categories.ts   # CATEGORIES + CategoryInfo/ProductType + categoryPlural()/categorySingular() — fuente única de categorías y etiquetas (antes duplicadas en ~10 archivos)
   utils/
     index.ts      # formatPrice(amount) — es-MX locale formatting (incluye el símbolo $)

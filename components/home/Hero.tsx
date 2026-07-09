@@ -4,9 +4,11 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import CategoryCard from "../ui/CategoryCard";
 import { fadeUp, staggerContainer, EASE_LUXE } from "@/lib/motion";
-import { BRAND } from "@/lib/brand";
+import { useBrand } from "@/components/providers/BrandProvider";
 
 export default function Hero() {
+  const brand = useBrand();
+
   return (
     <main>
       {/* Hero section */}
@@ -39,7 +41,7 @@ export default function Hero() {
             transition={{ duration: 0.6, ease: EASE_LUXE }}
             className="text-xs tracking-[0.35em] uppercase text-amber-400/60"
           >
-            {BRAND.heroText}
+            {brand.heroText}
           </motion.p>
 
           {/* Title */}
@@ -49,9 +51,9 @@ export default function Hero() {
             className="font-serif font-bold leading-none text-amber-50"
             style={{ fontSize: "clamp(5rem, 12vw, 9rem)" }}
           >
-            {BRAND.namePrimary}
+            {brand.namePrimary}
             <br />
-            <span className="italic text-amber-100/90">{BRAND.nameAccent}</span>
+            <span className="italic text-amber-100/90">{brand.nameAccent}</span>
           </motion.h1>
 
           {/* Subtitle */}
@@ -60,7 +62,7 @@ export default function Hero() {
             transition={{ duration: 0.6, ease: EASE_LUXE }}
             className="space-y-1 text-amber-100/50 text-sm tracking-wide"
           >
-            {BRAND.taglineLines.map((line) => (
+            {brand.taglineLines.map((line) => (
               <p key={line}>{line}</p>
             ))}
           </motion.div>

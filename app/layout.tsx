@@ -3,6 +3,7 @@ import { Playfair_Display, Jost } from "next/font/google";
 import "./globals.css";
 import CartProvider from "@/components/ui/CartProvider";
 import QueryProvider from "@/components/providers/QueryProvider";
+import BrandProvider from "@/components/providers/BrandProvider";
 import { BRAND } from "@/lib/brand";
 
 const playfair = Playfair_Display({
@@ -39,8 +40,10 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-tobacco-950 text-amber-50 font-sans">
         <QueryProvider>
-          {children}
-          <CartProvider />
+          <BrandProvider>
+            {children}
+            <CartProvider />
+          </BrandProvider>
         </QueryProvider>
       </body>
     </html>
