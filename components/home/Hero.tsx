@@ -62,8 +62,11 @@ export default function Hero() {
             transition={{ duration: 0.6, ease: EASE_LUXE }}
             className="space-y-1 text-amber-100/50 text-sm tracking-wide"
           >
-            {brand.taglineLines.map((line) => (
-              <p key={line}>{line}</p>
+            {brand.taglineLines.map((line, i) => (
+              // Índice como key: taglineLines ahora es texto libre del admin
+              // (tagline partido por \n), donde líneas duplicadas/vacías son
+              // posibles y romperían un key por contenido.
+              <p key={i}>{line}</p>
             ))}
           </motion.div>
 
