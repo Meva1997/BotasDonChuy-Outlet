@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { useCartStore, type CartItem } from "@/store/cartStore";
-import type { CartTotals } from "@/lib/cart";
+import type { CartTotals } from "@/lib/domain/cart";
 import type { ShippingData } from "@/schemas/checkout";
 import type { OrderResponse } from "@/lib/api/orders";
 

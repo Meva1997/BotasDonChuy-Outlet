@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { useCartStore } from "@/store/cartStore";
-import { computeTotals } from "@/lib/cart";
+import { computeTotals } from "@/lib/domain/cart";
 import {
   createOrder,
   buildOrderPayload,

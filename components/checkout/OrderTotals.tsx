@@ -1,5 +1,5 @@
 import { formatPrice } from "@/lib/utils";
-import type { CartTotals } from "@/lib/cart";
+import type { CartTotals } from "@/lib/domain/cart";
 
 export default function OrderTotals({ totals }: { totals: CartTotals }) {
   const outletPrice = totals.subtotal - totals.savings;

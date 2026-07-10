@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCartStore } from "@/store/cartStore";
 import { formatPrice } from "@/lib/utils";
-import { EASE_LUXE } from "@/lib/motion";
+import { EASE_LUXE } from "@/lib/ui/motion";
 import { useBrand } from "@/components/providers/BrandProvider";
 
 function ProductPlaceholder({ type }: { type: string }) {

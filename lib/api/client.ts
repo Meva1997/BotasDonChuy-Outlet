@@ -5,9 +5,15 @@ import { useAuthStore } from "@/store/authStore";
 // la sesión ni redirige. Se usa en endpoints que el storefront consume sin sesión
 // (p. ej. GET /admin/brand), para que un token viejo/expirado en localStorage no
 // arrastre a un visitante público hacia /login. Ver lib/api/brand.ts.
+//
+// `skipAuthRedirect`: la petición SÍ lleva el Bearer (es autenticada), pero un 401
+// NO cierra la sesión ni redirige — deja que la UI lo maneje inline. Se usa cuando
+// el endpoint reutiliza 401 con otro significado que "token expirado" (p. ej. PUT
+// /admin/account devuelve 401 por "contraseña actual incorrecta"). Ver lib/api/account.ts.
 declare module "axios" {
   export interface AxiosRequestConfig {
     skipAuth?: boolean;
+    skipAuthRedirect?: boolean;
   }
 }
 
@@ -46,11 +52,13 @@ api.interceptors.response.use(
     // Mismo motivo que en el request: el store/redirección solo aplican en el
     // navegador (localStorage + window.location no existen en SSR). Las peticiones
     // `skipAuth` (públicas, p. ej. la marca en el root layout) NO redirigen: un 401
-    // ahí no debe expulsar a un visitante del storefront hacia /login.
+    // ahí no debe expulsar a un visitante del storefront hacia /login. `skipAuthRedirect`
+    // (autenticadas con 401 de otro significado, p. ej. contraseña incorrecta) tampoco.
     if (
       error.response?.status === 401 &&
       typeof window !== "undefined" &&
-      !error.config?.skipAuth
+      !error.config?.skipAuth &&
+      !error.config?.skipAuthRedirect
     ) {
       useAuthStore.getState().logout();
       if (window.location.pathname !== "/login") {

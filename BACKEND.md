@@ -2,7 +2,7 @@
 
 Documento de contrato para construir el backend con **Node.js + Express.js**. Define cada modelo de datos, endpoint, regla de negocio y validación que el frontend ya espera consumir.
 
-> **Principio rector:** el frontend hoy lee de mocks en `db/`. El backend debe **reemplazar esos mocks exponiendo exactamente las mismas formas de datos**. Mientras los contratos (tipos) se respeten, **ningún componente del frontend cambia**. Los tipos canónicos viven en `components/admin/data/types.ts`, `db/mockProducts.ts`, `lib/getProducts.ts`, `lib/cart.ts`, `lib/forecast.ts` y `schemas/`.
+> **Principio rector:** el frontend hoy lee de mocks en `db/`. El backend debe **reemplazar esos mocks exponiendo exactamente las mismas formas de datos**. Mientras los contratos (tipos) se respeten, **ningún componente del frontend cambia**. Los tipos canónicos viven en `components/admin/data/types.ts`, `db/mockProducts.ts`, `lib/api/products.ts`, `lib/domain/cart.ts`, `lib/forecast.ts` y `schemas/`.
 >
 > La **lógica de negocio** (forecast, reposición, totales de carrito, envío) ya está escrita como **funciones puras que reciben números** en `lib/`. El backend solo debe **persistir y servir los datos crudos**; puede copiar esas funciones tal cual o reimplementarlas. La única "fuente de verdad" manual es la matriz de ventas-por-mes-por-producto.
 
@@ -621,7 +621,7 @@ Algoritmo exacto en [sección 6.2](#62-reposición). **Excluir los meses `partia
 #### `GET /api/admin/brand`
 Devuelve `BrandSettings`. Pensado como **lectura pública** (para que la tienda pinte estos textos) y escritura protegida.
 
-> **Estado real (verificado):** la tienda aún no consume `BrandSettings` (datos dinámicos), pero los textos de marca ya están **centralizados en `lib/brand.ts`** (`BRAND`): `NavHeader`, `Hero`, `Footer`, `Cart` y los **defaults de `MarcaSection`** salen todos de ahí — ya no hay strings duplicados. Cuando exista el endpoint, el cableado consiste en sustituir el `BRAND` estático por los valores servidos (con `BRAND` como fallback). El backend debe persistir estos campos igual.
+> **Estado real (verificado):** la tienda aún no consume `BrandSettings` (datos dinámicos), pero los textos de marca ya están **centralizados en `lib/domain/brand.ts`** (`BRAND`): `NavHeader`, `Hero`, `Footer`, `Cart` y los **defaults de `MarcaSection`** salen todos de ahí — ya no hay strings duplicados. Cuando exista el endpoint, el cableado consiste en sustituir el `BRAND` estático por los valores servidos (con `BRAND` como fallback). El backend debe persistir estos campos igual.
 
 #### `PUT /api/admin/brand` `[auth]`
 Body parcial de `BrandSettings`. El `MarcaSection` autoguarda campo por campo, así que aceptar updates parciales. Respuesta `200`: `BrandSettings`.
@@ -643,7 +643,7 @@ Cambiar correo o contraseña propios. Para contraseña: `{ currentPassword, newP
 
 Estas funciones son **puras y portables**: cópialas tal cual al backend para que front y back den el mismo número.
 
-### 6.1 Totales del carrito — `lib/cart.ts`
+### 6.1 Totales del carrito — `lib/domain/cart.ts`
 
 ```ts
 subtotal = Σ (item.originalPrice × quantity)
@@ -672,7 +672,7 @@ priority          = diasCobertura < 15 ? "urgente"
 ```
 **Orden de la tabla:** por urgencia de cobertura primero (`urgente`→`pronto`→`ok`); dentro de cada nivel, **por `margenMensual` desc** (desempate por ganancia, no por urgencia). Para ordenar por ingreso bruto, usar `ingresoMensual` en vez de `margenMensual`.
 
-### 6.3 Envío (shipping) — `lib/cart.ts` `computeShipping()`
+### 6.3 Envío (shipping) — `lib/domain/cart.ts` `computeShipping()`
 
 **Estado actual: tarifa plana por categoría.** Se cobra la tarifa del producto **más caro de enviar** en el carrito:
 ```ts
@@ -787,7 +787,7 @@ Revisé **todos** los componentes y rutas, no solo los mocks. Hallazgos que afin
 
 - **Auth está mockeado** (`LoginForm` hace `console.log`, `ForgotPasswordForm` solo muestra confirmación). Ambos ya validan con los esquemas de `schemas/auth.ts` y están listos para cambiar el `onSubmit` por una llamada real a `/api/auth/*`. Sin campos nuevos.
 
-- **Marca unificada:** se eliminó el remanente "El Último Corte" / `admin@elultimocorte.mx`. El nombre canónico es **"Botas Don Chuy Outlet"** y el correo semilla **`admin@botasdonchuy.mx`**, ambos en `lib/brand.ts` (`BRAND`). Usar esos valores al hacer el seed de `AdminUser` y `BrandSettings`.
+- **Marca unificada:** se eliminó el remanente "El Último Corte" / `admin@elultimocorte.mx`. El nombre canónico es **"Botas Don Chuy Outlet"** y el correo semilla **`admin@botasdonchuy.mx`**, ambos en `lib/domain/brand.ts` (`BRAND`). Usar esos valores al hacer el seed de `AdminUser` y `BrandSettings`.
 
 - **Secciones del panel** (`app/admin/page.tsx`, tipo `AdminSection`): `marca`, `productos`, `datos`, `reportes`, `configuracion` — todas mapeadas a endpoints en [sección 5](#5-endpoints-rest). No surgió ninguna necesidad de datos adicional.
 
@@ -798,7 +798,7 @@ Revisé **todos** los componentes y rutas, no solo los mocks. Hallazgos que afin
 - [ ] Proyecto Express + TypeScript + Prisma + Postgres
 - [ ] Migraciones: `Product`, `Order`, `OrderItem`, `AdminUser`, `BrandSettings` (+ decisión sobre `ProductSize`)
 - [ ] Seed con los 6 productos de `db/mockProducts.ts` y el histórico de `MONTHLY_UNIT_SALES`
-- [ ] Copiar `lib/forecast.ts` y la lógica de `lib/cart.ts` al backend
+- [ ] Copiar `lib/forecast.ts` y la lógica de `lib/domain/cart.ts` al backend
 - [ ] Middleware `requireAuth` + verificación de rol
 - [ ] Auth: `/login`, `/forgot-password`, `/me`
 - [ ] Catálogo público: `GET /products`, `GET /products/:id` (filtrar `visible`, ocultar `unitCost`)

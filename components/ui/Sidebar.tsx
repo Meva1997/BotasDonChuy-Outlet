@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { EASE_LUXE } from "@/lib/motion";
+import { EASE_LUXE } from "@/lib/ui/motion";
 import type { AdminSection } from "@/app/admin/page";
 
 const NAV_ITEMS: { id: AdminSection; label: string; badge?: number }[] = [

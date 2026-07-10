@@ -101,10 +101,10 @@ Env: set `NEXT_PUBLIC_API_URL` to the backend URL (defaults to `/api`). See `BAC
 2. **Datos de envío** — shipping form validated with react-hook-form + zod (Mexico only). On submit it **posts the order to the backend** (`POST /api/orders` via `createOrder` in `lib/api/orders.ts`): only `{ items: [{ productId, size, quantity }], customer }` is sent — no amounts. The backend recalculates totals and atomically decrements stock; a `409` (out of stock) or `400` keeps the user on the form. Payment section is a placeholder for future Stripe Elements integration.
 3. **Confirmación** — frozen order snapshot (with `Pedido #<id>` and the server's authoritative totals) plus shipping address.
 
-Key files: `app/(public)/checkout/page.tsx`, `components/checkout/`, `schemas/checkout.ts`, `lib/cart.ts`, `lib/api/orders.ts`.
+Key files: `app/(public)/checkout/page.tsx`, `components/checkout/`, `schemas/checkout.ts`, `lib/domain/cart.ts`, `lib/api/orders.ts`.
 
 ## Shipping
 
-Shipping is calculated in `lib/cart.ts` via `computeShipping(items)`. Currently uses flat rates by product type (boots › hats › clothing). The rate of the heaviest item in the cart applies to the whole order. `CartTotals.shipping` flows through `OrderTotals` and the order snapshot in `CheckoutContext` — the total shown at every checkout step always includes shipping.
+Shipping is calculated in `lib/domain/cart.ts` via `computeShipping(items)`. Currently uses flat rates by product type (boots › hats › clothing). The rate of the heaviest item in the cart applies to the whole order. `CartTotals.shipping` flows through `OrderTotals` and the order snapshot in `CheckoutContext` — the total shown at every checkout step always includes shipping.
 
 When ready to integrate a real carrier API (e.g. Skydropx), only `computeShipping` needs to be replaced. See `CLAUDE.md` for the full migration guide.

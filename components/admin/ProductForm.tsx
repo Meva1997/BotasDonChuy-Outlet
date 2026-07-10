@@ -15,7 +15,7 @@ import {
   type AdminProduct,
   type AdminProductInput,
 } from "@/lib/api/adminProducts";
-import { CATEGORIES, type CategoryInfo } from "@/lib/categories";
+import { CATEGORIES, type CategoryInfo } from "@/lib/domain/categories";
 
 interface Props {
   category: CategoryInfo;

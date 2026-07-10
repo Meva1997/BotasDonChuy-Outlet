@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { MonthlyReport, ReplenishmentRow } from "@/components/admin/data/types";
 import { reportKeys, getReplenishmentReport } from "@/lib/api/reports";
-import { categorySingular } from "@/lib/categories";
+import { categorySingular } from "@/lib/domain/categories";
 
 const PRIORITY_STYLES = {
   urgente: {

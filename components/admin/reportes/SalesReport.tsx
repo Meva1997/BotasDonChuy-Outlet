@@ -1,7 +1,7 @@
 "use client";
 
 import { MonthlyReport } from "@/components/admin/data/types";
-import { categorySingular } from "@/lib/categories";
+import { categorySingular } from "@/lib/domain/categories";
 
 function pct(value: number, total: number) {
   if (total === 0) return 0;

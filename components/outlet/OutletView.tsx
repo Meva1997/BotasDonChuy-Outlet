@@ -8,13 +8,13 @@ import OutletCard from "@/components/ui/OutletCard";
 import EmptyState from "@/components/ui/EmptyState";
 import OutletFilters from "@/components/outlet/OutletFilters";
 import OutletPagination from "@/components/outlet/OutletPagination";
-import { fadeUp, staggerContainer, EASE_LUXE } from "@/lib/motion";
+import { fadeUp, staggerContainer, EASE_LUXE } from "@/lib/ui/motion";
 import {
   getProducts,
   productKeys,
   type ProductFilters,
-} from "@/lib/getProducts";
-import { categoryPlural } from "@/lib/categories";
+} from "@/lib/api/products";
+import { categoryPlural } from "@/lib/domain/categories";
 
 const TRUST_SIGNALS = [
   "Piezas únicas · sin reposición",

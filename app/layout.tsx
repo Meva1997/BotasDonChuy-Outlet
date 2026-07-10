@@ -4,7 +4,7 @@ import "./globals.css";
 import CartProvider from "@/components/ui/CartProvider";
 import QueryProvider from "@/components/providers/QueryProvider";
 import BrandProvider from "@/components/providers/BrandProvider";
-import { BRAND } from "@/lib/brand";
+import { BRAND } from "@/lib/domain/brand";
 
 const playfair = Playfair_Display({
   variable: "--font-playfair",

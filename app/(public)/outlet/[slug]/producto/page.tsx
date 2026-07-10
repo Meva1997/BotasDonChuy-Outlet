@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import ProductInfo from "@/components/ui/ProductInfo";
-import { getProductById } from "@/lib/getProducts";
+import { getProductById } from "@/lib/api/products";
 
 interface Props {
   params: Promise<{ slug: string }>;
