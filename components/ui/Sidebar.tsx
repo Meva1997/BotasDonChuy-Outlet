@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { EASE_LUXE } from "@/lib/ui/motion";
 import type { AdminSection } from "@/app/admin/page";
 
 const NAV_ITEMS: { id: AdminSection; label: string; badge?: number }[] = [
   { id: "datos", label: "Datos" },
+  { id: "pedidos", label: "Pedidos" },
   { id: "reportes", label: "Reportes" },
   { id: "productos", label: "Productos" },
   { id: "marca", label: "Marca" },
@@ -109,6 +111,30 @@ function SidebarBody({
 
       {/* Footer */}
       <div className="px-7 py-5 border-t border-amber-400/10">
+        <Link
+          href="/"
+          onClick={onClose}
+          className="group flex items-center gap-2.5 text-amber-100/40 hover:text-amber-400 transition-colors mb-4"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="transition-transform group-hover:-translate-x-0.5"
+          >
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          <span className="text-[11px] tracking-[0.25em] uppercase font-medium">
+            Volver a la tienda
+          </span>
+        </Link>
         <p className="text-[9px] tracking-[0.2em] uppercase text-amber-100/25">
           Outlet · Liquidación final
         </p>

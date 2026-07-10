@@ -8,11 +8,13 @@ import ProductSection from "@/components/admin/ProductSection";
 import DataSection from "@/components/admin/DataSection";
 import ConfigSection from "@/components/admin/ConfigSection";
 import ReportesSection from "@/components/admin/ReportesSection";
+import OrdersSection from "@/components/admin/OrdersSection";
 
 export type AdminSection =
   | "marca"
   | "productos"
   | "datos"
+  | "pedidos"
   | "reportes"
   | "configuracion";
 
@@ -20,6 +22,7 @@ const VALID_SECTIONS: AdminSection[] = [
   "marca",
   "productos",
   "datos",
+  "pedidos",
   "reportes",
   "configuracion",
 ];
@@ -86,6 +89,7 @@ export default function AdminPage() {
           {active === "marca" && <MarcaSection />}
           {active === "productos" && <ProductSection />}
           {active === "datos" && <DataSection />}
+          {active === "pedidos" && <OrdersSection />}
           {active === "reportes" && <ReportesSection />}
           {active === "configuracion" && <ConfigSection />}
         </div>
