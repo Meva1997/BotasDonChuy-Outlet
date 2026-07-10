@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { fadeUp, EASE_LUXE } from "@/lib/motion";
+import { fadeUp, EASE_LUXE } from "@/lib/ui/motion";
 
 interface LegalSection {
   title: string;

@@ -3,9 +3,9 @@
 import { useEffect } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { type AdminProduct } from "@/lib/api/adminProducts";
-import { categorySingular } from "@/lib/categories";
+import { categorySingular } from "@/lib/domain/categories";
 import { formatPrice } from "@/lib/utils";
-import { EASE_LUXE } from "@/lib/motion";
+import { EASE_LUXE } from "@/lib/ui/motion";
 
 interface Props {
   product: AdminProduct;

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { fadeIn } from "@/lib/motion";
+import { fadeIn } from "@/lib/ui/motion";
 
 const SELECT_CLASS =
   "font-sans text-amber-50 text-sm bg-stone-900/60 border border-amber-400/25 rounded-sm px-4 py-2.5 pr-9 appearance-none cursor-pointer hover:border-amber-400/55 focus:outline-none focus:border-amber-400/70 focus:ring-1 focus:ring-amber-400/30 transition-all duration-200";

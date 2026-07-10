@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { BRAND } from "@/lib/brand";
+import { BRAND } from "@/lib/domain/brand";
 import {
   brandKeys,
   getBrandSettings,

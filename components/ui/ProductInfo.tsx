@@ -3,11 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import type { Product } from "@/lib/getProducts";
+import type { Product } from "@/lib/api/products";
 import { useCartStore } from "@/store/cartStore";
-import { fadeUp, EASE_LUXE } from "@/lib/motion";
+import { fadeUp, EASE_LUXE } from "@/lib/ui/motion";
 import { formatPrice } from "@/lib/utils";
-import { categoryPlural } from "@/lib/categories";
+import { categoryPlural } from "@/lib/domain/categories";
 
 interface ProductInfoProps {
   product: Product;

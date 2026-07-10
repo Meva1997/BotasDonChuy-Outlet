@@ -5,7 +5,7 @@ Estado de la migración de **mocks → endpoints reales** del backend Express
 
 Todas las llamadas deben pasar por la instancia axios única `lib/api/client.ts`
 (adjunta `Bearer` del `authStore` y maneja el `401`). El patrón de referencia
-—ya implementado— es `lib/getProducts.ts`: **axios + validación Zod en runtime +
+—ya implementado— es `lib/api/products.ts`: **axios + validación Zod en runtime +
 query-key factory listo para TanStack Query**. Replicar ese patrón en cada
 migración.
 
@@ -22,8 +22,8 @@ migración.
 | `POST /api/auth/login` | `components/auth/LoginForm.tsx` → `login()` de `lib/api/auth.ts` | ✅ | — |
 | `POST /api/auth/forgot-password` | `components/auth/ForgotPasswordForm.tsx` → `forgotPassword()` (`useMutation`) | ✅ | — |
 | `GET /api/auth/me` | `components/auth/AdminGuard.tsx` → `getMe()` (valida token + rehidrata `user`) | ✅ | — |
-| `GET /api/products` | `lib/getProducts.ts` → `getProducts()` | ✅ | — |
-| `GET /api/products/:id` | `lib/getProducts.ts` → `getProductById()` | ✅ | — |
+| `GET /api/products` | `lib/api/products.ts` → `getProducts()` | ✅ | — |
+| `GET /api/products/:id` | `lib/api/products.ts` → `getProductById()` | ✅ | — |
 | `POST /api/orders` | `components/checkout/UserDetails.tsx` → `createOrder()` de `lib/api/orders.ts` (`useMutation`); `completeOrder()` congela la respuesta `201` | ✅ | — |
 | `GET /api/admin/products` | `components/admin/ProductSection.tsx` → `getAdminProducts()` de `lib/api/adminProducts.ts` (`useQuery`) | ✅ | — |
 | `POST /api/admin/products` | `components/admin/ProductForm.tsx` → `createProduct()` (`useMutation` + invalidación) | ✅ | — |
@@ -34,10 +34,10 @@ migración.
 | `GET /api/admin/reports/replenishment` | `components/admin/reportes/ReplenishmentReport.tsx` → `getReplenishmentReport()` (`useQuery`) | ✅ | — |
 | `GET /api/admin/brand` | `components/providers/BrandProvider.tsx` → `getBrandSettings()` de `lib/api/brand.ts` (`useQuery`); `useBrand()` alimenta `Hero`/`Footer`/`NavHeader`/`Cart`. `BRAND` = fallback SSR | ✅ | — |
 | `PUT /api/admin/brand` | `components/admin/MarcaSection.tsx` → `updateBrandSettings()` (`useMutation`, autosave con debounce) | ✅ | — |
-| `GET /api/admin/users` | `components/admin/ConfigSection.tsx` (sin listado) | 🔴 | `useQuery` de usuarios del panel |
-| `POST /api/admin/users` | `components/admin/ConfigSection.tsx` (formulario no conectado) | 🔴 | `useMutation` de alta con contraseña temporal |
-| `DELETE /api/admin/users/:id` | `components/admin/ConfigSection.tsx` | 🔴 | `useMutation` de baja |
-| `PUT /api/admin/account` | `components/admin/ConfigSection.tsx` (campos email/password no enviados) | 🔴 | `useMutation` → `api.put("/admin/account", data)` |
+| `GET /api/admin/users` | `components/admin/ConfigSection.tsx` → `getAdminUsers()` de `lib/api/adminUsers.ts` (`useQuery`) | ✅ | — |
+| `POST /api/admin/users` | `components/admin/ConfigSection.tsx` → `createAdminUser()` (`useMutation` + invalidación) | ✅ | — |
+| `DELETE /api/admin/users/:id` | `components/admin/ConfigSection.tsx` → `deleteAdminUser()` (`useMutation`, confirmación inline) | ✅ | — |
+| `PUT /api/admin/account` | `components/admin/ConfigSection.tsx` → `updateOwnAccount()` de `lib/api/account.ts` (`useMutation`) | ✅ | — |
 | `GET /api/admin/orders` | *(sin UI todavía)* | ⚪ | Construir vista de pedidos del admin y conectar |
 | `POST /api/webhooks/stripe` | *(pago es placeholder — `PaymentSection`)* | ⚪ | Fase 8 (Stripe): stub en backend, sin front |
 
@@ -99,7 +99,7 @@ migración.
 - ✅ `GET /api/admin/brand` (público) — contrato centralizado en `lib/api/brand.ts`
   (patrón `getProducts.ts`): `BrandSettingsSchema` (Zod), `brandKeys`, `getBrandSettings()`.
   `BrandProvider` (root layout) hidrata con `useQuery` y expone `useBrand()`; `Hero`/`Footer`/
-  `NavHeader`/`Cart` consumen la marca resuelta. `BRAND` (`lib/brand.ts`) queda como fallback SSR.
+  `NavHeader`/`Cart` consumen la marca resuelta. `BRAND` (`lib/domain/brand.ts`) queda como fallback SSR.
 - ✅ `PUT /api/admin/brand` — `MarcaSection` usa `useMutation({ mutationFn: updateBrandSettings })`
   con autosave (debounce 700ms) + invalidación de `brandKeys.all`. `updateBrandSettings` usa
   `safeParse` (un 2xx ya persistió).
@@ -111,11 +111,24 @@ migración.
   **metadata** (título del navegador) sigue estática en `BRAND.name` para no volver dinámico el
   render de todas las rutas.
 
-### Fase 6 — Admin: usuarios y cuenta
-- `GET`/`POST`/`DELETE /api/admin/users` — gestión de usuarios del panel.
-- `PUT /api/admin/account` — cambio de email/contraseña propios desde `ConfigSection`.
-- Reglas del backend: no borrar la propia cuenta ni al único propietario (`400`);
-  email duplicado (`409`).
+### Fase 6 — Admin: usuarios y cuenta ✅
+- ✅ `GET`/`POST`/`DELETE /api/admin/users` — contrato centralizado en
+  `lib/api/adminUsers.ts` (patrón `getProducts.ts`): `AdminUserSchema` (Zod),
+  `adminUserKeys`, `getAdminUsers()`/`createAdminUser()`/`deleteAdminUser()`.
+  `ConfigSection` lista con `useQuery`, da de alta con `useMutation` + invalidación
+  (contraseña temporal manual con reglas de complejidad validadas en cliente vía
+  `schemas/users.ts`) y da de baja con confirmación inline.
+- ✅ `PUT /api/admin/account` — `lib/api/account.ts` (`updateOwnAccount()`).
+  `ConfigSection` la tarjeta "Mi cuenta" es un único form (`react-hook-form` +
+  `updateAccountSchema`) que exige la contraseña actual para cualquier cambio;
+  tras cambiar el correo rehidrata el `user` (`authStore.setUser` + invalida
+  `authKeys.me`).
+- **Errores mapeados:** `401` contraseña actual incorrecta, `409` correo en uso,
+  `400` validación; baja bloqueada por el backend (propia cuenta / único
+  propietario) se muestra inline con el mensaje del servidor.
+- **Gating:** la gestión de usuarios se muestra a todos los admins autenticados
+  (refleja el backend, que solo exige `requireAuth`). El backend igual protege
+  borrar la propia cuenta y al único propietario.
 
 ### Fase 7 — Admin: pedidos *(UI nueva)*
 - `GET /api/admin/orders` (paginado, incluye `unitCost`) — construir la vista y conectarla.
@@ -129,10 +142,10 @@ migración.
 - **Base URL:** `NEXT_PUBLIC_API_URL` debe apuntar al backend (`http://localhost:4000`);
   sin definir cae a `/api`. No commitear secretos.
 - **Contratos:** el backend expone las mismas formas que los tipos del front
-  (`components/admin/data/types.ts`, `ProductSchema` en `lib/getProducts.ts`). Validar
+  (`components/admin/data/types.ts`, `ProductSchema` en `lib/api/products.ts`). Validar
   cada respuesta con Zod, igual que en `getProducts.ts`.
 - **Datos sensibles:** `unitCost` y márgenes solo llegan por rutas `/api/admin/*`
   autenticadas — nunca en el catálogo público.
 - **Envíos (Skydropx):** `POST /api/shipping/rates` está documentado en `BACKEND.md`
   §5.4 y `CLAUDE.md`, pero **aún no está montado** en el backend. Se aborda cuando el
-  volumen lo justifique (hoy: tarifa plana en `lib/cart.ts`).
+  volumen lo justifique (hoy: tarifa plana en `lib/domain/cart.ts`).

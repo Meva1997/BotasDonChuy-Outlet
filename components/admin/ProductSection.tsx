@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { adminProductKeys, getAdminProducts } from "@/lib/api/adminProducts";
-import { CATEGORIES, type CategoryInfo } from "@/lib/categories";
+import { CATEGORIES, type CategoryInfo } from "@/lib/domain/categories";
 import ProductCategoryView from "./ProductCategoryView";
 
 export default function ProductSection() {

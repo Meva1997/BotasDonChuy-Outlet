@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Product } from "@/lib/getProducts";
+import type { Product } from "@/lib/api/products";
 
 export interface CartItem {
   id: string;

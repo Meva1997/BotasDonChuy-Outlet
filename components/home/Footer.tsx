@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { fadeUp } from "@/lib/motion";
+import { fadeUp } from "@/lib/ui/motion";
 import { useBrand } from "@/components/providers/BrandProvider";
 
 // Secciones estáticas; "Contacto" se arma dentro del componente porque su link

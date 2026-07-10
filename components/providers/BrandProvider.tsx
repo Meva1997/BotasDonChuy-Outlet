@@ -3,7 +3,7 @@
 import { createContext, useContext } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getBrandSettings, brandKeys } from "@/lib/api/brand";
-import { resolveBrand, type ResolvedBrand } from "@/lib/brand";
+import { resolveBrand, type ResolvedBrand } from "@/lib/domain/brand";
 
 // Marca resuelta para todo el storefront. El valor por defecto del context es la
 // marca estática (BRAND) por si algún consumidor se monta fuera del provider.

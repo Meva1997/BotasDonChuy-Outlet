@@ -9,7 +9,7 @@ import {
   type AdminProduct,
 } from "@/lib/api/adminProducts";
 import { formatPrice } from "@/lib/utils";
-import { type CategoryInfo } from "@/lib/categories";
+import { type CategoryInfo } from "@/lib/domain/categories";
 import ProductForm from "./ProductForm";
 import ProductDetailModal from "./ProductDetailModal";
 

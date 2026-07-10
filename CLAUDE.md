@@ -50,7 +50,7 @@ components/
   auth/           # AuthShell (split-panel layout) + LoginForm/ForgotPasswordForm — react-hook-form + zod (schemas/auth.ts) + TanStack Query (useMutation), YA conectados al backend vía lib/api/auth. AdminGuard — protege /admin y valida el token contra GET /auth/me (ver "Auth & data fetching")
   providers/      # QueryProvider — QueryClientProvider de TanStack Query (montado en root layout)
                   # BrandProvider — hidrata la marca desde GET /api/admin/brand (público) y la
-                  #   expone vía useBrand(); BRAND (lib/brand.ts) es el fallback SSR (montado en root layout)
+                  #   expone vía useBrand(); BRAND (lib/domain/brand.ts) es el fallback SSR (montado en root layout)
   admin/          # Panel de administración — secciones completas:
                   #   MarcaSection — editor de identidad de marca (logo + copy). YA conectado vía
                   #     lib/api/brand (useQuery carga + useMutation autosave con debounce). El logo es
@@ -58,28 +58,39 @@ components/
                   #   ProductSection — gestión de catálogo (ProductForm, ProductCategoryView). YA conectado al backend vía lib/api/adminProducts (useQuery lista + useMutation CRUD)
                   #   DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable). YA conectado vía lib/api/dashboard (GET /api/admin/dashboard)
                   #   ReportesSection — análisis mensual con pestañas Ventas / Reposición + selector de mes
-                  #   ConfigSection — ajustes generales de la tienda
+                  #   ConfigSection — usuarios del panel + cuenta propia. YA conectado (Fase 6):
+                  #     tarjeta "Mi cuenta" (react-hook-form + updateAccountSchema, un solo form que
+                  #     exige contraseña actual) vía lib/api/account; tarjeta "Administradores"
+                  #     (lista useQuery + alta/baja useMutation, confirmación inline) vía
+                  #     lib/api/adminUsers. Gestión de usuarios visible a todos los admins. Logout
+                  #     desde el botón "Cerrar Sesión". ConfigSection es solo el shell; las tarjetas
+                  #     viven en components/admin/config/ (AccountCard, AdminsCard, formUi = estilos/FieldError compartidos)
                   #   data/ — subcomponentes de gráficas y tablas (recharts) + types.ts (contratos de datos del admin)
                   #   reportes/ — SalesReport (histórico por mes) y ReplenishmentReport (forecast + pedido sugerido). YA conectados vía lib/api/reports (GET /api/admin/reports/*)
 lib/
   api/
-    client.ts     # instancia axios (baseURL NEXT_PUBLIC_API_URL ?? /api) + interceptors: request adjunta Bearer del authStore, response cierra sesión y va a /login en 401
+    client.ts     # instancia axios (baseURL NEXT_PUBLIC_API_URL ?? /api) + interceptors: request adjunta Bearer del authStore, response cierra sesión y va a /login en 401. Flags de config: skipAuth (pública: sin Bearer, 401 no redirige) y skipAuthRedirect (autenticada, pero 401 con otro significado —p. ej. contraseña incorrecta— NO cierra sesión: lo maneja la UI inline)
     auth.ts       # contratos de auth (patrón getProducts): schemas Zod + login()/forgotPassword()/getMe() + authKeys. Fuente única del tipo AuthUser ({ id, name, email, role }). YA conectado al backend (POST /auth/login, POST /auth/forgot-password, GET /auth/me)
     orders.ts     # contrato del checkout (patrón getProducts): OrderResponseSchema (Zod, items SIN unitCost) + buildOrderPayload(items, customer) + createOrder() + orderKeys. YA conectado (POST /api/orders): envía { items, customer } sin montos; el backend recalcula totales y descuenta stock por talla
     adminProducts.ts # contrato del catálogo admin (patrón getProducts): AdminProductSchema (SÍ trae unitCost) + adminProductKeys + getAdminProducts()/createProduct()/updateProduct()/deleteProduct(). YA conectado (GET/POST/PUT/DELETE /api/admin/products). AdminProductInput manda sizes como CSV donde repetir talla = unidades de stock (el backend agrupa en filas ProductSize)
     dashboard.ts  # contrato de métricas admin (patrón getProducts): DashboardSchema (Zod, valida la forma de components/admin/data/types.ts) + dashboardKeys + getAdminDashboard(). YA conectado (GET /api/admin/dashboard)
     reports.ts    # contrato de reportes admin (patrón getProducts): MonthlyReportSchema/ReplenishmentRowSchema (Zod, reflejan components/admin/data/types.ts) + reportKeys + getMonthlyReport()/getReplenishmentReport(). YA conectado (GET /api/admin/reports/monthly, GET /api/admin/reports/replenishment). Ambos endpoints devuelven un array plano ya derivado/ordenado por el backend
     brand.ts      # contrato de marca (patrón getProducts): BrandSettingsSchema (Zod) + brandKeys + getBrandSettings()/updateBrandSettings(). YA conectado (GET público /api/admin/brand, PUT protegido). BrandSettings es un SUBCONJUNTO de BRAND (brandName/heroText/tagline/cartNotice/footerNote/logoUrl); namePrimary/nameAccent/email/instagram NO existen en el backend. updateBrandSettings usa safeParse (un 2xx ya persistió)
-  getProducts.ts  # getProducts(filters), getProductById(id) — YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible). 404 → null. El storefront ya no usa mocks (db/ eliminado en la Fase 4).
-  cart.ts         # computeTotals(items) — pure subtotal/savings/total helper
-  motion.ts       # variantes framer-motion compartidas (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
-  brand.ts        # BRAND — defaults/fallback de identidad/copy de marca (nombre, email, hero, tagline, cartNotice…). El storefront se hidrata desde el backend vía BrandProvider/useBrand; BRAND es el fallback SSR. resolveBrand(settings) mergea BrandSettings (backend) ← BRAND: mapea tagline (string \n) → taglineLines[] y conserva namePrimary/nameAccent/email/instagram (que el backend no tiene). ResolvedBrand = forma que consume el storefront
-  categories.ts   # CATEGORIES + CategoryInfo/ProductType + categoryPlural()/categorySingular() — fuente única de categorías y etiquetas (antes duplicadas en ~10 archivos)
+    adminUsers.ts # contrato de usuarios del panel (patrón getProducts): AdminUserSchema (Zod, sin passwordHash, role owner|admin) + adminUserKeys + getAdminUsers()/createAdminUser()/deleteAdminUser(). YA conectado (GET/POST/DELETE /api/admin/users). createAdminUser usa acceptWrite (safeParse); el backend valida 409 correo en uso y 400 al borrar la propia cuenta / al único propietario
+    account.ts    # contrato de cuenta propia: AccountUpdateResponseSchema + updateOwnAccount(). YA conectado (PUT /api/admin/account). currentPassword es obligatoria para cualquier cambio; email va sembrado con el actual (el backend solo lo cambia si difiere). El PUT va con skipAuthRedirect (el 401 = contraseña incorrecta, se muestra inline sin cerrar sesión). No devuelve el user → la UI rehidrata con authStore.setUser + invalidación de authKeys.me
+    products.ts   # getProducts(filters), getProductById(id) — fetcher público del catálogo (patrón hermano de adminProducts.ts). YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible). 404 → null. El storefront ya no usa mocks (db/ eliminado en la Fase 4).
+  domain/         # datos/lógica de negocio puros (sin React, sin I/O)
+    cart.ts       # computeTotals(items) — pure subtotal/savings/total helper
+    brand.ts      # BRAND — defaults/fallback de identidad/copy de marca (nombre, email, hero, tagline, cartNotice…). El storefront se hidrata desde el backend vía BrandProvider/useBrand; BRAND es el fallback SSR. resolveBrand(settings) mergea BrandSettings (backend) ← BRAND: mapea tagline (string \n) → taglineLines[] y conserva namePrimary/nameAccent/email/instagram (que el backend no tiene). ResolvedBrand = forma que consume el storefront
+    categories.ts # CATEGORIES + CategoryInfo/ProductType + categoryPlural()/categorySingular() — fuente única de categorías y etiquetas (antes duplicadas en ~10 archivos)
+  ui/             # helpers de presentación
+    motion.ts     # variantes framer-motion compartidas (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
   utils/
     index.ts      # formatPrice(amount) — es-MX locale formatting (incluye el símbolo $)
 schemas/
   checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list
   auth.ts         # zod loginSchema + forgotPasswordSchema + LoginData/ForgotPasswordData types
+  users.ts        # zod createUserSchema + updateAccountSchema (+ passwordComplexity reutilizable, refleja las reglas del backend) — validación de los forms de ConfigSection
 store/
   cartStore.ts    # Zustand store (persist) — cart items, open/close, totals, stock-aware addItem
   authStore.ts    # Zustand store (persist, key botas-don-chuy-auth) — token + user ({ id, name, email, role }) de sesión admin, login()/setUser()/logout()/isAuthenticated(). Fuente única del token (axios client + AdminGuard). El tipo AuthUser vive en lib/api/auth.ts
@@ -124,7 +135,7 @@ Shared, prop-driven pieces: `Stepper` (wizard indicator), `OrderItems`, `OrderTo
 
 ### Estado actual: tarifa plana por categoría
 
-`lib/cart.ts` contiene toda la lógica de envío. El campo `CartTotals.shipping` fluye por todo el sistema — `OrderTotals`, `OrderSummary`, `Success`, y la snapshot en `CheckoutContext.completeOrder()`. No hay más lugares que actualizar.
+`lib/domain/cart.ts` contiene toda la lógica de envío. El campo `CartTotals.shipping` fluye por todo el sistema — `OrderTotals`, `OrderSummary`, `Success`, y la snapshot en `CheckoutContext.completeOrder()`. No hay más lugares que actualizar.
 
 Regla activa: se cobra la tarifa del producto más caro del carrito (la bota domina sobre el sombrero, el sombrero sobre la ropa). Origen: Celaya, Guanajuato, CP 38000.
 
@@ -208,7 +219,7 @@ Insertar un paso entre "Datos de envío" y "Confirmación":
 
 **Paso 4 — Reemplazar `computeShipping`**
 
-`computeShipping(items)` en `lib/cart.ts` se elimina o queda como fallback. El costo de envío pasa a venir del context (opción elegida por el cliente). `CartTotals.shipping` no cambia — solo cambia de dónde viene el valor.
+`computeShipping(items)` en `lib/domain/cart.ts` se elimina o queda como fallback. El costo de envío pasa a venir del context (opción elegida por el cliente). `CartTotals.shipping` no cambia — solo cambia de dónde viene el valor.
 
 **Nada más cambia.** `OrderTotals`, `OrderSummary`, `Success`, y `CheckoutContext` consumen `CartTotals.shipping` de forma genérica y no necesitan modificaciones.
 
@@ -255,7 +266,7 @@ Ambos reportes exportan CSV con un helper `csvField()` (escapado RFC 4180: envue
 
 ## Backend (Express.js) — contrato base
 
-El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/getProducts.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Pendientes: marca (Fase 5), usuarios/cuenta (Fase 6), pedidos (Fase 7), pagos (Fase 8).
+El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/api/products.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Marca (Fase 5) y usuarios/cuenta (Fase 6) YA están conectados. Pendientes: pedidos (Fase 7), pagos (Fase 8).
 
 > **Principio:** la lógica de negocio (forecast, reposición, totales de carrito, envío) es de funciones puras que reciben números. Forecast y reposición ya viven en el backend (`backend/src/services/`); el frontend solo pinta las filas ya calculadas. La única matriz "fuente de verdad" es ventas-por-mes-por-producto (las órdenes pagadas).
 
@@ -309,7 +320,7 @@ The site uses a luxury dark aesthetic — all new UI should follow these convent
 
 ### Animaciones, accesibilidad e imágenes
 
-- **Animaciones**: usar **framer-motion** (no transiciones CSS ad-hoc para entradas/salidas). Variantes compartidas en `lib/motion.ts` (`fadeUp`, `fadeIn`, `staggerContainer`, `EASE_LUXE`). Los drawers (`Cart`, `Sidebar`) usan `AnimatePresence` + `motion`. Respetar `useReducedMotion()` para desactivar slides.
+- **Animaciones**: usar **framer-motion** (no transiciones CSS ad-hoc para entradas/salidas). Variantes compartidas en `lib/ui/motion.ts` (`fadeUp`, `fadeIn`, `staggerContainer`, `EASE_LUXE`). Los drawers (`Cart`, `Sidebar`) usan `AnimatePresence` + `motion`. Respetar `useReducedMotion()` para desactivar slides.
 - **Foco / teclado**: `globals.css` define un anillo `:focus-visible` ámbar global para todos los controles. No usar `focus:outline-none` sin un `focus-visible` de reemplazo.
 - **Movimiento reducido**: `globals.css` neutraliza animaciones/transiciones bajo `prefers-reduced-motion: reduce`.
 - **Imágenes**: `next/image` para imágenes reales de producto (URL remota — registrar el host en `images.remotePatterns` de `next.config.ts`). `<img>` crudo **solo** para previews locales `blob:` (next/image no las optimiza), con `eslint-disable @next/next/no-img-element`. Todo `<img>` de contenido lleva `alt` descriptivo; los previews de subida pueden ir `alt=""` (decorativos).

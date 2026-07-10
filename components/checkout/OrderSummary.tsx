@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/cartStore";
-import { computeTotals } from "@/lib/cart";
+import { computeTotals } from "@/lib/domain/cart";
 import { useCheckout } from "./CheckoutContext";
 import OrderItems from "./OrderItems";
 import OrderTotals from "./OrderTotals";
