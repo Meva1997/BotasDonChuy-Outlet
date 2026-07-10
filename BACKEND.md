@@ -327,7 +327,7 @@ PUT    /api/admin/products/:id         [auth]  → Product
 DELETE /api/admin/products/:id         [auth]  → { ok }
 
 GET    /api/admin/dashboard            [auth]  → DashboardData
-GET    /api/admin/orders               [auth]  → Order[]
+GET    /api/admin/orders               [auth]  → { orders, total, page, perPage, totalPages }  (paginado)
 
 GET    /api/admin/reports/monthly      [auth]  → MonthlyReport[]
 GET    /api/admin/reports/replenishment[auth]  → ReplenishmentRow[]
@@ -566,7 +566,26 @@ InventoryRow = { id: number; name: string; type: string; stock: number; salePric
 - `recentSales`: últimos pedidos resumidos (concatenar nombres en `items`, p. ej. `"Bota Ranchera 1972, Bota Exótica ×2"`).
 
 #### `GET /api/admin/orders` `[auth]`
-Lista de pedidos completos (`Order[]` con `items`). Para la vista de ventas detalladas.
+Lista de pedidos completos con sus `items`. **YA conectado (Fase 7)** a la sección **Pedidos** del panel (`components/admin/OrdersSection.tsx` + `lib/api/adminOrders.ts`).
+
+**Paginado en servidor** (a diferencia de `/admin/products`, que devuelve un array plano). Query params: `page` (default `1`), `perPage` (default `20`). Respuesta `200`:
+```ts
+{
+  orders: AdminOrder[];   // cada uno con items (incluyen unitCost — ruta /admin/*)
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+}
+```
+Cada `AdminOrder` extiende el `Order` de [3.2](#32-order--orderitem--pedidos-del-checkout) con dos campos que el front ya consume:
+- **`id: int`** — el admin usa IDs numéricos de pedido (`Pedido #<id>`), no el `uuid` del snapshot público.
+- **`status`** y **`paymentStatus`** son **campos independientes**: `status ∈ {pending, paid, shipped, delivered, cancelled}` (ciclo de vida del pedido) y `paymentStatus ∈ {unpaid, processing, paid, failed}` (cobro). Comparten el string `"paid"` pero son señales distintas — la UI les da color propio (`StatusBadges.tsx`).
+- **`paymentIntentId: string?`** — reservado para la Fase 8 (Stripe); hoy la UI no lo pinta.
+
+Cada `AdminOrderItem` trae `unitOriginalPrice`, `unitSalePrice` y **`unitCost`** (dato sensible: el modal de detalle calcula margen por renglón y total). Nunca exponer `unitCost` fuera de `/api/admin/*`.
+
+> **Solo lectura por ahora**: el front no cambia `status`/`paymentStatus` (no hay `PATCH/PUT /api/admin/orders/:id`). El cambio de estado y la asignación de paquetería (`shippingCarrier`, hoy `null`) quedan como trabajo futuro (ver `ROADMAP-BACKEND-INTEGRATION.md`).
 
 ---
 
@@ -805,6 +824,7 @@ Revisé **todos** los componentes y rutas, no solo los mocks. Hallazgos que afin
 - [ ] Checkout: `POST /orders` (recalcular totales, verificar stock, congelar precios)
 - [ ] Admin productos: GET/POST/PUT/DELETE (extender form con `unitCost` + dimensiones)
 - [ ] Admin dashboard: `GET /dashboard` (KPIs formateados, inventario, ventas recientes)
+- [x] Admin pedidos: `GET /orders` (paginado; `status`/`paymentStatus` independientes, `unitCost` por renglón) — **conectado (Fase 7)**
 - [ ] Admin reportes: `GET /reports/monthly`, `GET /reports/replenishment` (excluir meses `partial`)
 - [ ] Admin marca: `GET/PUT /brand` (lectura pública)
 - [ ] Admin usuarios + cuenta: `/users`, `/account`
