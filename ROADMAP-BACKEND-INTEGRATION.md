@@ -39,7 +39,8 @@ migración.
 | `DELETE /api/admin/users/:id` | `components/admin/ConfigSection.tsx` → `deleteAdminUser()` (`useMutation`, confirmación inline) | ✅ | — |
 | `PUT /api/admin/account` | `components/admin/ConfigSection.tsx` → `updateOwnAccount()` de `lib/api/account.ts` (`useMutation`) | ✅ | — |
 | `GET /api/admin/orders` | *(sin UI todavía)* | ⚪ | Construir vista de pedidos del admin y conectar |
-| `POST /api/webhooks/stripe` | *(pago es placeholder — `PaymentSection`)* | ⚪ | Fase 8 (Stripe): stub en backend, sin front |
+| `POST /api/orders` → `clientSecret` | `components/checkout/PaymentSection.tsx` (hoy placeholder visual) → confirmar el pago con Stripe Elements usando el `clientSecret` que ya devuelve `createOrder()` | 🔴 | Fase 8 (Stripe, **test**): backend activo, falta el front |
+| `POST /api/webhooks/stripe` | *(lo invoca Stripe, no el front)* — el pago se confirma en el cliente; el webhook marca la orden `paid` | 🔴 | Fase 8: backend activo (firma verificada); no requiere código de front |
 
 ## Fases (orden sugerido)
 
@@ -133,9 +134,57 @@ migración.
 ### Fase 7 — Admin: pedidos *(UI nueva)*
 - `GET /api/admin/orders` (paginado, incluye `unitCost`) — construir la vista y conectarla.
 
-### Fase 8 — Pagos *(diferido)*
-- `POST /api/webhooks/stripe` — hoy stub en backend. Reemplazar `PaymentSection` por
-  Stripe Elements y consumir `clientSecret` cuando la fase esté activa.
+### Fase 8 — Pagos con Stripe 🔴 *(modo prueba / sandbox)*
+
+> **El backend ya está activo** (solo Stripe; Skydropx sigue diferido). Todo corre con
+> **llaves de test** (`pk_test_…` / `rk_test_…` / `whsec_…`) — **no** hay dinero real.
+> Falta únicamente la parte del frontend. Esta fase describe cómo conectarla usando el
+> contrato que el backend ya expone, para integrarla de forma correcta.
+
+**Lo que el backend ya hace (referencia — no tocar):**
+- `POST /api/orders` crea la orden (`status: "pending"`, `paymentStatus: "processing"`),
+  crea un **PaymentIntent real de Stripe** y **devuelve el `clientSecret`** en la respuesta
+  `201`: `{ order, clientSecret }`. Ver `../backend/src/services/payment.service.ts`
+  (`createPaymentIntentForOrder`) y `../backend/src/controllers/order.controller.ts`.
+- `POST /api/webhooks/stripe` (firma verificada, `../backend/src/routes/webhook.routes.ts`)
+  es la **fuente de verdad del pago**: al confirmar el cliente, Stripe emite
+  `payment_intent.succeeded` → la orden pasa a `paid`; `payment_failed` la deja `pending`
+  (permite reintento) y `canceled` hace restock + `cancelled`. El front **no** llama a este
+  endpoint (lo invoca Stripe).
+- Un **barrido** (`pendingOrderSweeper.ts`) recicla órdenes `pending` abandonadas tras
+  `PENDING_ORDER_TTL_MINUTES` (30) y libera su stock — así un checkout abandonado no
+  bloquea inventario para siempre.
+
+**Trabajo del frontend (esta fase):**
+1. **Deps + env:** instalar `@stripe/stripe-js` + `@stripe/react-stripe-js` y definir
+   `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (`pk_test_…` de la misma cuenta que la
+   `STRIPE_SECRET_KEY` del backend — si no son de la misma cuenta, el `clientSecret` no
+   resuelve). `loadStripe(pk)` se crea **una vez** a nivel de módulo, no por render.
+2. **Capturar el `clientSecret`:** el contrato ya existe —
+   `CreateOrderResponseSchema` en `lib/api/orders.ts` tiene `clientSecret: string | null`.
+   `completeOrder()` debe guardarlo (hoy queda en `null`) para pasarlo a `<Elements>`.
+3. **Reemplazar `PaymentSection`** (hoy inputs decorativos, `components/checkout/PaymentSection.tsx`)
+   por `<Elements stripe={stripePromise} options={{ clientSecret }}>` envolviendo un
+   `<PaymentElement />`. Aislar el bloque como está permite el swap sin tocar `UserDetails`.
+4. **Confirmar el pago:** en el submit del pago, `stripe.confirmPayment({ elements,
+   confirmParams: { return_url: <página de éxito> } })`. El pago lo confirma el **cliente**;
+   el backend se entera por el webhook. El orden del flujo es: `createOrder()` (obtiene
+   `clientSecret`) → montar Elements → `confirmPayment` → Stripe redirige al `return_url`.
+5. **Página de éxito:** tras la redirección, leer el estado real del pago. La orden nace
+   `pending`; se vuelve `paid` solo cuando llega el webhook (asíncrono). Mostrar "pago en
+   proceso" y confirmar contra el estado de la orden (cuando exista `GET /api/orders/:id`
+   público, o vía `stripe.retrievePaymentIntent(clientSecret)` con el `redirect_status` de
+   la URL) en lugar de asumir `paid` de inmediato.
+
+**Probar en local (test):** correr el backend con `pnpm dev` **y** el túnel de webhooks
+`stripe listen --forward-to localhost:4000/api/webhooks/stripe` (ver `../backend/README.md`
+§ "Probar Stripe en local"). Tarjeta de prueba: `4242 4242 4242 4242`, cualquier fecha
+futura y CVC. Sin el `stripe listen` corriendo, el pago se cobra en Stripe pero la orden
+**nunca pasa a `paid`** (el webhook no llega) hasta que el barrido la reconcilie.
+
+**Pendientes fuera de alcance de test:** llaves **live** (`pk_live_…`/`sk_live_…`) y el
+endpoint de webhook de producción en el dashboard de Stripe — se hacen al pasar a real, no
+ahora.
 
 ## Notas de implementación
 
