@@ -2,10 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { dashboardKeys, getAdminDashboard } from "@/lib/api/dashboard";
-import KpiGrid from "./data/KpiGrid";
-import RevenueChart from "./data/RevenueChart";
-import SalesTable from "./data/SalesTable";
-import InventoryTable from "./data/InventoryTable";
+import KpiGrid from "../data/KpiGrid";
+import RevenueChart from "../data/RevenueChart";
+import SalesTable from "../data/SalesTable";
+import InventoryTable from "../data/InventoryTable";
 
 export default function DataSection() {
   const {

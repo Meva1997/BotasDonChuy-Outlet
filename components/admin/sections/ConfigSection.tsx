@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
-import { BTN_OUTLINE } from "./config/formUi";
-import AccountCard from "./config/AccountCard";
-import AdminsCard from "./config/AdminsCard";
+import { BTN_OUTLINE } from "../config/formUi";
+import AccountCard from "../config/AccountCard";
+import AdminsCard from "../config/AdminsCard";
 
 export default function ConfigSection() {
   const router = useRouter();

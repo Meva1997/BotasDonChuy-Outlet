@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { adminOrderKeys, getAdminOrders, type AdminOrder } from "@/lib/api/adminOrders";
-import OrdersTable from "./orders/OrdersTable";
-import OrdersPagination from "./orders/OrdersPagination";
-import OrderDetailModal from "./orders/OrderDetailModal";
+import OrdersTable from "../orders/OrdersTable";
+import OrdersPagination from "../orders/OrdersPagination";
+import OrderDetailModal from "../orders/OrderDetailModal";
 
 const PER_PAGE = 20;
 

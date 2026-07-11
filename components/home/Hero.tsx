@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import CategoryCard from "../ui/CategoryCard";
+import CategoryCard from "@/components/home/CategoryCard";
 import { fadeUp, staggerContainer, EASE_LUXE } from "@/lib/ui/motion";
 import { useBrand } from "@/components/providers/BrandProvider";
 
