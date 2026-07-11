@@ -18,7 +18,9 @@ export const OrderItemResponseSchema = z.object({
 });
 
 // Orden persistida que devuelve el backend. Totales recalculados en el servidor
-// (autoridad de precios); `clientSecret` es null hasta activar Stripe (Fase 8).
+// (autoridad de precios). El backend crea un PaymentIntent y devuelve su
+// `clientSecret` junto a la orden (ver CreateOrderResponseSchema); el cliente lo
+// confirma con Stripe.js (Fase 8, ver components/checkout/usePlaceOrder.ts).
 export const OrderResponseSchema = z.object({
   id: z.number(),
   status: z.enum(["pending", "paid", "shipped", "delivered", "cancelled"]),
@@ -44,7 +46,8 @@ export const OrderResponseSchema = z.object({
 
 export type OrderResponse = z.infer<typeof OrderResponseSchema>;
 
-// POST /api/orders → { order, clientSecret }
+// POST /api/orders → { order, clientSecret }. `clientSecret` es el del
+// PaymentIntent de Stripe; puede ser null si la pasarela no está configurada.
 export const CreateOrderResponseSchema = z.object({
   order: OrderResponseSchema,
   clientSecret: z.string().nullable(),
