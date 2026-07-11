@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { adminProductKeys, getAdminProducts } from "@/lib/api/adminProducts";
 import { CATEGORIES, type CategoryInfo } from "@/lib/domain/categories";
-import ProductCategoryView from "./ProductCategoryView";
+import ProductCategoryView from "../products/ProductCategoryView";
 
 export default function ProductSection() {
   const router = useRouter();

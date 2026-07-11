@@ -11,7 +11,7 @@ import {
 } from "@/schemas/checkout";
 import { useCheckout } from "./CheckoutContext";
 import { usePlaceOrder } from "./usePlaceOrder";
-import { TextField, SelectField } from "./FormControls";
+import { TextField, SelectField } from "@/components/ui/FormControls";
 import PaymentSection from "./PaymentSection";
 import OrderTotals from "./OrderTotals";
 

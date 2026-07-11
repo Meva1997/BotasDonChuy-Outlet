@@ -2,21 +2,14 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Sidebar from "@/components/ui/Sidebar";
-import MarcaSection from "@/components/admin/MarcaSection";
-import ProductSection from "@/components/admin/ProductSection";
-import DataSection from "@/components/admin/DataSection";
-import ConfigSection from "@/components/admin/ConfigSection";
-import ReportesSection from "@/components/admin/ReportesSection";
-import OrdersSection from "@/components/admin/OrdersSection";
-
-export type AdminSection =
-  | "marca"
-  | "productos"
-  | "datos"
-  | "pedidos"
-  | "reportes"
-  | "configuracion";
+import Sidebar from "@/components/admin/Sidebar";
+import MarcaSection from "@/components/admin/sections/MarcaSection";
+import ProductSection from "@/components/admin/sections/ProductSection";
+import DataSection from "@/components/admin/sections/DataSection";
+import ConfigSection from "@/components/admin/sections/ConfigSection";
+import ReportesSection from "@/components/admin/sections/ReportesSection";
+import OrdersSection from "@/components/admin/sections/OrdersSection";
+import type { AdminSection } from "@/components/admin/types";
 
 const VALID_SECTIONS: AdminSection[] = [
   "marca",

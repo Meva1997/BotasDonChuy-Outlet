@@ -10,7 +10,7 @@ import {
   type ForgotPasswordData,
 } from "@/schemas/auth";
 import { forgotPassword } from "@/lib/api/auth";
-import { TextField } from "@/components/checkout/FormControls";
+import { TextField } from "@/components/ui/FormControls";
 
 export default function ForgotPasswordForm() {
   const [sentTo, setSentTo] = useState<string | null>(null);

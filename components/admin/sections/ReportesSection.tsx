@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { reportKeys, getMonthlyReport } from "@/lib/api/reports";
-import SalesReport from "./reportes/SalesReport";
-import ReplenishmentReport from "./reportes/ReplenishmentReport";
+import SalesReport from "../reportes/SalesReport";
+import ReplenishmentReport from "../reportes/ReplenishmentReport";
 
 type Tab = "ventas" | "reposicion";
 

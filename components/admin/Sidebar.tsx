@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { EASE_LUXE } from "@/lib/ui/motion";
-import type { AdminSection } from "@/app/admin/page";
+import type { AdminSection } from "@/components/admin/types";
 
 const NAV_ITEMS: { id: AdminSection; label: string; badge?: number }[] = [
   { id: "datos", label: "Datos" },

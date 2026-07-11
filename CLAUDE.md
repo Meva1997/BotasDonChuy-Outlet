@@ -42,36 +42,40 @@ app/              # Next.js App Router
   login/          # Login page → AuthShell + LoginForm
   forgot-password/ # Forgot password page → AuthShell + ForgotPasswordForm
 components/
-  home/           # Page-level sections (NavHeader, Hero, Footer)
-  outlet/         # OutletView — product listing with category filters
-  ui/             # Reusable primitives (CategoryCard, OutletCard, ProductInfo, Cart, CartProvider, Sidebar)
+  home/           # Page-level sections (NavHeader, Hero, Footer) + CategoryCard (tile usado por Hero)
+  outlet/         # OutletView — product listing with category filters; OutletCard + EmptyState (single consumer: OutletView)
+  product/        # ProductInfo — panel de detalle de producto (size picker + add-to-cart), consumido por la página de producto
+  ui/             # Primitivas realmente globales: Cart, CartProvider (drawer montado en root layout), FormControls (TextField/SelectField, compartido por checkout/ y auth/)
   checkout/       # Multi-step checkout flow (see "Checkout flow" below)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal content pages
   auth/           # AuthShell (split-panel layout) + LoginForm/ForgotPasswordForm — react-hook-form + zod (schemas/auth.ts) + TanStack Query (useMutation), YA conectados al backend vía lib/api/auth. AdminGuard — protege /admin y valida el token contra GET /auth/me (ver "Auth & data fetching")
   providers/      # QueryProvider — QueryClientProvider de TanStack Query (montado en root layout)
                   # BrandProvider — hidrata la marca desde GET /api/admin/brand (público) y la
                   #   expone vía useBrand(); BRAND (lib/domain/brand.ts) es el fallback SSR (montado en root layout)
-  admin/          # Panel de administración — secciones completas:
-                  #   MarcaSection — editor de identidad de marca (logo + copy). YA conectado vía
+  admin/          # Panel de administración — Sidebar (nav) + types.ts (AdminSection, fuente única del tipo,
+                  #   ambos en la raíz por ser transversales a todo el panel) + sections/ (las 6 pestañas
+                  #   que app/admin/page.tsx renderiza por AdminSection) + una carpeta de subcomponentes
+                  #   por pestaña (config/, data/, orders/, products/, reportes/):
+                  #   sections/MarcaSection — editor de identidad de marca (logo + copy). YA conectado vía
                   #     lib/api/brand (useQuery carga + useMutation autosave con debounce). El logo es
                   #     preview local (blob:), no se persiste — subida real = trabajo futuro
-                  #   ProductSection — gestión de catálogo (ProductForm, ProductCategoryView). YA conectado al backend vía lib/api/adminProducts (useQuery lista + useMutation CRUD)
-                  #   OrdersSection — listado de pedidos (Fase 7). YA conectado vía lib/api/adminOrders
+                  #   sections/ProductSection — gestión de catálogo. YA conectado al backend vía lib/api/adminProducts (useQuery lista + useMutation CRUD). Subcomponentes en components/admin/products/: ProductForm, ProductCategoryView, ProductDetailModal
+                  #   sections/OrdersSection — listado de pedidos (Fase 7). YA conectado vía lib/api/adminOrders
                   #     (useQuery paginado, GET /api/admin/orders). Solo lectura: tabla (desktop) / cards
                   #     (mobile) + OrderDetailModal (diálogo con trampa de foco). Subcomponentes en
                   #     components/admin/orders/: OrdersTable, OrdersPagination (ventana + elipsis),
                   #     OrderDetailModal, StatusBadges (fuente única de color de status/paymentStatus —
                   #     campos INDEPENDIENTES). El modal muestra unitCost + margen (dato sensible, solo /admin/*)
-                  #   DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable). YA conectado vía lib/api/dashboard (GET /api/admin/dashboard)
-                  #   ReportesSection — análisis mensual con pestañas Ventas / Reposición + selector de mes
-                  #   ConfigSection — usuarios del panel + cuenta propia. YA conectado (Fase 6):
+                  #   sections/DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable). YA conectado vía lib/api/dashboard (GET /api/admin/dashboard)
+                  #   sections/ReportesSection — análisis mensual con pestañas Ventas / Reposición + selector de mes
+                  #   sections/ConfigSection — usuarios del panel + cuenta propia. YA conectado (Fase 6):
                   #     tarjeta "Mi cuenta" (react-hook-form + updateAccountSchema, un solo form que
                   #     exige contraseña actual) vía lib/api/account; tarjeta "Administradores"
                   #     (lista useQuery + alta/baja useMutation, confirmación inline) vía
                   #     lib/api/adminUsers. Gestión de usuarios visible a todos los admins. Logout
                   #     desde el botón "Cerrar Sesión". ConfigSection es solo el shell; las tarjetas
                   #     viven en components/admin/config/ (AccountCard, AdminsCard, formUi = estilos/FieldError compartidos)
-                  #   data/ — subcomponentes de gráficas y tablas (recharts) + types.ts (contratos de datos del admin)
+                  #   data/ — subcomponentes de gráficas y tablas (recharts) + types.ts (contratos de datos del admin, también consumidos por lib/api/dashboard.ts, lib/api/reports.ts y reportes/)
                   #   reportes/ — SalesReport (histórico por mes) y ReplenishmentReport (forecast + pedido sugerido). YA conectados vía lib/api/reports (GET /api/admin/reports/*)
 lib/
   api/

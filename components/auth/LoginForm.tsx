@@ -8,7 +8,7 @@ import { useMutation } from "@tanstack/react-query";
 import axios from "axios";
 import { loginSchema, type LoginData } from "@/schemas/auth";
 import { login } from "@/lib/api/auth";
-import { TextField } from "@/components/checkout/FormControls";
+import { TextField } from "@/components/ui/FormControls";
 import { useAuthStore } from "@/store/authStore";
 
 // Traduce el error de axios en un mensaje para el usuario.

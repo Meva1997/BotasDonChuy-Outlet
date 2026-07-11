@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import ProductInfo from "@/components/ui/ProductInfo";
+import ProductInfo from "@/components/product/ProductInfo";
 import { getProductById } from "@/lib/api/products";
 
 interface Props {
