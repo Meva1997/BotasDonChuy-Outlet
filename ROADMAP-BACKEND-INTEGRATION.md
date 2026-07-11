@@ -39,8 +39,8 @@ migración.
 | `DELETE /api/admin/users/:id` | `components/admin/ConfigSection.tsx` → `deleteAdminUser()` (`useMutation`, confirmación inline) | ✅ | — |
 | `PUT /api/admin/account` | `components/admin/ConfigSection.tsx` → `updateOwnAccount()` de `lib/api/account.ts` (`useMutation`) | ✅ | — |
 | `GET /api/admin/orders` | *(sin UI todavía)* | ⚪ | Construir vista de pedidos del admin y conectar |
-| `POST /api/orders` → `clientSecret` | `components/checkout/PaymentSection.tsx` (hoy placeholder visual) → confirmar el pago con Stripe Elements usando el `clientSecret` que ya devuelve `createOrder()` | 🔴 | Fase 8 (Stripe, **test**): backend activo, falta el front |
-| `POST /api/webhooks/stripe` | *(lo invoca Stripe, no el front)* — el pago se confirma en el cliente; el webhook marca la orden `paid` | 🔴 | Fase 8: backend activo (firma verificada); no requiere código de front |
+| `POST /api/orders` → `clientSecret` | `components/checkout/usePlaceOrder.ts` confirma el pago con Stripe.js (`confirmCardPayment` + `pm_card_visa`) usando el `clientSecret` que devuelve `createOrder()`; `PaymentSection.tsx` es el panel de tarjeta de prueba | ✅ | Fase 8 (Stripe, **test/sandbox**) |
+| `POST /api/webhooks/stripe` | *(lo invoca Stripe, no el front)* — el pago se confirma en el cliente; el webhook marca la orden `paid` | ✅ | Fase 8: backend activo (firma verificada); no requiere código de front |
 
 ## Fases (orden sugerido)
 
@@ -134,12 +134,25 @@ migración.
 ### Fase 7 — Admin: pedidos *(UI nueva)*
 - `GET /api/admin/orders` (paginado, incluye `unitCost`) — construir la vista y conectarla.
 
-### Fase 8 — Pagos con Stripe 🔴 *(modo prueba / sandbox)*
+### Fase 8 — Pagos con Stripe ✅ *(modo prueba / sandbox)*
 
-> **El backend ya está activo** (solo Stripe; Skydropx sigue diferido). Todo corre con
-> **llaves de test** (`pk_test_…` / `rk_test_…` / `whsec_…`) — **no** hay dinero real.
-> Falta únicamente la parte del frontend. Esta fase describe cómo conectarla usando el
-> contrato que el backend ya expone, para integrarla de forma correcta.
+> **Conectado.** Backend y frontend activos en **modo test/sandbox** (`pk_test_…` /
+> `sk_test_…` / `whsec_…`) — **no** hay dinero real. El frontend confirma el pago con
+> Stripe.js hardcodeando la **tarjeta de prueba** (`pm_card_visa` = `4242 4242 4242 4242`),
+> ya que todo corre en sandbox. Al pasar a producción se sustituye por captura real con
+> Stripe Elements (`<PaymentElement>`).
+>
+> **Implementación (frontend):**
+> - Dep `@stripe/stripe-js` + env `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (`pk_test_…`, misma
+>   cuenta que el backend). `lib/stripe/client.ts` = singleton `loadStripe` a nivel de módulo.
+> - `components/checkout/usePlaceOrder.ts` orquesta el flujo de dos fases: `createOrder()`
+>   (obtiene `clientSecret`) → `stripe.confirmCardPayment(clientSecret, { payment_method:
+>   "pm_card_visa" })`. Cachea la orden creada para no duplicarla en un reintento; solo tras
+>   `succeeded` llama `completeOrder()`. El estado `paid` lo concilia el webhook (asíncrono).
+> - `components/checkout/PaymentSection.tsx` pasó de inputs placeholder a un panel de tarjeta
+>   de prueba de solo lectura (sello "Modo de prueba · Sandbox").
+>
+> Lo que describe abajo es el contrato de referencia del backend (no tocar).
 
 **Lo que el backend ya hace (referencia — no tocar):**
 - `POST /api/orders` crea la orden (`status: "pending"`, `paymentStatus: "processing"`),

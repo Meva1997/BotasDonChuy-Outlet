@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useCartStore, type CartItem } from "@/store/cartStore";
@@ -14,6 +15,12 @@ import type { OrderResponse } from "@/lib/api/orders";
 
 export const CHECKOUT_STEPS = ["Resumen", "Datos de envío", "Confirmación"] as const;
 export type CheckoutStep = 0 | 1 | 2;
+
+/** Orden creada en el backend a la espera de que el pago se confirme. */
+export interface PendingOrder {
+  order: OrderResponse;
+  clientSecret: string;
+}
 
 /** Copia congelada del pedido, conservada después de vaciar el carrito. */
 export interface CompletedOrder {
@@ -33,6 +40,10 @@ interface CheckoutContextValue {
   goTo: (step: CheckoutStep) => void;
   goToReview: () => void;
   goToDetails: () => void;
+  /** Devuelve la orden pendiente cacheada solo si corresponde al carrito actual (misma firma). */
+  getPendingOrder: (signature: string) => PendingOrder | null;
+  /** Cachea (o limpia, con `null`) la orden pendiente junto a la firma del carrito que la originó. */
+  setPendingOrder: (signature: string, pending: PendingOrder | null) => void;
   /** Congela el pedido creado por el backend, vacía el carrito y avanza a la confirmación. */
   completeOrder: (customer: ShippingData, order: OrderResponse) => void;
 }
@@ -47,6 +58,31 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
   const goTo = useCallback((target: CheckoutStep) => setStep(target), []);
   const goToReview = useCallback(() => setStep(0), []);
   const goToDetails = useCallback(() => setStep(1), []);
+
+  // Caché de la orden creada en el backend a la espera de que el pago se
+  // confirme. Vive en el contexto (no en el ref de UserDetails) para sobrevivir
+  // a "Volver al resumen": remontar el formulario perdería el caché y el
+  // siguiente submit crearía una orden pendiente DUPLICADA. Se guarda con la
+  // firma del carrito que la originó para invalidarla si el carrito cambió.
+  const pendingOrderRef = useRef<{
+    signature: string;
+    pending: PendingOrder;
+  } | null>(null);
+
+  const getPendingOrder = useCallback(
+    (signature: string): PendingOrder | null => {
+      const cached = pendingOrderRef.current;
+      return cached && cached.signature === signature ? cached.pending : null;
+    },
+    []
+  );
+
+  const setPendingOrder = useCallback(
+    (signature: string, pending: PendingOrder | null) => {
+      pendingOrderRef.current = pending ? { signature, pending } : null;
+    },
+    []
+  );
 
   const completeOrder = useCallback(
     (customer: ShippingData, order: OrderResponse) => {
@@ -79,9 +115,21 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
       goTo,
       goToReview,
       goToDetails,
+      getPendingOrder,
+      setPendingOrder,
       completeOrder,
     }),
-    [step, acceptedTerms, order, goTo, goToReview, goToDetails, completeOrder]
+    [
+      step,
+      acceptedTerms,
+      order,
+      goTo,
+      goToReview,
+      goToDetails,
+      getPendingOrder,
+      setPendingOrder,
+      completeOrder,
+    ]
   );
 
   return (
