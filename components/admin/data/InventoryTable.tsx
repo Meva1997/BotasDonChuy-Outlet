@@ -1,6 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { InventoryRow } from "./types";
+import OrdersPagination from "../orders/OrdersPagination";
+
+const CARDS_PER_PAGE = 5;
 
 function formatMXN(amount: number) {
   return amount.toLocaleString("es-MX", {
@@ -38,6 +42,22 @@ export default function InventoryTable({ rows }: { rows: InventoryRow[] }) {
   const totalPiezas = rows.reduce((s, r) => s + r.stock, 0);
   const totalValor = rows.reduce((s, r) => s + r.valorInventario, 0);
 
+  // Paginación solo para la vista de cards (<1280px, xl:hidden). El date/pager
+  // vive dentro del contenedor xl:hidden, así que en escritorio (tabla completa)
+  // ni se monta. Guard por si el número de filas cambia y deja la página fuera de rango.
+  const [cardPage, setCardPage] = useState(1);
+  const totalCardPages = Math.max(1, Math.ceil(rows.length / CARDS_PER_PAGE));
+  const safePage = Math.min(cardPage, totalCardPages);
+  const pageRows = rows.slice(
+    (safePage - 1) * CARDS_PER_PAGE,
+    safePage * CARDS_PER_PAGE
+  );
+  // Cuando hay más de una página, rellenamos la última con cards invisibles hasta
+  // completar CARDS_PER_PAGE. Así la altura del contenedor no colapsa al pasar de una
+  // página llena (5) a la última corta (1) y se evita el salto/reflow de la página.
+  const placeholderCount =
+    totalCardPages > 1 ? CARDS_PER_PAGE - pageRows.length : 0;
+
   return (
     <div className="rounded-lg border border-amber-400/20 bg-stone-900/60 p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-6">
@@ -51,7 +71,7 @@ export default function InventoryTable({ rows }: { rows: InventoryRow[] }) {
 
       {/* Mobile: cards */}
       <div className="flex flex-col gap-3 xl:hidden">
-        {rows.map((row) => {
+        {pageRows.map((row) => {
           const margenUnit = row.salePrice - row.unitCost;
           const margenPct = Math.round((margenUnit / row.salePrice) * 100);
           return (
@@ -100,6 +120,37 @@ export default function InventoryTable({ rows }: { rows: InventoryRow[] }) {
             </div>
           );
         })}
+        {/* Cards invisibles que reservan la altura de las filas faltantes en la última
+            página (visibility:hidden ocupa espacio). Replican la estructura de una card
+            de nombre en una sola línea para que la altura reservada sea representativa. */}
+        {Array.from({ length: placeholderCount }).map((_, i) => (
+          <div
+            key={`placeholder-${i}`}
+            aria-hidden
+            className="invisible rounded border border-transparent p-4 flex flex-col gap-3"
+          >
+            <div className="flex justify-between items-start gap-2">
+              <span className="text-sm font-medium leading-snug">&nbsp;</span>
+            </div>
+            <span className="text-[10px] tracking-[0.15em] uppercase">
+              &nbsp;
+            </span>
+            <div className="grid grid-cols-3 gap-2 pt-2">
+              <div>
+                <p className="text-[10px] mb-0.5">&nbsp;</p>
+                <p className="text-sm">&nbsp;</p>
+              </div>
+              <div>
+                <p className="text-[10px] mb-0.5">&nbsp;</p>
+                <p className="text-sm">&nbsp;</p>
+              </div>
+              <div>
+                <p className="text-[10px] mb-0.5">&nbsp;</p>
+                <p className="text-sm">&nbsp;</p>
+              </div>
+            </div>
+          </div>
+        ))}
         <div className="flex justify-between items-center pt-3 border-t border-amber-400/30 px-1">
           <span className="text-xs uppercase tracking-[0.2em] text-amber-100/40 font-sans">
             Total inventario
@@ -113,6 +164,16 @@ export default function InventoryTable({ rows }: { rows: InventoryRow[] }) {
             </span>
           </div>
         </div>
+
+        {totalCardPages > 1 && (
+          <div className="mt-3">
+            <OrdersPagination
+              currentPage={safePage}
+              totalPages={totalCardPages}
+              onPageChange={setCardPage}
+            />
+          </div>
+        )}
       </div>
 
       {/* Desktop: table */}

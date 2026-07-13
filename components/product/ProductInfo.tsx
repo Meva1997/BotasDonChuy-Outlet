@@ -19,6 +19,9 @@ export default function ProductInfo({ product }: ProductInfoProps) {
   const [added, setAdded] = useState(false);
   const { addItem, openCart, items: cartItems } = useCartStore();
 
+  const isOutOfStock = product.stock === 0;
+  const isLastPiece = product.stock === 1;
+
   // Stock disponible por talla (un tamaño puede repetirse en el array)
   const sizeStockMap = product.sizes.reduce<Record<number, number>>(
     (acc, s) => {
@@ -102,6 +105,7 @@ export default function ProductInfo({ product }: ProductInfoProps) {
         >
           <ImageCarousel
             images={carouselImages}
+            className={isOutOfStock ? "grayscale" : ""}
             sizes="(max-width: 640px) 100vw, (max-width: 768px) 18rem, 42vw"
           >
             {/* Discount badge — se superpone sobre la imagen del carousel. */}
@@ -110,6 +114,27 @@ export default function ProductInfo({ product }: ProductInfoProps) {
                 −{product.discountPercent}%
               </span>
             </div>
+
+            {isOutOfStock && (
+              <>
+                {/* Out-of-stock scrim: darkens the photo further, sits under the stamp */}
+                <div
+                  className="absolute inset-0 bg-stone-950/45 pointer-events-none"
+                  aria-hidden="true"
+                />
+                {/* Agotado stamp — echoes OutletCard.tsx's rubber-stamp motif */}
+                <div
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                  aria-hidden="true"
+                >
+                  <div className="border border-amber-100/25 bg-stone-950/50 px-3 py-1.5 rotate-[-4deg]">
+                    <span className="font-sans text-amber-100/70 text-[10px] tracking-[0.3em] uppercase">
+                      Agotado
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
           </ImageCarousel>
 
           {/* Selling-point chips below image */}
@@ -132,9 +157,19 @@ export default function ProductInfo({ product }: ProductInfoProps) {
           className="flex flex-col gap-5 sm:gap-6 md:gap-7 flex-1 min-w-0"
         >
           <div>
-            <p className="font-sans text-amber-400/70 text-xs tracking-[0.25em] uppercase mb-2">
-              {categoryLabel} · outlet
-            </p>
+            <div className="flex items-center gap-3 flex-wrap mb-2">
+              <p className="font-sans text-amber-400/70 text-xs tracking-[0.25em] uppercase">
+                {categoryLabel} · outlet
+              </p>
+              {isLastPiece && (
+                <span
+                  aria-hidden="true"
+                  className="font-sans text-tobacco-950 bg-amber-400 text-[10px] tracking-[0.2em] uppercase font-semibold px-2.5 py-1 rounded-sm"
+                >
+                  Última pieza
+                </span>
+              )}
+            </div>
             <h1 className="font-serif text-amber-50 text-2xl sm:text-3xl md:text-4xl lg:text-5xl leading-tight">
               {product.name}
             </h1>
@@ -209,23 +244,29 @@ export default function ProductInfo({ product }: ProductInfoProps) {
           {/* Disponibilidad — role="status" informa cambios a lectores de pantalla */}
           <p
             role="status"
-            className="font-sans text-amber-100/45 text-xs tracking-wide border border-amber-400/20 px-4 py-2 rounded-sm w-fit"
+            className={`font-sans text-xs tracking-wide border px-4 py-2 rounded-sm w-fit ${
+              isOutOfStock
+                ? "text-amber-100/30 border-amber-100/15"
+                : "text-amber-100/45 border-amber-400/20"
+            }`}
           >
-            {product.stock === 1
-              ? "Última pieza"
-              : `Solo ${product.stock} disponibles`}
+            {isOutOfStock
+              ? "Agotado"
+              : product.stock === 1
+                ? "Última pieza"
+                : `Solo ${product.stock} disponibles`}
           </p>
 
           <motion.button
             type="button"
             onClick={handleAddToCart}
-            disabled={!selectedSize || added || selectedSizeAtMax}
-            whileHover={selectedSize && !added && !selectedSizeAtMax ? { scale: 1.015 } : undefined}
-            whileTap={selectedSize && !added && !selectedSizeAtMax ? { scale: 0.985 } : undefined}
+            disabled={isOutOfStock || !selectedSize || added || selectedSizeAtMax}
+            whileHover={!isOutOfStock && selectedSize && !added && !selectedSizeAtMax ? { scale: 1.015 } : undefined}
+            whileTap={!isOutOfStock && selectedSize && !added && !selectedSizeAtMax ? { scale: 0.985 } : undefined}
             className={`w-full md:max-w-md font-sans text-xs tracking-[0.2em] sm:tracking-[0.25em] uppercase py-3.5 sm:py-4 transition-all duration-200 border ${
               added
                 ? "bg-amber-400/20 border-amber-400/60 text-amber-400 cursor-default"
-                : selectedSizeAtMax
+                : isOutOfStock || selectedSizeAtMax
                   ? "bg-transparent border-amber-100/10 text-amber-100/25 cursor-not-allowed"
                   : selectedSize
                     ? "bg-linear-to-r from-amber-950 to-amber-900 hover:from-amber-900 hover:to-amber-800 border-amber-700/40 hover:border-amber-600/60 text-amber-50 cursor-pointer"
@@ -234,11 +275,13 @@ export default function ProductInfo({ product }: ProductInfoProps) {
           >
             {added
               ? "Agregado al carrito ✓"
-              : selectedSizeAtMax
-                ? "Ya está en tu carrito"
-                : selectedSize
-                  ? "Agregar al carrito"
-                  : "Selecciona una talla"}
+              : isOutOfStock
+                ? "Agotado"
+                : selectedSizeAtMax
+                  ? "Ya está en tu carrito"
+                  : selectedSize
+                    ? "Agregar al carrito"
+                    : "Selecciona una talla"}
           </motion.button>
 
           {/* <small> es semánticamente correcto para letra chica / avisos legales */}
