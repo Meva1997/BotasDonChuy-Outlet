@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { motion } from "framer-motion";
 
 interface OrdersPaginationProps {
@@ -36,6 +37,11 @@ export default function OrdersPagination({
   totalPages,
   onPageChange,
 }: OrdersPaginationProps) {
+  // layoutId único por instancia: si dos pagers coexisten en la misma página
+  // (p. ej. SalesTable + InventoryTable en DataSection), un layoutId fijo haría que
+  // framer-motion animara el recuadro activo volando de un pager al otro (efecto Pong).
+  const activeLayoutId = useId();
+
   if (totalPages <= 1) return null;
 
   const atFirst = currentPage <= 1;
@@ -84,7 +90,7 @@ export default function OrdersPagination({
             {page}
             {page === currentPage && (
               <motion.span
-                layoutId="orders-pagination-active"
+                layoutId={activeLayoutId}
                 className="absolute inset-0 border border-amber-400/70 -z-10"
                 transition={{ duration: 0.3 }}
               />

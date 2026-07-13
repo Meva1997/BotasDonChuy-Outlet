@@ -140,7 +140,7 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
                 initial="hidden"
                 animate="visible"
                 variants={staggerContainer}
-                className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 max-w-6xl mx-auto"
+                className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 auto-rows-fr gap-5 max-w-6xl mx-auto"
               >
                 {result.products.map((product) => (
                   <OutletCard

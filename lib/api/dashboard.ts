@@ -21,6 +21,7 @@ const RevenuePointSchema = z.object({
 const SaleRowSchema = z.object({
   id: z.string(),
   date: z.string(),
+  day: z.string(),
   pieces: z.number(),
   items: z.string(),
   savings: z.number(),
@@ -38,10 +39,19 @@ const InventoryRowSchema = z.object({
   valorInventario: z.number(),
 });
 
-// `revenueByPeriod` trae las tres ventanas (7/30/90) que consume RevenueChart.
+// `kpisByPeriod`/`profitKpisByPeriod`/`revenueByPeriod` traen las tres ventanas
+// (7/30/90) ya calculadas por el backend; el front solo alterna en cliente.
 export const DashboardSchema = z.object({
-  kpis: z.array(KpiDataSchema),
-  profitKpis: z.array(KpiDataSchema),
+  kpisByPeriod: z.object({
+    "7": z.array(KpiDataSchema),
+    "30": z.array(KpiDataSchema),
+    "90": z.array(KpiDataSchema),
+  }),
+  profitKpisByPeriod: z.object({
+    "7": z.array(KpiDataSchema),
+    "30": z.array(KpiDataSchema),
+    "90": z.array(KpiDataSchema),
+  }),
   revenueByPeriod: z.object({
     "7": z.array(RevenuePointSchema),
     "30": z.array(RevenuePointSchema),
