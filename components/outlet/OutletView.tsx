@@ -48,6 +48,10 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
     queryFn: () => getProducts(filters),
     // Mantiene visible la página/filtro anterior mientras carga el nuevo → sin flash a vacío.
     placeholderData: keepPreviousData,
+    // El admin corre en otra pestaña con su propio QueryClient — al volver el foco a
+    // esta pestaña tras crear/borrar un producto, se refresca sola (sin polling).
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   const updateParam = useCallback(

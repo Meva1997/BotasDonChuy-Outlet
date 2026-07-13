@@ -19,6 +19,7 @@ import {
   type AdminProductImage,
   type AdminProductInput,
 } from "@/lib/api/adminProducts";
+import { productKeys } from "@/lib/api/products";
 import {
   CATEGORIES,
   DEFAULT_DIMENSIONS,
@@ -290,6 +291,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminProductKeys.all });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
       onBack();
     },
   });
@@ -298,6 +300,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
     mutationFn: () => deleteProduct(product!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminProductKeys.all });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
       onBack();
     },
   });
