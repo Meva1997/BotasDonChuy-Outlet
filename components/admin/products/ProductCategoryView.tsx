@@ -8,6 +8,7 @@ import {
   deleteProduct,
   type AdminProduct,
 } from "@/lib/api/adminProducts";
+import { productKeys } from "@/lib/api/products";
 import { formatPrice } from "@/lib/utils";
 import { type CategoryInfo } from "@/lib/domain/categories";
 import ProductForm from "./ProductForm";
@@ -88,6 +89,7 @@ export default function ProductCategoryView({
     mutationFn: deleteProduct,
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: adminProductKeys.all });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
       setConfirmingId(null);
       setNotice(
         res.softDeleted

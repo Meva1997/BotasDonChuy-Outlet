@@ -161,26 +161,32 @@ migración.
 ### Fase 7 — Admin: pedidos *(UI nueva)*
 - `GET /api/admin/orders` (paginado, incluye `unitCost`) — construir la vista y conectarla.
 
-### Fase 9 — Outlet: sincronización en vivo con el admin 🔴 *(pendiente, diferida hasta reiniciar tokens)*
+### Fase 9 — Outlet: sincronización en vivo con el admin ✅
 - **Problema 1 — altas no aparecen:** `components/outlet/OutletView.tsx` (`useQuery` sobre
-  `productKeys.filtered(filters)`) no se invalida cuando `ProductForm` crea un producto nuevo
-  desde el admin. El storefront solo lo muestra si el usuario recarga la página (nuevo mount →
-  `staleTime` por defecto ya venció) o si algo dispara un refetch manual.
-- **Problema 2 — bajas siguen visibles:** al borrar un producto (`deleteProduct()` en
-  `ProductCategoryView.tsx` / `ProductForm.tsx`), el outlet público no se entera — sigue
-  pintando la card hasta que el usuario refresca. Puede llevar a un cliente a intentar comprar
-  algo que ya no existe.
-- **Problema 3 — falta imagen en la card:** `OutletCard` (via `OutletView.tsx:150`) solo pinta
-  `imageSrc` si viene definido, pero no hay fallback visual — confirmar que como mínimo se
-  muestre la primera imagen de `product.images[]` (o un placeholder) en vez de un hueco vacío
-  cuando falta.
-- **Causa raíz común:** admin y storefront corren en `QueryClient`s separados (procesos/pestañas
-  distintas) — no hay invalidación cross-tab de `productKeys`. Requiere revalidación por
-  intervalo (`refetchInterval`/`staleTime` corto en `OutletView`), invalidación al volver a
-  enfocar la pestaña (`refetchOnWindowFocus`), o un mecanismo push (webhook/SSE) que el admin
-  dispare al mutar. A decidir cuando se aborde esta fase.
-- **Estado:** queda como TODO — no implementar todavía, solo documentado aquí para retomarlo
-  cuando se reinicien los tokens de esta sesión.
+  `productKeys.filtered(filters)`) no se invalidaba cuando `ProductForm` creaba/editaba un
+  producto desde el admin.
+- **Problema 2 — bajas seguían visibles:** al borrar un producto (`deleteProduct()` en
+  `ProductCategoryView.tsx` / `ProductForm.tsx`), el outlet público no se enteraba — seguía
+  pintando la card hasta que el usuario refrescaba.
+- **Problema 3 — faltaba imagen en la card:** `OutletCard` solo pintaba `imageSrc` si venía
+  definido, sin fallback visual cuando el producto no tenía imágenes.
+- **Causa raíz real (afinada respecto a la hipótesis original):** `QueryProvider` se monta una
+  sola vez en `app/layout.tsx`, así que **dentro de una misma pestaña** admin y storefront
+  comparten el mismo `QueryClient`. El bug de altas/bajas no era por `QueryClient`s separados
+  sino porque los `onSuccess` de las mutaciones de `ProductForm.tsx`/`ProductCategoryView.tsx`
+  solo invalidaban `adminProductKeys.all`, nunca `productKeys` (el key que consume
+  `OutletView`). Para el caso de **pestañas de navegador distintas** (cada una con su propio
+  `QueryClient` en memoria) sí aplica la necesidad de un mecanismo cross-tab.
+- **Fix aplicado:**
+  1. `ProductForm.tsx` (create/update y delete) y `ProductCategoryView.tsx` (delete) ahora
+     también invalidan `productKeys.all` (match por prefijo → cubre `productKeys.filtered(...)`)
+     junto con `adminProductKeys.all`. Resuelve el caso misma-pestaña.
+  2. `OutletView.tsx` agrega `staleTime: 30_000` + `refetchOnWindowFocus: true` **local a esa
+     query** (el default global en `QueryProvider.tsx` sigue en `refetchOnWindowFocus: false`
+     para no afectar el resto de la app). Resuelve el caso pestañas-distintas: al volver el
+     foco a `/outlet` tras crear/borrar algo en `/admin`, se refetch sola.
+  3. `OutletCard.tsx` ahora muestra el icono `ImageOff` (mismo patrón que
+     `components/ui/ImageCarousel.tsx`) cuando `imageSrc` falta, en vez de un hueco vacío.
 
 ### Fase 8 — Pagos con Stripe ✅ *(modo prueba / sandbox)*
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { ImageOff } from "lucide-react";
 import { fadeUp, EASE_LUXE } from "@/lib/ui/motion";
 import { formatPrice } from "@/lib/utils";
 
@@ -34,34 +35,66 @@ export default function OutletCard({
         >
           {/* Image / Stamp area */}
           <div
-            className="relative w-full aspect-4/3 overflow-hidden"
+            className="relative w-full aspect-square overflow-hidden"
             style={{
               backgroundColor: "#1c1209",
             }}
           >
+            {/* Backdrop: blurred/scaled copy of the same image, fills the space a
+                portrait photo leaves empty under object-fit: contain (no crop, no
+                stretch on the real photo — see OutletCard.tsx image-fit decision). */}
+            {imageSrc && (
+              <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
+                <div
+                  className="absolute inset-0 scale-125"
+                  style={{
+                    backgroundImage: `url(${imageSrc})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    filter: "blur(28px) saturate(1.15)",
+                  }}
+                />
+                <div className="absolute inset-0 bg-stone-950/55" />
+              </div>
+            )}
+
             <motion.div
               className="absolute inset-0"
               style={{
                 backgroundImage: imageSrc ? `url(${imageSrc})` : undefined,
-                backgroundSize: "cover",
+                backgroundSize: "contain",
                 backgroundPosition: "center",
+                backgroundRepeat: "no-repeat",
               }}
               whileHover={{ scale: 1.06 }}
               transition={{ duration: 0.6, ease: EASE_LUXE }}
             />
 
-            {/* Gradient vignette */}
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#2c1a08_0%,#0d0a06_70%)] pointer-events-none" />
-
-            {/* Subtle grain texture overlay */}
-            <div
-              className="absolute inset-0 opacity-30 pointer-events-none"
-              style={{
-                backgroundImage:
-                  "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.4'/%3E%3C/svg%3E\")",
-                backgroundSize: "128px 128px",
-              }}
-            />
+            {/* Sin imagen — mismo fallback que ImageCarousel: vignette + textura + ImageOff.
+                Solo se pinta cuando falta la foto real; sobre una imagen real estas capas
+                opacas la taparían por completo (ver ImageCarousel.tsx, rama sin imagen). */}
+            {!imageSrc && (
+              <>
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#2c1a08_0%,#0d0a06_70%)] pointer-events-none" />
+                <div
+                  className="absolute inset-0 opacity-30 pointer-events-none"
+                  style={{
+                    backgroundImage:
+                      "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.4'/%3E%3C/svg%3E\")",
+                    backgroundSize: "128px 128px",
+                  }}
+                />
+                <div
+                  aria-hidden="true"
+                  className="absolute inset-0 flex items-center justify-center"
+                >
+                  <ImageOff
+                    className="h-8 w-8 text-amber-100/20"
+                    strokeWidth={1.25}
+                  />
+                </div>
+              </>
+            )}
 
             {/* Discount tag */}
             <div className="absolute top-2.5 left-2.5 bg-stone-950/80 border border-amber-400/30 px-2 py-1 backdrop-blur-sm">
