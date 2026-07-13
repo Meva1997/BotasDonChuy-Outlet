@@ -15,6 +15,11 @@ export const ProductSchema = z.object({
   stock: z.number(),
   type: z.string(),
   sizes: z.array(z.number()),
+  // Galería de imágenes (Cloudinary, hasta 3). La ruta pública omite el `publicId`
+  // (identificador interno de gestión, solo lo necesita el admin para borrar el
+  // asset). `imageSrc` (virtual) = URL de la primera imagen, para compat con los
+  // consumidores que muestran una sola foto.
+  images: z.array(z.object({ url: z.string() })).optional().default([]),
   imageSrc: z.string().nullable().optional(),
   code: z.string().nullable().optional(),
   // Dimensiones del paquete — requeridas por la API de Skydropx para cotizar envíos.

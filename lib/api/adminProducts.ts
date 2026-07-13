@@ -17,6 +17,13 @@ export const AdminProductSchema = z.object({
   stock: z.number(),
   type: z.string(),
   sizes: z.array(z.number()),
+  // Galería de imágenes (Cloudinary, hasta 3). La forma admin SÍ trae el `publicId`
+  // de cada imagen — necesario para borrarla vía DELETE /:id/images. `imageSrc`
+  // (virtual) = URL de la primera imagen (compat con los consumidores de una foto).
+  images: z
+    .array(z.object({ url: z.string(), publicId: z.string() }))
+    .optional()
+    .default([]),
   imageSrc: z.string().nullable().optional(),
   code: z.string().nullable().optional(),
   // Dimensiones del paquete — requeridas por Skydropx para cotizar envíos.
@@ -35,6 +42,9 @@ export type AdminProduct = z.infer<typeof AdminProductSchema>;
 // El endpoint admin devuelve un array plano (no el envoltorio { products, total… }
 // de la ruta pública paginada).
 export const AdminProductListSchema = z.array(AdminProductSchema);
+
+// Imagen de la galería en la respuesta admin (incluye publicId de Cloudinary).
+export type AdminProductImage = AdminProduct["images"][number];
 
 // DELETE /api/admin/products/:id → soft-delete si el producto tiene pedidos
 // asociados (se oculta para preservar el historial), hard-delete si no.
@@ -58,7 +68,8 @@ export interface AdminProductInput {
   unitCost: number;
   type: "bota" | "sombrero" | "ropa";
   sizes: string;
-  imageSrc?: string;
+  // Las imágenes NO viajan en el POST/PUT (el backend las ignora aquí): se
+  // gestionan por endpoints dedicados —addProductImages/deleteProductImage—.
   code?: string;
   weightKg: number;
   lengthCm: number;
@@ -114,4 +125,34 @@ export async function updateProduct(
 export async function deleteProduct(id: number): Promise<DeleteResponse> {
   const { data } = await api.delete(`/admin/products/${id}`);
   return DeleteResponseSchema.parse(data);
+}
+
+// POST /api/admin/products/:id/images — sube de 1 a 3 archivos (multipart, campo
+// `images`) a Cloudinary. El backend respeta el tope de 3 en total por producto y
+// devuelve el producto con la galería actualizada. Formatos png/jpeg/webp, ≤ 5 MB c/u.
+// Errores: 400 (excede 3 / tipo), 404 (producto), 502 (falló Cloudinary).
+export async function addProductImages(
+  id: number,
+  files: File[]
+): Promise<AdminProduct> {
+  const form = new FormData();
+  for (const file of files) form.append("images", file);
+  // Dejamos que axios ponga el boundary del multipart (sobrescribe el
+  // Content-Type JSON por defecto de la instancia).
+  const { data } = await api.post(`/admin/products/${id}/images`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return acceptWrite("addProductImages", data);
+}
+
+// DELETE /api/admin/products/:id/images — borra la imagen (por su publicId) del
+// producto y de Cloudinary. Devuelve el producto con la galería actualizada.
+export async function deleteProductImage(
+  id: number,
+  publicId: string
+): Promise<AdminProduct> {
+  const { data } = await api.delete(`/admin/products/${id}/images`, {
+    data: { publicId },
+  });
+  return acceptWrite("deleteProductImage", data);
 }

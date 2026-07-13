@@ -29,6 +29,10 @@ migración.
 | `POST /api/admin/products` | `components/admin/ProductForm.tsx` → `createProduct()` (`useMutation` + invalidación) | ✅ | — |
 | `PUT /api/admin/products/:id` | `components/admin/ProductForm.tsx` → `updateProduct()` (`useMutation`) | ✅ | — |
 | `DELETE /api/admin/products/:id` | `ProductCategoryView.tsx` / `ProductForm.tsx` → `deleteProduct()` (`useMutation`; soft/hard lo decide el backend) | ✅ | — |
+| `POST /api/admin/products/:id/images` | `ProductForm.tsx` → `addProductImages()` de `lib/api/adminProducts.ts` (galería de hasta 3, subida al guardar) | ✅ | — |
+| `DELETE /api/admin/products/:id/images` | `ProductForm.tsx` → `deleteProductImage()` (quitar una imagen por `publicId` al guardar) | ✅ | — |
+| `POST /api/admin/brand/logo` | `MarcaSection.tsx` *(pendiente de cablear)* — subida real del logo a Cloudinary | 🔴 | Cablear: multipart `logo` |
+| `DELETE /api/admin/brand/logo` | `MarcaSection.tsx` *(pendiente de cablear)* — quitar el logo | 🔴 | Cablear |
 | `GET /api/admin/dashboard` | `components/admin/DataSection.tsx` → `getAdminDashboard()` de `lib/api/dashboard.ts` (`useQuery`) | ✅ | — |
 | `GET /api/admin/reports/monthly` | `components/admin/ReportesSection.tsx` → `getMonthlyReport()` de `lib/api/reports.ts` (`useQuery`); pasa `reports` a `SalesReport` | ✅ | — |
 | `GET /api/admin/reports/replenishment` | `components/admin/reportes/ReplenishmentReport.tsx` → `getReplenishmentReport()` (`useQuery`) | ✅ | — |
@@ -80,8 +84,25 @@ migración.
 - Los imports de mocks se retiraron de `ProductSection`/`DataSection`. **`db/mockProducts.ts` y
   `db/mockData.ts` siguen vivos** porque la sección Reportes (Fase 4) aún depende de ellos; se
   limpian al cerrar la Fase 4.
-- **Imagen (pendiente)**: no hay endpoint de subida en el contrato; el form envía `imageSrc` como
-  string (las previews `blob:` locales no persisten). Upload real con Cloudinary = trabajo futuro.
+- ✅ **Imágenes (YA cableado)**: Cloudinary está cableado en el backend con **endpoints dedicados**
+  (el POST/PUT del producto siguen siendo JSON y **ya no** usan `imageSrc`; el front dejó de mandarlo).
+  El front las consume así: `AdminProductSchema`/`ProductSchema` traen `images[]`; `ProductForm`
+  gestiona la galería (preview + quitar por imagen) y al guardar corre `addProductImages()` /
+  `deleteProductImage()` (`lib/api/adminProducts.ts`); `ProductInfo` la muestra en `ImageCarousel`
+  (`components/ui/`). Cada producto admite **de 1 a 3 imágenes**:
+  - `POST /api/admin/products/:id/images` — **multipart/form-data**, campo `images` (1 a 3 archivos
+    por request, tope **3 en total** por producto), formatos `png/jpeg/webp`, **≤ 5 MB** c/u. Sube a
+    Cloudinary (`botasdonchuy/products`) y devuelve el producto con `images: { url, publicId }[]`.
+  - `DELETE /api/admin/products/:id/images` — body JSON `{ publicId }`. Borra la imagen del producto
+    **y de Cloudinary** (sin dejar assets huérfanos) y devuelve el producto.
+  - El producto expone `images: { url, publicId }[]` (galería, hasta 3) e `imageSrc` = URL de la
+    **primera** imagen (solo lectura, compat con los consumidores actuales `Cart`/`ProductInfo`/etc.).
+  - **Flujo sugerido del `ProductForm`**: 1) crear/editar el producto (JSON, sin imágenes) → 2) con el
+    `id`, subir los `File` seleccionados a `POST /:id/images`; para quitar una, `DELETE /:id/images`
+    con su `publicId`. Reemplazar el `URL.createObjectURL` (preview `blob:` que hoy no persiste) por
+    esta subida real. `next.config.ts` ya whitelistea `res.cloudinary.com` para `next/image`.
+  - Al **hard-delete** de un producto (sin pedidos) el backend borra también sus imágenes de
+    Cloudinary; en **soft-delete** (con pedidos) las conserva.
 
 ### Fase 4 — Admin: reportes ✅
 - ✅ `GET /api/admin/reports/monthly` + `GET /api/admin/reports/replenishment` — contratos
@@ -107,10 +128,16 @@ migración.
 - **Mapeo:** `BrandSettings` es un **subconjunto** de `BRAND`. `resolveBrand(settings)` mergea
   backend ← `BRAND`: mapea `tagline` (string `\n`) → `taglineLines[]` y conserva
   `namePrimary`/`nameAccent`/`email`/`instagram` (que el backend no modela).
-- **Pendientes documentados:** el **logo** es preview local (`blob:`), no se persiste — subida
-  real (Cloudinary) = trabajo futuro (igual que las imágenes de producto en Fase 3). La
-  **metadata** (título del navegador) sigue estática en `BRAND.name` para no volver dinámico el
-  render de todas las rutas.
+- **Logo (backend listo — falta cablear el front):** Cloudinary ya está cableado con endpoints
+  dedicados. El **PUT de marca ya no acepta `logoUrl`** (si el autosave lo manda, se ignora); el logo
+  se gestiona aparte:
+  - `POST /api/admin/brand/logo` — **multipart/form-data**, campo `logo` (1 archivo, `png/jpeg/webp`,
+    ≤ 5 MB). Sube a Cloudinary (`botasdonchuy/brand`), **reemplaza y destruye el logo anterior**, y
+    devuelve `BrandSettings` con el `logoUrl` nuevo.
+  - `DELETE /api/admin/brand/logo` — quita el logo y lo borra de Cloudinary (`logoUrl: null`).
+  - En `MarcaSection`, reemplazar la preview local (`blob:`) por esta subida real. La **metadata**
+    (título del navegador) sigue estática en `BRAND.name` para no volver dinámico el render de todas
+    las rutas.
 
 ### Fase 6 — Admin: usuarios y cuenta ✅
 - ✅ `GET`/`POST`/`DELETE /api/admin/users` — contrato centralizado en
@@ -133,6 +160,27 @@ migración.
 
 ### Fase 7 — Admin: pedidos *(UI nueva)*
 - `GET /api/admin/orders` (paginado, incluye `unitCost`) — construir la vista y conectarla.
+
+### Fase 9 — Outlet: sincronización en vivo con el admin 🔴 *(pendiente, diferida hasta reiniciar tokens)*
+- **Problema 1 — altas no aparecen:** `components/outlet/OutletView.tsx` (`useQuery` sobre
+  `productKeys.filtered(filters)`) no se invalida cuando `ProductForm` crea un producto nuevo
+  desde el admin. El storefront solo lo muestra si el usuario recarga la página (nuevo mount →
+  `staleTime` por defecto ya venció) o si algo dispara un refetch manual.
+- **Problema 2 — bajas siguen visibles:** al borrar un producto (`deleteProduct()` en
+  `ProductCategoryView.tsx` / `ProductForm.tsx`), el outlet público no se entera — sigue
+  pintando la card hasta que el usuario refresca. Puede llevar a un cliente a intentar comprar
+  algo que ya no existe.
+- **Problema 3 — falta imagen en la card:** `OutletCard` (via `OutletView.tsx:150`) solo pinta
+  `imageSrc` si viene definido, pero no hay fallback visual — confirmar que como mínimo se
+  muestre la primera imagen de `product.images[]` (o un placeholder) en vez de un hueco vacío
+  cuando falta.
+- **Causa raíz común:** admin y storefront corren en `QueryClient`s separados (procesos/pestañas
+  distintas) — no hay invalidación cross-tab de `productKeys`. Requiere revalidación por
+  intervalo (`refetchInterval`/`staleTime` corto en `OutletView`), invalidación al volver a
+  enfocar la pestaña (`refetchOnWindowFocus`), o un mecanismo push (webhook/SSE) que el admin
+  dispare al mutar. A decidir cuando se aborde esta fase.
+- **Estado:** queda como TODO — no implementar todavía, solo documentado aquí para retomarlo
+  cuando se reinicien los tokens de esta sesión.
 
 ### Fase 8 — Pagos con Stripe ✅ *(modo prueba / sandbox)*
 

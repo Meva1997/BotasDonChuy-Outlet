@@ -8,6 +8,7 @@ import { useCartStore } from "@/store/cartStore";
 import { fadeUp, EASE_LUXE } from "@/lib/ui/motion";
 import { formatPrice } from "@/lib/utils";
 import { categoryPlural } from "@/lib/domain/categories";
+import ImageCarousel, { type CarouselImage } from "@/components/ui/ImageCarousel";
 
 interface ProductInfoProps {
   product: Product;
@@ -48,6 +49,15 @@ export default function ProductInfo({ product }: ProductInfoProps) {
   }
 
   const categoryLabel = categoryPlural(product.type);
+
+  // Galería para el carousel: usa la lista de imágenes real (Cloudinary, hasta 3);
+  // si el producto aún no tiene galería, cae a `imageSrc` (una foto) o a placeholder.
+  const carouselImages: CarouselImage[] =
+    product.images && product.images.length > 0
+      ? product.images.map((img) => ({ url: img.url, alt: product.name }))
+      : product.imageSrc
+        ? [{ url: product.imageSrc, alt: product.name }]
+        : [];
 
   return (
     <main className="min-h-dvh bg-tobacco-950">
@@ -90,40 +100,17 @@ export default function ProductInfo({ product }: ProductInfoProps) {
           transition={{ duration: 0.7, ease: EASE_LUXE }}
           className="w-full sm:w-72 md:w-[42%] md:max-w-md shrink-0 m-0 mx-auto sm:mx-0"
         >
-          <div
-            role="img"
-            aria-label={`Fotografía de ${product.name}`}
-            className="group relative w-full aspect-square rounded-sm overflow-hidden border border-amber-400/15"
-            style={{
-              backgroundColor: "#1c1209",
-            }}
+          <ImageCarousel
+            images={carouselImages}
+            sizes="(max-width: 640px) 100vw, (max-width: 768px) 18rem, 42vw"
           >
-            <motion.div
-              className="absolute inset-0"
-              style={{
-                backgroundImage: product.imageSrc
-                  ? `url(${product.imageSrc})`
-                  : undefined,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }}
-              whileHover={{ scale: 1.05 }}
-              transition={{ duration: 0.6, ease: EASE_LUXE }}
-            />
-
-            {/* Viñeta decorativa */}
-            <div
-              aria-hidden="true"
-              className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#2c1a08_0%,#0d0a06_70%)] pointer-events-none"
-            />
-
-            {/* Discount badge */}
-            <div className="absolute top-3 left-3 bg-stone-950/80 border border-amber-400/35 px-3 py-1.5 backdrop-blur-sm">
+            {/* Discount badge — se superpone sobre la imagen del carousel. */}
+            <div className="absolute top-3 left-3 z-10 bg-stone-950/80 border border-amber-400/35 px-3 py-1.5 backdrop-blur-sm">
               <span className="font-sans text-amber-400 text-xs tracking-[0.12em] font-medium">
                 −{product.discountPercent}%
               </span>
             </div>
-          </div>
+          </ImageCarousel>
 
           {/* Selling-point chips below image */}
           <div className="flex flex-wrap gap-2 mt-4 justify-center sm:justify-start">

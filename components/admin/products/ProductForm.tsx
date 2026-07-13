@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import Image from "next/image";
+import { ImagePlus, X } from "lucide-react";
 import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,10 +13,32 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  addProductImages,
+  deleteProductImage,
   type AdminProduct,
+  type AdminProductImage,
   type AdminProductInput,
 } from "@/lib/api/adminProducts";
-import { CATEGORIES, type CategoryInfo } from "@/lib/domain/categories";
+import {
+  CATEGORIES,
+  DEFAULT_DIMENSIONS,
+  type CategoryInfo,
+  type ProductType,
+} from "@/lib/domain/categories";
+
+// Límites de la galería (reflejan el backend: máx 3 imágenes, ≤ 5 MB c/u).
+const MAX_IMAGES = 3;
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+// Formatos que acepta el backend. El atributo `accept` del input filtra el
+// picker, pero drag&drop o algunos pickers cuelan otros image/* (gif, avif,
+// heic): validamos contra la misma allowlist para rechazar antes de subir.
+const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
+
+// Imagen recién elegida en el form: el File a subir + su preview local (blob:).
+interface NewImage {
+  file: File;
+  preview: string;
+}
 
 interface Props {
   category: CategoryInfo;
@@ -57,7 +80,6 @@ const productSchema = z
     widthCm: nonNegNumber,
     heightCm: nonNegNumber,
     description: z.string(),
-    imageUrl: z.string().nullable(),
   })
   .refine((d) => d.salePrice <= d.originalPrice, {
     message: "El precio outlet no puede superar el precio original",
@@ -79,6 +101,12 @@ function productErrorMessage(error: unknown): string {
       return message ?? "Revisa los datos del producto e inténtalo de nuevo.";
     if (error.response?.status === 404)
       return "El producto ya no existe. Vuelve al listado.";
+    // El producto se guardó, pero Cloudinary falló al subir alguna imagen.
+    if (error.response?.status === 502)
+      return (
+        message ??
+        "El producto se guardó, pero no pudimos subir las imágenes. Vuelve a intentarlo."
+      );
   }
   return "No pudimos guardar el producto. Inténtalo de nuevo.";
 }
@@ -93,40 +121,6 @@ const labelCls =
 
 const errorCls = "mt-1 text-[11px] text-red-400/80";
 
-function CrosshatchPlaceholder() {
-  return (
-    <div className="w-full h-full bg-stone-800">
-      <svg
-        aria-hidden="true"
-        className="w-full h-full text-stone-700"
-        preserveAspectRatio="none"
-        viewBox="0 0 100 100"
-      >
-        {Array.from({ length: 14 }, (_, i) => (
-          <g key={i}>
-            <line
-              x1={i * 10}
-              y1="0"
-              x2="0"
-              y2={i * 10}
-              stroke="currentColor"
-              strokeWidth="0.6"
-            />
-            <line
-              x1="100"
-              y1={i * 10}
-              x2={i * 10}
-              y2="100"
-              stroke="currentColor"
-              strokeWidth="0.6"
-            />
-          </g>
-        ))}
-      </svg>
-    </div>
-  );
-}
-
 export default function ProductForm({ category, product, onBack }: Props) {
   const isEditing = !!product;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -138,7 +132,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
     control,
     handleSubmit,
     setValue,
-    formState: { errors },
+    formState: { errors, dirtyFields },
   } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
     defaultValues: {
@@ -150,20 +144,113 @@ export default function ProductForm({ category, product, onBack }: Props) {
       unitCost: product?.unitCost ?? 0,
       sizes: product?.sizes?.join(", ") ?? "",
       code: product?.code ?? "",
-      weightKg: product?.weightKg ?? 0,
-      lengthCm: product?.lengthCm ?? 0,
-      widthCm: product?.widthCm ?? 0,
-      heightCm: product?.heightCm ?? 0,
+      // Al crear, arrancan con los defaults de empaque de la categoría (editables)
+      // en vez de cero; al editar se conservan los del producto.
+      weightKg: product?.weightKg ?? DEFAULT_DIMENSIONS[category.type].weightKg,
+      lengthCm: product?.lengthCm ?? DEFAULT_DIMENSIONS[category.type].lengthCm,
+      widthCm: product?.widthCm ?? DEFAULT_DIMENSIONS[category.type].widthCm,
+      heightCm: product?.heightCm ?? DEFAULT_DIMENSIONS[category.type].heightCm,
       description: product?.description ?? "",
-      imageUrl: product?.imageSrc ?? null,
     },
   });
 
   const originalPrice = useWatch({ control, name: "originalPrice" });
   const salePrice = useWatch({ control, name: "salePrice" });
-  const imageUrl = useWatch({ control, name: "imageUrl" });
   const name = useWatch({ control, name: "name" });
   const sizesValue = useWatch({ control, name: "sizes" });
+  const type = useWatch({ control, name: "type" });
+
+  // Al cambiar la categoría (solo creando), re-pobla las dimensiones con los
+  // defaults de la nueva categoría — pero solo los campos que el usuario NO haya
+  // editado a mano (respeta "a no ser que yo las quiera editar"). En edición no
+  // se tocan: son datos reales del producto.
+  useEffect(() => {
+    if (isEditing) return;
+    const dims = DEFAULT_DIMENSIONS[type as ProductType];
+    (["weightKg", "lengthCm", "widthCm", "heightCm"] as const).forEach((field) => {
+      if (!dirtyFields[field]) {
+        setValue(field, dims[field], { shouldDirty: false });
+      }
+    });
+    // dirtyFields se lee dentro; reaccionamos solo al cambio de categoría.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type]);
+
+  // ── Galería de imágenes (fuera de RHF: es un side-effect de archivos) ──────────
+  // `existing` = imágenes ya persistidas (edición); al quitar una, se saca de aquí
+  // y su publicId se marca en `removedPublicIds` para borrarla al guardar.
+  // `newImages` = archivos recién elegidos (con preview blob:), se suben al guardar.
+  const [existing, setExisting] = useState<AdminProductImage[]>(
+    product?.images ?? [],
+  );
+  const [newImages, setNewImages] = useState<NewImage[]>([]);
+  const [removedPublicIds, setRemovedPublicIds] = useState<string[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
+  // Id del producto ya persistido. En creación arranca null y se fija con el id
+  // devuelto por createProduct: así, si un paso posterior de imágenes falla, el
+  // reintento hace updateProduct (NO recrea → sin duplicados). Ver mutationFn.
+  const [savedId, setSavedId] = useState<number | null>(product?.id ?? null);
+
+  const galleryCount = existing.length + newImages.length;
+
+  // Revoca los blob: previews al desmontar para no filtrar memoria.
+  useEffect(
+    () => () => {
+      newImages.forEach((img) => URL.revokeObjectURL(img.preview));
+    },
+    // Solo al desmontar: los blobs individuales ya se revocan al quitarlos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  function handleFilesSelected(fileList: FileList) {
+    setImageError(null);
+    const available = MAX_IMAGES - galleryCount;
+    if (available <= 0) {
+      setImageError(`Máximo ${MAX_IMAGES} imágenes por producto.`);
+      return;
+    }
+
+    const accepted: NewImage[] = [];
+    let rejectedSize = false;
+    let rejectedType = false;
+    for (const file of Array.from(fileList)) {
+      if (!ACCEPTED_TYPES.includes(file.type)) {
+        rejectedType = true;
+        continue;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        rejectedSize = true;
+        continue;
+      }
+      if (accepted.length >= available) break;
+      accepted.push({ file, preview: URL.createObjectURL(file) });
+    }
+
+    if (rejectedType)
+      setImageError("Formato no permitido. Usa PNG, JPG o WEBP.");
+    else if (rejectedSize)
+      setImageError("Cada imagen debe pesar 5 MB o menos.");
+    else if (Array.from(fileList).length > available)
+      setImageError(`Solo se agregaron ${available} — máximo ${MAX_IMAGES} en total.`);
+
+    if (accepted.length) setNewImages((prev) => [...prev, ...accepted]);
+  }
+
+  function removeExisting(publicId: string) {
+    setExisting((prev) => prev.filter((img) => img.publicId !== publicId));
+    setRemovedPublicIds((prev) => [...prev, publicId]);
+    setImageError(null);
+  }
+
+  function removeNew(index: number) {
+    setNewImages((prev) => {
+      const target = prev[index];
+      if (target) URL.revokeObjectURL(target.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+    setImageError(null);
+  }
 
   const orig = Number(originalPrice) || 0;
   const sale = Number(salePrice) || 0;
@@ -171,11 +258,36 @@ export default function ProductForm({ category, product, onBack }: Props) {
   // Stock derivado de las tallas repetidas (fuente única; el backend lo calcula igual).
   const derivedStock = parseSizes(sizesValue || "").length;
 
-  // Persistencia real: crear o editar según el modo. Se envía `sizes` como CSV
-  // (repetición = stock); el backend agrupa en filas ProductSize y recalcula stock.
+  // Persistencia real en un solo flujo: (1) crear/editar el producto (JSON, sin
+  // imágenes) → (2) con su id, borrar las imágenes quitadas y subir las nuevas por
+  // los endpoints dedicados. El id de un producto NUEVO solo existe tras crearlo.
   const mutation = useMutation({
-    mutationFn: (input: AdminProductInput) =>
-      isEditing ? updateProduct(product.id, input) : createProduct(input),
+    mutationFn: async (input: AdminProductInput) => {
+      // Si ya tenemos id (edición, o una creación previa que persistió y luego
+      // falló en las imágenes), actualizamos; solo creamos cuando aún no hay id.
+      const saved =
+        savedId != null
+          ? await updateProduct(savedId, input)
+          : await createProduct(input);
+      const id = saved.id;
+      // Fija el id apenas se crea: un reintento tras un fallo de imágenes ya no
+      // recreará el producto (evita duplicados).
+      if (savedId == null) setSavedId(id);
+      // Borrar primero libera cupo antes de subir (respeta el tope de 3 total).
+      // Cada borrado se saca de `removedPublicIds` en cuanto tiene éxito: si un
+      // paso posterior falla, el reintento no vuelve a borrar un publicId ya ido.
+      for (const publicId of removedPublicIds) {
+        await deleteProductImage(id, publicId);
+        setRemovedPublicIds((prev) => prev.filter((p) => p !== publicId));
+      }
+      if (newImages.length) {
+        await addProductImages(
+          id,
+          newImages.map((img) => img.file),
+        );
+      }
+      return saved;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminProductKeys.all });
       onBack();
@@ -190,11 +302,6 @@ export default function ProductForm({ category, product, onBack }: Props) {
     },
   });
 
-  function handleImageFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    setValue("imageUrl", URL.createObjectURL(file));
-  }
-
   const onSubmit = handleSubmit((data) => {
     const input: AdminProductInput = {
       name: data.name,
@@ -204,7 +311,6 @@ export default function ProductForm({ category, product, onBack }: Props) {
       unitCost: data.unitCost,
       type: data.type,
       sizes: data.sizes,
-      imageSrc: data.imageUrl ?? undefined,
       code: data.code || undefined,
       weightKg: data.weightKg,
       lengthCm: data.lengthCm,
@@ -268,18 +374,9 @@ export default function ProductForm({ category, product, onBack }: Props) {
 
       {/* Main form card */}
       <div className="max-w-5xl bg-stone-900/60 border border-amber-400/10 p-7 space-y-7">
-        {/* Top row: image + name + controls */}
+        {/* Top row: name + controls */}
         <div className="flex gap-6 items-start">
-          {/* Image thumbnail */}
-          <div className="shrink-0 w-28 h-28 border border-stone-700/60 overflow-hidden relative">
-            {imageUrl ? (
-              <Image src={imageUrl} alt={name} fill className="object-cover" />
-            ) : (
-              <CrosshatchPlaceholder />
-            )}
-          </div>
-
-          {/* Name + photo upload */}
+          {/* Name */}
           <div className="flex-1 min-w-0">
             <label htmlFor="field-name" className={labelCls}>
               Nombre
@@ -290,42 +387,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
               {...register("name")}
               className={`${inputCls} font-serif text-lg mb-1`}
             />
-            {errors.name && (
-              <p className={errorCls}>{errors.name.message}</p>
-            )}
-
-            <div className="flex items-center gap-3 mt-3">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="border border-stone-600/60 text-amber-100/50 text-[10px] tracking-[0.2em] uppercase px-4 py-2 hover:border-amber-400/40 hover:text-amber-100/80 transition-all cursor-pointer shrink-0"
-              >
-                Subir foto
-              </button>
-              {imageUrl ? (
-                <button
-                  type="button"
-                  onClick={() => setValue("imageUrl", null)}
-                  className="text-[10px] tracking-[0.15em] uppercase text-amber-400/40 hover:text-amber-400/70 transition-colors cursor-pointer"
-                >
-                  Quitar foto
-                </button>
-              ) : (
-                <span className="text-amber-100/25 text-xs">
-                  sin foto — se muestra degradado
-                </span>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleImageFile(f);
-                }}
-              />
-            </div>
+            {errors.name && <p className={errorCls}>{errors.name.message}</p>}
           </div>
 
           {/* Visible + Eliminar */}
@@ -403,6 +465,109 @@ export default function ProductForm({ category, product, onBack }: Props) {
                 </button>
               ))}
           </div>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-stone-700/40" />
+
+        {/* Galería de imágenes (hasta 3) */}
+        <div>
+          <div className="flex items-baseline justify-between gap-3 mb-4">
+            <p className="text-[10px] tracking-[0.25em] uppercase text-amber-100/30">
+              Imágenes del producto
+            </p>
+            <span className="text-[11px] text-amber-100/30">
+              {galleryCount}/{MAX_IMAGES} · PNG/JPG/WEBP · ≤ 5 MB
+            </span>
+          </div>
+
+          <div className="flex flex-wrap gap-4">
+            {/* Imágenes ya persistidas (edición) */}
+            {existing.map((img) => (
+              <div
+                key={img.publicId}
+                className="relative w-28 h-28 border border-stone-700/60 overflow-hidden group/img"
+              >
+                <Image
+                  src={img.url}
+                  alt={name}
+                  fill
+                  sizes="112px"
+                  className="object-cover"
+                />
+                <button
+                  type="button"
+                  aria-label="Quitar imagen"
+                  onClick={() => removeExisting(img.publicId)}
+                  className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-full border border-amber-100/20 bg-stone-950/80 text-amber-100/70 backdrop-blur-sm transition-colors hover:border-red-500/70 hover:text-red-400 cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+
+            {/* Imágenes nuevas (preview blob:) */}
+            {newImages.map((img, i) => (
+              <div
+                key={img.preview}
+                className="relative w-28 h-28 border border-amber-400/30 overflow-hidden"
+              >
+                {/* Preview local (blob:) — next/image no optimiza object URLs. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={img.preview}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+                <span className="absolute bottom-1 left-1 text-[9px] tracking-[0.15em] uppercase text-amber-400/80 bg-stone-950/70 px-1.5 py-0.5">
+                  Nueva
+                </span>
+                <button
+                  type="button"
+                  aria-label="Quitar imagen"
+                  onClick={() => removeNew(i)}
+                  className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-full border border-amber-100/20 bg-stone-950/80 text-amber-100/70 backdrop-blur-sm transition-colors hover:border-red-500/70 hover:text-red-400 cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+
+            {/* Tile para agregar (solo si queda cupo) */}
+            {galleryCount < MAX_IMAGES && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-28 h-28 border border-dashed border-stone-600/60 flex flex-col items-center justify-center gap-1.5 text-amber-100/40 hover:border-amber-400/40 hover:text-amber-100/70 hover:bg-stone-800/30 transition-all cursor-pointer"
+              >
+                <ImagePlus className="h-5 w-5" strokeWidth={1.5} />
+                <span className="text-[9px] tracking-[0.2em] uppercase">
+                  Subir foto
+                </span>
+              </button>
+            )}
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.length) handleFilesSelected(e.target.files);
+              // Permite re-elegir el mismo archivo tras quitarlo.
+              e.target.value = "";
+            }}
+          />
+
+          {imageError ? (
+            <p className={errorCls}>{imageError}</p>
+          ) : galleryCount === 0 ? (
+            <p className="mt-2 text-[11px] text-amber-100/30">
+              Sin imágenes — el producto se mostrará con un degradado.
+            </p>
+          ) : null}
         </div>
 
         {/* Divider */}

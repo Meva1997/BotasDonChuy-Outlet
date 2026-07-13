@@ -147,6 +147,7 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
                     salePrice={product.salePrice}
                     discountPercent={product.discountPercent}
                     stock={product.stock === 1 ? "ultima" : product.stock}
+                    imageSrc={product.imageSrc ?? undefined}
                   />
                 ))}
               </motion.div>
