@@ -42,7 +42,7 @@ app/              # Next.js App Router
   login/          # Login page → AuthShell + LoginForm
   forgot-password/ # Forgot password page → AuthShell + ForgotPasswordForm
 components/
-  home/           # Page-level sections (NavHeader, Hero, Footer) + CategoryCard (tile usado por Hero)
+  home/           # Page-level sections (NavHeader, Hero, Footer) + CategoryCard (tile usado por Hero). Hero pide el conteo real de piezas por categoría vía getProducts({ categoria, perPage: 1 }) (lib/api/products) — solo usa el total, no la lista
   outlet/         # OutletView — product listing with category filters; OutletCard + EmptyState (single consumer: OutletView)
   product/        # ProductInfo — panel de detalle de producto (galería vía ImageCarousel + size picker + add-to-cart), consumido por la página de producto. La galería sale de product.images (Cloudinary, hasta 3), con fallback a imageSrc o placeholder
   ui/             # Primitivas realmente globales: Cart, CartProvider (drawer montado en root layout), FormControls (TextField/SelectField, compartido por checkout/ y auth/), ImageCarousel (carousel reutilizable: flechas + puntos, framer-motion + next/image, respeta reduced-motion; consumido por ProductInfo)

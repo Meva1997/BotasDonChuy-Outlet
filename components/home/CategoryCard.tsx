@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { fadeUp, EASE_LUXE } from "@/lib/ui/motion";
 
@@ -31,14 +32,19 @@ export default function CategoryCard({
         >
           <motion.div
             className="absolute inset-0"
-            style={{
-              backgroundImage: imageSrc ? `url(${imageSrc})` : undefined,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }}
             whileHover={{ scale: 1.06 }}
             transition={{ duration: 0.6, ease: EASE_LUXE }}
-          />
+          >
+            {imageSrc && (
+              <Image
+                src={imageSrc}
+                alt={title}
+                fill
+                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                className="object-cover"
+              />
+            )}
+          </motion.div>
 
           {/* Grain texture overlay — matches outlet card atmosphere */}
           <div
