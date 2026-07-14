@@ -2,12 +2,31 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import CategoryCard from "@/components/home/CategoryCard";
 import { fadeUp, staggerContainer, EASE_LUXE } from "@/lib/ui/motion";
 import { useBrand } from "@/components/providers/BrandProvider";
+import { getProducts, productKeys } from "@/lib/api/products";
+import type { ProductType } from "@/lib/domain/categories";
+
+// Solo nos interesa `total` (conteo de piezas de la categoría), así que
+// pedimos perPage: 1 para mantener la respuesta liviana.
+function useCategoryCount(categoria: ProductType) {
+  const filters = { categoria, perPage: 1 };
+  const { data } = useQuery({
+    queryKey: productKeys.filtered(filters),
+    queryFn: () => getProducts(filters),
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+  });
+  return data?.total ?? 0;
+}
 
 export default function Hero() {
   const brand = useBrand();
+  const botaCount = useCategoryCount("bota");
+  const sombreroCount = useCategoryCount("sombrero");
+  const ropaCount = useCategoryCount("ropa");
 
   return (
     <main>
@@ -103,14 +122,19 @@ export default function Hero() {
         variants={staggerContainer}
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 max-w-5xl mx-auto pb-24 px-4 sm:px-8"
       >
-        <CategoryCard title="Botas" count={3} href="/botas" imageSrc="" />
+        <CategoryCard
+          title="Botas"
+          count={botaCount}
+          href="/botas"
+          imageSrc="/botasOutlet.png"
+        />
         <CategoryCard
           title="Sombreros"
-          count={3}
+          count={sombreroCount}
           href="/sombreros"
-          imageSrc=""
+          imageSrc="/sombreroOutlet.png"
         />
-        <CategoryCard title="Ropa" count={3} href="/ropa" imageSrc="" />
+        <CategoryCard title="Ropa" count={ropaCount} href="/ropa" imageSrc="" />
       </motion.section>
     </main>
   );
