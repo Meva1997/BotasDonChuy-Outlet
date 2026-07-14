@@ -11,9 +11,20 @@ import {
 } from "@/schemas/auth";
 import { forgotPassword } from "@/lib/api/auth";
 import { TextField } from "@/components/ui/FormControls";
+import ResetCodeForm from "@/components/auth/ResetCodeForm";
+import NewPasswordForm from "@/components/auth/NewPasswordForm";
 
+type Step = "email" | "code" | "password";
+
+/**
+ * Wizard de recuperación de contraseña en 3 pasos (Fase 10):
+ *   email → código de 5 dígitos → nueva contraseña → /login.
+ * El estado vive local (no se persiste): un refresh reinicia en el paso 1.
+ */
 export default function ForgotPasswordForm() {
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [step, setStep] = useState<Step>("email");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
 
   const {
     register,
@@ -26,7 +37,10 @@ export default function ForgotPasswordForm() {
 
   const mutation = useMutation({
     mutationFn: forgotPassword,
-    onSuccess: (_data, variables) => setSentTo(variables.email),
+    onSuccess: (_data, variables) => {
+      setEmail(variables.email);
+      setStep("code");
+    },
   });
 
   const onSubmit = handleSubmit((data) => mutation.mutate(data));
@@ -36,34 +50,28 @@ export default function ForgotPasswordForm() {
       ? "Demasiados intentos. Espera unos minutos e inténtalo de nuevo."
       : "No pudimos enviar el correo. Inténtalo de nuevo.";
 
-  if (sentTo) {
+  if (step === "code") {
     return (
-      <div className="text-center animate-fade-in-up">
-        <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full border border-amber-400/40 bg-amber-400/10 animate-ring-pop">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            className="h-6 w-6 text-amber-400"
-          >
-            <path
-              d="M5 13l4 4L19 7"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="animate-check-draw"
-            />
-          </svg>
-        </div>
-        <p className="text-amber-50 text-sm">
-          Te enviamos un correo a{" "}
-          <span className="text-amber-400">{sentTo}</span> con instrucciones
-          para restablecer tu contraseña.
-        </p>
-        <p className="text-amber-100/40 text-xs mt-2">
-          Revisa también tu carpeta de spam.
-        </p>
-      </div>
+      <ResetCodeForm
+        email={email}
+        onVerified={(verified) => {
+          setCode(verified);
+          setStep("password");
+        }}
+      />
+    );
+  }
+
+  if (step === "password") {
+    return (
+      <NewPasswordForm
+        email={email}
+        code={code}
+        onExpired={() => {
+          setCode("");
+          setStep("code");
+        }}
+      />
     );
   }
 
@@ -90,7 +98,7 @@ export default function ForgotPasswordForm() {
         disabled={mutation.isPending}
         className="btn-shimmer w-full bg-amber-400 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:bg-amber-300 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {mutation.isPending ? "Enviando…" : "Enviar instrucciones"}
+        {mutation.isPending ? "Enviando…" : "Enviar código"}
       </button>
     </form>
   );

@@ -20,7 +20,9 @@ migración.
 | Endpoint backend | Consumidor en el frontend | Estado | Acción |
 |---|---|---|---|
 | `POST /api/auth/login` | `components/auth/LoginForm.tsx` → `login()` de `lib/api/auth.ts` | ✅ | — |
-| `POST /api/auth/forgot-password` | `components/auth/ForgotPasswordForm.tsx` → `forgotPassword()` (`useMutation`) | ✅ | — |
+| `POST /api/auth/forgot-password` | `components/auth/ForgotPasswordForm.tsx` → `forgotPassword()` (`useMutation`) | ✅ | Backend ahora envía un **código de 5 dígitos** por correo (antes era solo el stub); el front sigue igual (siempre `{ ok: true }`) |
+| `POST /api/auth/verify-reset-code` | `components/auth/ResetCodeForm.tsx` → `verifyResetCode()` de `lib/api/auth.ts` (`useMutation`, `CodeInput` OTP) | ✅ | Fase 10 |
+| `POST /api/auth/reset-password` | `components/auth/NewPasswordForm.tsx` → `resetPassword()` (`useMutation` → redirect `/login`) | ✅ | Fase 10 |
 | `GET /api/auth/me` | `components/auth/AdminGuard.tsx` → `getMe()` (valida token + rehidrata `user`) | ✅ | — |
 | `GET /api/products` | `lib/api/products.ts` → `getProducts()` | ✅ | — |
 | `GET /api/products/:id` | `lib/api/products.ts` → `getProductById()` | ✅ | — |
@@ -252,6 +254,52 @@ futura y CVC. Sin el `stripe listen` corriendo, el pago se cobra en Stripe pero 
 **Pendientes fuera de alcance de test:** llaves **live** (`pk_live_…`/`sk_live_…`) y el
 endpoint de webhook de producción en el dashboard de Stripe — se hacen al pasar a real, no
 ahora.
+
+### Fase 10 — Recuperación de contraseña con código + emails (Resend) ✅
+
+> El backend migró `forgot-password` de un stub a un flujo real de **código de 5
+> dígitos** enviado por correo vía **Resend**, más dos endpoints nuevos para verificarlo y
+> consumirlo. **El frontend ya está conectado**: `ForgotPasswordForm` es un wizard de 3 pasos
+> (email → código → nueva contraseña → `/login`).
+
+**Lo que el backend ya hace (referencia):**
+- `POST /api/auth/forgot-password` — sin cambios de contrato (`{ email }` → siempre
+  `{ ok: true }`), pero ahora, si el correo existe, genera un código numérico de 5 dígitos,
+  guarda su hash (nunca el código en claro) + expiración (15 min) + contador de intentos, y lo
+  envía por correo con Resend (`../backend/src/services/email.service.ts` +
+  `../backend/src/services/email/templates/`).
+- `POST /api/auth/verify-reset-code` (`{ email, code }`) — valida el código **sin
+  consumirlo**; solo desbloquea la pantalla de nueva contraseña. Responde `400` genérico
+  ("Código inválido o expirado") si falta, expiró o se agotaron los intentos (5) —
+  el mismo mensaje para los tres casos, para no filtrar cuál fue.
+- `POST /api/auth/reset-password` (`{ email, code, newPassword, confirmPassword }`) —
+  revalida el código (no confía en el paso anterior), actualiza la contraseña y quema el
+  código (un solo uso). `newPassword` exige la misma complejidad que `loginSchema` (min 8
+  + mayúscula + símbolo).
+- Ambos endpoints nuevos están detrás de `authRateLimiter` (10 req / 15 min), igual que
+  `login`/`forgot-password`.
+- **Caveat de dominio (Resend):** sin un dominio verificado, `EMAIL_FROM` es
+  `onboarding@resend.dev` y Resend **solo entrega a la cuenta owner** del proyecto — un
+  correo de prueba a cualquier otra dirección devuelve `403` (silencioso: `sendEmail` lo
+  loggea pero no lanza, así que el request de `forgot-password` igual responde `{ ok: true
+  }`). Para probar el flujo completo en local/staging hay que usar el correo de esa cuenta
+  Resend hasta que se verifique un dominio propio (paso manual de DNS, sin código).
+
+**Trabajo del frontend (esta fase — hecho):**
+1. ✅ **Pantalla de código:** `ForgotPasswordForm.tsx` es un wizard de 3 pasos; tras el
+   `onSuccess` de `forgotPassword()` avanza al paso `code` (`components/auth/ResetCodeForm.tsx`),
+   que usa `CodeInput` (`components/auth/CodeInput.tsx`, OTP de 5 casillas con auto-avance,
+   backspace y pegar) y llama `verifyResetCode({ email, code })`.
+2. ✅ **Pantalla de nueva contraseña:** `components/auth/NewPasswordForm.tsx` valida con
+   `resetPasswordSchema` (reutiliza `passwordComplexity` de `schemas/users.ts`) y llama
+   `resetPassword({ email, code, newPassword, confirmPassword })`; éxito → redirige a `/login`.
+3. ✅ **Contratos y schemas:** `schemas/auth.ts` expone `resetCodeSchema`/`verifyResetCodeSchema`/
+   `resetPasswordSchema`; `lib/api/auth.ts` expone `verifyResetCode()`/`resetPassword()`.
+4. ✅ **Errores:** `400` ("Código inválido o expirado") inline bajo el `CodeInput`; en
+   `reset-password` el `400` mapea a "El código expiró o ya no es válido"; `429` → mensaje de
+   rate-limit en cada paso.
+5. ✅ **Reenviar código:** enlace "Reenviar código" en `ResetCodeForm` que rellama
+   `forgotPassword()` (el backend regenera el código y resetea los intentos a 0).
 
 ## Notas de implementación
 

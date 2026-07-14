@@ -11,7 +11,7 @@ export default function ForgotPasswordPage() {
   return (
     <AuthShell
       title="Recuperar contraseña"
-      subtitle="Te enviaremos instrucciones a tu correo"
+      subtitle="Restablece el acceso a tu cuenta"
     >
       <ForgotPasswordForm />
       <p className="text-center text-[11px] tracking-[0.15em] uppercase text-amber-100/40 mt-6">

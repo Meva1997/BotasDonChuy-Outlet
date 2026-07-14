@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { api } from "@/lib/api/client";
-import type { LoginData, ForgotPasswordData } from "@/schemas/auth";
+import type {
+  LoginData,
+  ForgotPasswordData,
+  VerifyResetCodeData,
+  ResetPasswordData,
+} from "@/schemas/auth";
 
 // Forma del usuario admin que devuelve el backend (login y /auth/me).
 // Refleja `AuthUser` de ../backend/src/middlewares/requireAuth.ts.
@@ -40,6 +45,21 @@ export async function login(credentials: LoginData): Promise<LoginResponse> {
 // POST /api/auth/forgot-password — el backend siempre responde { ok: true }.
 export async function forgotPassword(data: ForgotPasswordData): Promise<void> {
   await api.post("/auth/forgot-password", data);
+}
+
+// POST /api/auth/verify-reset-code — valida el código SIN consumirlo (solo
+// desbloquea la pantalla de nueva contraseña). 400 = "Código inválido o
+// expirado" (mensaje genérico), 429 = rate-limit. El backend solo responde
+// { ok: true }, no hay payload que parsear.
+export async function verifyResetCode(data: VerifyResetCodeData): Promise<void> {
+  await api.post("/auth/verify-reset-code", data);
+}
+
+// POST /api/auth/reset-password — revalida el código, cambia la contraseña y
+// quema el código (un solo uso). 400 = código inválido/expirado o validación,
+// 429 = rate-limit.
+export async function resetPassword(data: ResetPasswordData): Promise<void> {
+  await api.post("/auth/reset-password", data);
 }
 
 // GET /api/auth/me — valida el token contra el backend; 401 si es inválido/expirado
