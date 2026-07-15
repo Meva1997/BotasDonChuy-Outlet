@@ -23,7 +23,7 @@ interface TextFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
 export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
   function TextField({ label, error, id, className = "", ...props }, ref) {
     return (
-      <div className={className}>
+      <div className={`min-w-0 ${className}`}>
         <label htmlFor={id} className={labelBase}>
           {label}
         </label>
@@ -54,7 +54,7 @@ export const SelectField = forwardRef<HTMLSelectElement, SelectFieldProps>(
     ref
   ) {
     return (
-      <div className={className}>
+      <div className={`min-w-0 ${className}`}>
         <label htmlFor={id} className={labelBase}>
           {label}
         </label>

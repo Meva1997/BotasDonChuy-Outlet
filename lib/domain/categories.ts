@@ -9,12 +9,19 @@ export interface CategoryInfo {
   label: string;
   /** Etiqueta en plural: "Botas". */
   plural: string;
+  /** Ruta dedicada de la categoría: "/botas". */
+  href: string;
 }
 
 export const CATEGORIES: CategoryInfo[] = [
-  { type: "bota", label: "Bota", plural: "Botas" },
-  { type: "sombrero", label: "Sombrero", plural: "Sombreros" },
-  { type: "ropa", label: "Ropa", plural: "Ropa" },
+  { type: "bota", label: "Bota", plural: "Botas", href: "/botas" },
+  {
+    type: "sombrero",
+    label: "Sombrero",
+    plural: "Sombreros",
+    href: "/sombreros",
+  },
+  { type: "ropa", label: "Ropa", plural: "Ropa", href: "/ropa" },
 ];
 
 export interface PackageDimensions {
@@ -39,9 +46,16 @@ const PLURAL: Record<string, string> = Object.fromEntries(
 const SINGULAR: Record<string, string> = Object.fromEntries(
   CATEGORIES.map((c) => [c.type, c.label]),
 );
+const HREF: Record<string, string> = Object.fromEntries(
+  CATEGORIES.map((c) => [c.type, c.href]),
+);
 
 /** "bota" → "Botas" (cae al propio valor si la categoría no existe). */
 export const categoryPlural = (type: string): string => PLURAL[type] ?? type;
 
 /** "bota" → "Bota". */
-export const categorySingular = (type: string): string => SINGULAR[type] ?? type;
+export const categorySingular = (type: string): string =>
+  SINGULAR[type] ?? type;
+
+/** "bota" → "/botas" (cae a /outlet si la categoría no existe). */
+export const categoryHref = (type: string): string => HREF[type] ?? "/outlet";

@@ -154,25 +154,27 @@ export default function OutletCard({
           </div>
 
           {/* Card body */}
-          <div className="px-4 pt-3 pb-4 flex flex-col gap-2">
+          <div className="px-3 sm:px-4 pt-3 pb-4 flex flex-col gap-2 min-w-0">
             {/* Product name */}
             <h3 className="font-serif text-amber-50 text-base leading-snug line-clamp-2 min-h-11 group-hover:text-amber-200 transition-colors duration-200">
               {name}
             </h3>
 
-            {/* Price row */}
-            <div className="flex items-baseline gap-3">
-              <span className="font-sans text-amber-100/35 text-xs line-through">
+            {/* Price row — stacked on narrow phones (2-col grid leaves ~150px
+                per card) so the struck-through price never fights the big
+                sale price for width; side-by-side once a row has room. */}
+            <div className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-3 min-w-0">
+              <span className="font-sans text-amber-100/35 text-[11px] sm:text-xs line-through truncate">
                 {formatPrice(originalPrice)}
               </span>
-              <span className="font-serif text-amber-400 text-2xl leading-none">
+              <span className="font-serif text-amber-400 text-xl sm:text-2xl leading-none truncate">
                 {formatPrice(salePrice)}
               </span>
             </div>
 
             {/* Stock indicator — siempre renderizado para reservar la misma altura */}
             <p
-              className={`font-sans text-xs tracking-wide ${
+              className={`font-sans text-xs tracking-wide truncate ${
                 isOutOfStock ? "text-amber-100/30" : "text-amber-100/40"
               }`}
             >

@@ -7,8 +7,10 @@ import type { Product } from "@/lib/api/products";
 import { useCartStore } from "@/store/cartStore";
 import { fadeUp, EASE_LUXE } from "@/lib/ui/motion";
 import { formatPrice } from "@/lib/utils";
-import { categoryPlural } from "@/lib/domain/categories";
-import ImageCarousel, { type CarouselImage } from "@/components/ui/ImageCarousel";
+import { categoryHref, categoryPlural } from "@/lib/domain/categories";
+import ImageCarousel, {
+  type CarouselImage,
+} from "@/components/ui/ImageCarousel";
 
 interface ProductInfoProps {
   product: Product;
@@ -52,6 +54,7 @@ export default function ProductInfo({ product }: ProductInfoProps) {
   }
 
   const categoryLabel = categoryPlural(product.type);
+  const categoryRoute = categoryHref(product.type);
 
   // Galería para el carousel: usa la lista de imágenes real (Cloudinary, hasta 3);
   // si el producto aún no tiene galería, cae a `imageSrc` (una foto) o a placeholder.
@@ -67,7 +70,7 @@ export default function ProductInfo({ product }: ProductInfoProps) {
       {/* Breadcrumb — nav > ol > li es el patrón semántico correcto */}
       <nav
         aria-label="Ruta de navegación"
-        className="max-w-6xl mx-auto px-4 sm:px-8 md:px-16 pt-4 sm:pt-6 my-20"
+        className="max-w-6xl mx-auto px-10 md:px-16 pt-4 sm:pt-6 my-10"
       >
         <ol className="flex items-center gap-2 font-sans text-amber-100/35 text-[11px] sm:text-xs tracking-[0.16em] sm:tracking-[0.18em] uppercase list-none overflow-x-auto ">
           <li>
@@ -81,7 +84,7 @@ export default function ProductInfo({ product }: ProductInfoProps) {
           <li aria-hidden="true">/</li>
           <li>
             <Link
-              href="/outlet"
+              href={categoryRoute}
               className="hover:text-amber-100/60 transition-colors"
             >
               {categoryLabel}
@@ -95,7 +98,7 @@ export default function ProductInfo({ product }: ProductInfoProps) {
       </nav>
 
       {/* Contenido principal: dos columnas en desktop, apilado en móvil */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-8 md:px-16 py-6 sm:py-8 flex flex-col md:flex-row gap-8 md:gap-12 lg:gap-12 my-20">
+      <div className="max-w-6xl mx-auto px-10 md:px-16 py-6 sm:py-8 flex flex-col md:flex-row gap-8 md:gap-12 lg:gap-12 my-10 md:my-20">
         {/* ── Columna izquierda — imagen, compacta en móvil, ~42% en desktop ── */}
         <motion.figure
           initial={{ opacity: 0, scale: 0.97 }}
@@ -170,7 +173,7 @@ export default function ProductInfo({ product }: ProductInfoProps) {
                 </span>
               )}
             </div>
-            <h1 className="font-serif text-amber-50 text-2xl sm:text-3xl md:text-4xl lg:text-5xl leading-tight">
+            <h1 className="font-serif text-amber-50 text-2xl sm:text-3xl md:text-4xl lg:text-5xl leading-tight pt-6 md:pt-0">
               {product.name}
             </h1>
           </div>
@@ -184,7 +187,7 @@ export default function ProductInfo({ product }: ProductInfoProps) {
           {/* Precios — <s> marca semánticamente el precio tachado */}
           <section
             aria-label="Precio"
-            className="border-l-2 border-amber-400/40 pl-4"
+            className="border-l-2 border-amber-400/40 pl-4 mb-4 md:mb-0"
           >
             <div className="flex items-baseline gap-3 sm:gap-4 flex-wrap">
               <s className="font-sans text-amber-100/35 text-sm line-through">
@@ -260,9 +263,19 @@ export default function ProductInfo({ product }: ProductInfoProps) {
           <motion.button
             type="button"
             onClick={handleAddToCart}
-            disabled={isOutOfStock || !selectedSize || added || selectedSizeAtMax}
-            whileHover={!isOutOfStock && selectedSize && !added && !selectedSizeAtMax ? { scale: 1.015 } : undefined}
-            whileTap={!isOutOfStock && selectedSize && !added && !selectedSizeAtMax ? { scale: 0.985 } : undefined}
+            disabled={
+              isOutOfStock || !selectedSize || added || selectedSizeAtMax
+            }
+            whileHover={
+              !isOutOfStock && selectedSize && !added && !selectedSizeAtMax
+                ? { scale: 1.015 }
+                : undefined
+            }
+            whileTap={
+              !isOutOfStock && selectedSize && !added && !selectedSizeAtMax
+                ? { scale: 0.985 }
+                : undefined
+            }
             className={`w-full md:max-w-md font-sans text-xs tracking-[0.2em] sm:tracking-[0.25em] uppercase py-3.5 sm:py-4 transition-all duration-200 border ${
               added
                 ? "bg-amber-400/20 border-amber-400/60 text-amber-400 cursor-default"

@@ -61,10 +61,10 @@ export default function Success() {
         <p className="relative text-[11px] tracking-[0.25em] uppercase text-amber-400/90">
           Pedido #{orderId}
         </p>
-        <p className="relative text-amber-100/60 text-sm leading-relaxed max-w-sm mx-auto">
+        <p className="relative text-amber-100/60 text-sm leading-relaxed max-w-sm mx-auto break-words">
           Gracias por tu compra, {customer.fullName.split(" ")[0]}. Tu pedido ya
           está en preparación y enviaremos la confirmación a{" "}
-          <span className="text-amber-400/90">{customer.email}</span>.
+          <span className="text-amber-400/90 break-all">{customer.email}</span>.
         </p>
       </div>
 
@@ -94,7 +94,7 @@ export default function Success() {
           <p className="text-[10px] tracking-[0.25em] uppercase text-amber-100/40 mb-2">
             Enviar a
           </p>
-          <address className="not-italic text-sm text-amber-100/70 leading-relaxed">
+          <address className="not-italic text-sm text-amber-100/70 leading-relaxed break-words">
             {customer.fullName}
             <br />
             {customer.street}, {customer.neighborhood}

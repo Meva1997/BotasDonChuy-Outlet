@@ -30,6 +30,7 @@ pnpm lint       # ESLint
 app/              # Next.js App Router
   layout.tsx      # Root layout: fonts, base classes, metadata, QueryProvider + CartProvider
   page.tsx        # Home page
+  not-found.tsx   # Custom 404 (catches any unmatched URL app-wide)
   admin/          # Admin dashboard (Sidebar + section routing)
   (public)/
     outlet/[slug]/producto/  # Product detail view
