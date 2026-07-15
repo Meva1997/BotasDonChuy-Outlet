@@ -5,12 +5,9 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCartStore } from "@/store/cartStore";
 import { useBrand } from "@/components/providers/BrandProvider";
+import { CATEGORIES } from "@/lib/domain/categories";
 
-const NAV_LINKS = [
-  { href: "/botas", label: "Botas" },
-  { href: "/sombreros", label: "Sombreros" },
-  { href: "/ropa", label: "Ropa" },
-];
+const NAV_LINKS = CATEGORIES.map((c) => ({ href: c.href, label: c.plural }));
 
 export default function NavHeader() {
   const [open, setOpen] = useState(false);
@@ -52,7 +49,9 @@ export default function NavHeader() {
       <div className="max-w-6xl mx-auto px-8 py-5 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="font-serif text-xl shrink-0">
-          <span className="text-amber-50 font-normal">{brand.namePrimary} </span>
+          <span className="text-amber-50 font-normal">
+            {brand.namePrimary}{" "}
+          </span>
           <span className="italic text-amber-400">{brand.nameAccent}</span>
         </Link>
 

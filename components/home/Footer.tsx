@@ -4,17 +4,14 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { fadeUp } from "@/lib/ui/motion";
 import { useBrand } from "@/components/providers/BrandProvider";
+import { CATEGORIES } from "@/lib/domain/categories";
 
 // Secciones estáticas; "Contacto" se arma dentro del componente porque su link
 // depende de la marca resuelta (brand.instagram).
 const FOOTER_SECTIONS = [
   {
     heading: "Tienda",
-    links: [
-      { label: "Botas", href: "/botas" },
-      { label: "Sombreros", href: "/sombreros" },
-      { label: "Ropa", href: "/ropa" },
-    ],
+    links: CATEGORIES.map((c) => ({ label: c.plural, href: c.href })),
   },
   {
     heading: "Información",
@@ -31,7 +28,10 @@ export default function Footer() {
   const brand = useBrand();
   const sections = [
     ...FOOTER_SECTIONS,
-    { heading: "Contacto", links: [{ label: "Instagram", href: brand.instagram }] },
+    {
+      heading: "Contacto",
+      links: [{ label: "Instagram", href: brand.instagram }],
+    },
   ];
 
   return (

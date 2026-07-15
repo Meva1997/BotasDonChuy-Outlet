@@ -3,6 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import {
+  LoaderCircle,
+  ShoppingCart,
+  Trash2,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import { useCartStore } from "@/store/cartStore";
 import { formatPrice } from "@/lib/utils";
 import { EASE_LUXE } from "@/lib/ui/motion";
@@ -75,7 +82,7 @@ export default function Cart() {
             {/* Gold-foil edge */}
             <div
               aria-hidden="true"
-              className="absolute left-0 top-0 h-full w-px bg-linear-to-b from-transparent via-amber-400/50 to-transparent"
+              className="absolute w-px left-0 top-0 h-full bg-linear-to-b from-transparent via-amber-400/50 to-transparent"
             />
 
             {/* Header */}
@@ -90,21 +97,12 @@ export default function Cart() {
                   onClick={closeCart}
                   className="group w-7 h-7 flex items-center justify-center border border-amber-100/15 text-amber-100/40 hover:text-amber-100 hover:border-amber-100/40 transition-colors cursor-pointer"
                 >
-                  <svg
-                    width="13"
-                    height="13"
-                    fill="none"
+                  <X
+                    size={13}
+                    strokeWidth={1.5}
                     aria-hidden="true"
-                    viewBox="0 0 18 18"
                     className="transition-transform duration-300 group-hover:rotate-90"
-                  >
-                    <path
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeWidth="1.5"
-                      d="m2 2 14 14m0-14L2 16"
-                    />
-                  </svg>
+                  />
                 </button>
               </div>
               <h2 className="font-serif text-xl text-amber-50 mt-2">
@@ -117,22 +115,12 @@ export default function Cart() {
 
             {/* Warning banner */}
             <div className="flex items-center justify-center gap-2 bg-amber-400/6 border-b border-amber-400/15 px-6 py-2.5 shrink-0">
-              <svg
-                width="11"
-                height="11"
-                fill="none"
-                viewBox="0 0 24 24"
+              <TriangleAlert
+                size={11}
+                strokeWidth={2}
                 aria-hidden="true"
                 className="text-amber-400/70 shrink-0"
-              >
-                <path
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 9v4m0 4h.01M10.6 3.5 2.4 18a1.5 1.5 0 0 0 1.3 2.25h16.6A1.5 1.5 0 0 0 21.6 18L13.4 3.5a1.5 1.5 0 0 0-2.8 0Z"
-                />
-              </svg>
+              />
               <p className="text-center text-[10px] tracking-[0.2em] uppercase text-amber-400/90">
                 {brand.cartNotice}
               </p>
@@ -142,29 +130,12 @@ export default function Cart() {
             {items.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center px-8 gap-5">
                 <div className="w-16 h-16 border border-dashed border-amber-900/40 flex items-center justify-center">
-                  <svg
-                    width="28"
-                    height="28"
-                    fill="none"
+                  <ShoppingCart
+                    size={28}
+                    strokeWidth={1.2}
                     aria-hidden="true"
                     className="text-amber-100/20"
-                    viewBox="0 0 28 28"
-                  >
-                    <path
-                      stroke="currentColor"
-                      strokeLinejoin="round"
-                      strokeWidth="1.2"
-                      d="M6 7h16l-2 10H8z"
-                    />
-                    <circle cx="10.5" cy="21.5" r="1.5" fill="currentColor" />
-                    <circle cx="17.5" cy="21.5" r="1.5" fill="currentColor" />
-                    <path
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeWidth="1.2"
-                      d="M3 4h2l1 3"
-                    />
-                  </svg>
+                  />
                 </div>
                 <div className="text-center">
                   <p className="font-serif text-amber-50/80 text-lg mb-1.5">
@@ -216,23 +187,9 @@ export default function Cart() {
                           type="button"
                           aria-label={`Quitar ${item.product.name}`}
                           onClick={() => removeItem(item.id)}
-                          className="shrink-0 text-amber-100/25 hover:text-amber-400 transition-colors cursor-pointer p-0.5"
+                          className="shrink-0 text-amber-100/25 hover:text-amber-400 transition-colors cursor-pointer p-1"
                         >
-                          <svg
-                            width="13"
-                            height="13"
-                            fill="none"
-                            aria-hidden="true"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              stroke="currentColor"
-                              strokeWidth="1.6"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-.7 12.1a1.5 1.5 0 0 1-1.5 1.4H9.2a1.5 1.5 0 0 1-1.5-1.4L7 7h10Z"
-                            />
-                          </svg>
+                          <Trash2 size={16} strokeWidth={1.6} aria-hidden="true" />
                         </button>
                       </div>
                       <p className="text-amber-100/40 text-xs mt-0.5 capitalize">
@@ -340,26 +297,11 @@ export default function Cart() {
                   className="btn-shimmer w-full mt-4 bg-amber-400 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:bg-amber-300 transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {navigating && (
-                    <svg
-                      fill="none"
+                    <LoaderCircle
+                      strokeWidth={3}
                       aria-hidden="true"
                       className="animate-spin w-3.5 h-3.5 shrink-0"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        className="opacity-25"
-                      />
-                      <path
-                        fill="currentColor"
-                        d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4z"
-                        className="opacity-75"
-                      />
-                    </svg>
+                    />
                   )}
                   {navigating ? "Cargando..." : "Proceder al checkout"}
                 </button>

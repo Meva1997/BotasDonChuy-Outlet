@@ -26,6 +26,7 @@ import {
   type CategoryInfo,
   type ProductType,
 } from "@/lib/domain/categories";
+import { deleteNotice, saveNotice } from "./notices";
 
 // Límites de la galería (reflejan el backend: máx 3 imágenes, ≤ 5 MB c/u).
 const MAX_IMAGES = 3;
@@ -44,7 +45,10 @@ interface NewImage {
 interface Props {
   category: CategoryInfo;
   product?: AdminProduct;
-  onBack: () => void;
+  // El aviso opcional viaja al volver: la vista de lista lo muestra como
+  // confirmación de lo que acaba de pasar (guardar/eliminar). Sin aviso =
+  // salida sin cambios (cancelar), que además limpia el aviso anterior.
+  onBack: (notice?: string) => void;
 }
 
 // Tallas se capturan como texto CSV donde repetir una talla suma unidades de
@@ -289,19 +293,19 @@ export default function ProductForm({ category, product, onBack }: Props) {
       }
       return saved;
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
       queryClient.invalidateQueries({ queryKey: adminProductKeys.all });
       queryClient.invalidateQueries({ queryKey: productKeys.all });
-      onBack();
+      onBack(saveNotice(saved.name, isEditing));
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteProduct(product!.id),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: adminProductKeys.all });
       queryClient.invalidateQueries({ queryKey: productKeys.all });
-      onBack();
+      onBack(deleteNotice(product!.name, res.softDeleted));
     },
   });
 
@@ -333,7 +337,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
       <nav className="mb-7 flex items-center gap-2.5 flex-wrap">
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => onBack()}
           className="text-[10px] tracking-[0.25em] uppercase text-amber-100/40 hover:text-amber-100/70 transition-colors cursor-pointer"
         >
           Productos
@@ -341,7 +345,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
         <span className="text-amber-100/20 text-xs">/</span>
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => onBack()}
           className="text-[10px] tracking-[0.25em] uppercase text-amber-100/40 hover:text-amber-100/70 transition-colors cursor-pointer"
         >
           {category.plural}
@@ -367,7 +371,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
 
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => onBack()}
           className="shrink-0 border border-stone-600/60 text-amber-100/50 text-[10px] tracking-[0.2em] uppercase px-5 py-3 hover:border-amber-400/40 hover:text-amber-100/80 transition-all cursor-pointer flex items-center gap-2"
         >
           <span>←</span>

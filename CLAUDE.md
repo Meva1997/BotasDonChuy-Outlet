@@ -29,6 +29,9 @@ Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependenci
 app/              # Next.js App Router
   layout.tsx      # Root layout: fonts, base classes, metadata, QueryProvider + CartProvider
   page.tsx        # Home page — composes NavHeader + Hero + Footer
+  not-found.tsx   # 404 a la medida (root, cubre toda la app) — importa NavHeader/Footer directo
+                  #   (no los hereda del layout raíz, igual que page.tsx), reusa el patrón de
+                  #   stamp de EmptyState + links a categorías vía CATEGORIES
   admin/
     layout.tsx    # Admin layout: AdminGuard (route protection) + full-height tobacco-950 shell
     page.tsx      # Admin dashboard — Sidebar + section routing (AdminSection type)
@@ -59,7 +62,7 @@ components/
                   #   sections/MarcaSection — editor de identidad de marca (logo + copy). YA conectado vía
                   #     lib/api/brand (useQuery carga + useMutation autosave con debounce). El logo es
                   #     preview local (blob:), no se persiste — subida real = trabajo futuro
-                  #   sections/ProductSection — gestión de catálogo. YA conectado al backend vía lib/api/adminProducts (useQuery lista + useMutation CRUD). Subcomponentes en components/admin/products/: ProductForm, ProductCategoryView, ProductDetailModal. ProductForm gestiona una galería de hasta 3 imágenes (preview + quitar por imagen): al guardar corre createProduct/updateProduct (JSON, sin imágenes) y luego, con el id, deleteProductImage() por cada quitada + addProductImages() con los nuevos File (Cloudinary)
+                  #   sections/ProductSection — gestión de catálogo. YA conectado al backend vía lib/api/adminProducts (useQuery lista + useMutation CRUD). Subcomponentes en components/admin/products/: ProductForm, ProductCategoryView, ProductDetailModal, notices.ts. ProductForm gestiona una galería de hasta 3 imágenes (preview + quitar por imagen): al guardar corre createProduct/updateProduct (JSON, sin imágenes) y luego, con el id, deleteProductImage() por cada quitada + addProductImages() con los nuevos File (Cloudinary). Confirmaciones: ProductForm no navega en silencio — su prop `onBack(notice?)` devuelve a ProductCategoryView el aviso de lo que pasó (guardar/eliminar), que la lista pinta en su banner `role="status"`; salir sin aviso (cancelar) lo limpia. La copy vive en notices.ts (deleteNotice/saveNotice) porque el borrado se dispara desde dos lugares (la tabla y el form) y ambos deben decir lo mismo
                   #   sections/OrdersSection — listado de pedidos (Fase 7). YA conectado vía lib/api/adminOrders
                   #     (useQuery paginado, GET /api/admin/orders). Solo lectura: tabla (desktop) / cards
                   #     (mobile) + OrderDetailModal (diálogo con trampa de foco). Subcomponentes en

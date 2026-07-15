@@ -43,7 +43,12 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
 
   const filters: ProductFilters = { categoria, talla, page };
 
-  const { data: result } = useQuery({
+  const {
+    data: result,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: productKeys.filtered(filters),
     queryFn: () => getProducts(filters),
     // Mantiene visible la página/filtro anterior mientras carga el nuevo → sin flash a vacío.
@@ -73,7 +78,7 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
     : "Outlet — todo";
 
   return (
-    <section className="min-h-dvh bg-tobacco-950 px-6 md:p-10 py-12 my-20">
+    <section className="min-h-dvh bg-tobacco-950 px-6 md:p-10 py-6 md:py-12 my-4 md:my-20">
       {/* Trust strip */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -124,6 +129,39 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
         onCategoriaChange={(val) => updateParam("categoria", val)}
         onTallaChange={(val) => updateParam("talla", val)}
       />
+
+      {/* Loading state — only on first load, keepPreviousData covers subsequent fetches */}
+      {isLoading && (
+        <div className="flex flex-col items-center justify-center py-24 gap-3">
+          <div className="h-8 w-8 rounded-full border-2 border-amber-400/25 border-t-amber-400 animate-spin" />
+          <p className="font-sans text-amber-100/40 text-sm tracking-wide">
+            Cargando piezas…
+          </p>
+        </div>
+      )}
+
+      {/* Error state — e.g. backend unreachable */}
+      {isError && !result && (
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <div className="border border-amber-400/20 px-6 py-2 rotate-[-4deg] mb-2">
+            <span className="font-sans text-xs tracking-[0.4em] uppercase text-amber-400/30">
+              Error
+            </span>
+          </div>
+          <h3 className="font-serif text-amber-50/60 text-xl">
+            No se pudo cargar el inventario
+          </h3>
+          <p className="font-sans text-amber-100/30 text-sm tracking-wide text-center max-w-xs">
+            Revisa tu conexión e intenta de nuevo.
+          </p>
+          <button
+            onClick={() => refetch()}
+            className="mt-2 font-sans text-xs tracking-[0.2em] uppercase text-amber-400 border border-amber-400/40 px-5 py-2.5 hover:bg-amber-400/10 transition-colors duration-200"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
 
       {/* Product grid */}
       {result && (

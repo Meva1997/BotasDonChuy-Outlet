@@ -64,7 +64,7 @@ export default function Stepper({ current, onNavigate }: StepperProps) {
 
           const labelText = (
             <span
-              className={`text-[10px] tracking-[0.2em] uppercase whitespace-nowrap ${
+              className={`text-[9px] sm:text-[10px] tracking-[0.08em] sm:tracking-[0.2em] uppercase whitespace-nowrap ${
                 isActive
                   ? "text-amber-50"
                   : isDone
@@ -100,7 +100,7 @@ export default function Stepper({ current, onNavigate }: StepperProps) {
 
               {!isLast && (
                 <span
-                  className={`flex-1 h-px mx-3 -mt-6 transition-colors duration-500 ${
+                  className={`flex-1 min-w-1.5 h-px mx-1.5 sm:mx-3 -mt-6 transition-colors duration-500 ${
                     isDone ? "bg-amber-500/70" : "bg-amber-900/40"
                   }`}
                 />

@@ -13,6 +13,7 @@ import { formatPrice } from "@/lib/utils";
 import { type CategoryInfo } from "@/lib/domain/categories";
 import ProductForm from "./ProductForm";
 import ProductDetailModal from "./ProductDetailModal";
+import { deleteNotice } from "./notices";
 
 interface Props {
   category: CategoryInfo;
@@ -87,14 +88,12 @@ export default function ProductCategoryView({
   const queryClient = useQueryClient();
   const deleteMutation = useMutation({
     mutationFn: deleteProduct,
-    onSuccess: (res) => {
+    onSuccess: (res, id) => {
       queryClient.invalidateQueries({ queryKey: adminProductKeys.all });
       queryClient.invalidateQueries({ queryKey: productKeys.all });
       setConfirmingId(null);
       setNotice(
-        res.softDeleted
-          ? "El producto se ocultó del catálogo porque tiene pedidos asociados (se conserva para el historial)."
-          : "Producto eliminado.",
+        deleteNotice(products.find((p) => p.id === id)?.name, res.softDeleted),
       );
     },
   });
@@ -108,7 +107,12 @@ export default function ProductCategoryView({
       <ProductForm
         category={category}
         product={formMode.mode === "edit" ? formMode.product : undefined}
-        onBack={() => setFormMode(null)}
+        // El form reporta qué pasó al salir; sin aviso (cancelar) se limpia el
+        // anterior, para no dejar en pantalla la confirmación de otra acción.
+        onBack={(notice) => {
+          setFormMode(null);
+          setNotice(notice ?? null);
+        }}
       />
     );
   }
@@ -130,7 +134,7 @@ export default function ProductCategoryView({
       </nav>
 
       {/* Header */}
-      <div className="mb-8 flex items-center justify-between gap-4">
+      <div className="mb-8 flex items-center justify-between gap-4 max-w-6xl">
         <div>
           <h2 className="font-serif text-amber-50 text-3xl mb-1.5">
             {category.plural}

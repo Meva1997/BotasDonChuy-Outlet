@@ -7,7 +7,14 @@ import CategoryCard from "@/components/home/CategoryCard";
 import { fadeUp, staggerContainer, EASE_LUXE } from "@/lib/ui/motion";
 import { useBrand } from "@/components/providers/BrandProvider";
 import { getProducts, productKeys } from "@/lib/api/products";
-import type { ProductType } from "@/lib/domain/categories";
+import { CATEGORIES, type ProductType } from "@/lib/domain/categories";
+
+// La foto de portada de cada categoría; "ropa" aún no tiene una.
+const CATEGORY_IMAGES: Record<ProductType, string> = {
+  bota: "/botasOutlet.png",
+  sombrero: "/sombreroOutlet.png",
+  ropa: "",
+};
 
 // Solo nos interesa `total` (conteo de piezas de la categoría), así que
 // pedimos perPage: 1 para mantener la respuesta liviana.
@@ -24,9 +31,14 @@ function useCategoryCount(categoria: ProductType) {
 
 export default function Hero() {
   const brand = useBrand();
-  const botaCount = useCategoryCount("bota");
-  const sombreroCount = useCategoryCount("sombrero");
-  const ropaCount = useCategoryCount("ropa");
+
+  // Un hook por categoría en el top-level: las reglas de hooks impiden pedirlos
+  // dentro del map de abajo, así que se resuelven aquí y se indexan por tipo.
+  const counts: Record<ProductType, number> = {
+    bota: useCategoryCount("bota"),
+    sombrero: useCategoryCount("sombrero"),
+    ropa: useCategoryCount("ropa"),
+  };
 
   return (
     <main>
@@ -122,19 +134,15 @@ export default function Hero() {
         variants={staggerContainer}
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 max-w-5xl mx-auto pb-24 px-4 sm:px-8"
       >
-        <CategoryCard
-          title="Botas"
-          count={botaCount}
-          href="/botas"
-          imageSrc="/botasOutlet.png"
-        />
-        <CategoryCard
-          title="Sombreros"
-          count={sombreroCount}
-          href="/sombreros"
-          imageSrc="/sombreroOutlet.png"
-        />
-        <CategoryCard title="Ropa" count={ropaCount} href="/ropa" imageSrc="" />
+        {CATEGORIES.map((c) => (
+          <CategoryCard
+            key={c.type}
+            title={c.plural}
+            count={counts[c.type]}
+            href={c.href}
+            imageSrc={CATEGORY_IMAGES[c.type]}
+          />
+        ))}
       </motion.section>
     </main>
   );

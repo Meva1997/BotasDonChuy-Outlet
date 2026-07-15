@@ -12,8 +12,8 @@
 export default function PaymentSection() {
   return (
     <fieldset className="space-y-6">
-      <div className="flex items-center justify-between pb-4 border-b border-amber-600/30">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pb-4 border-b border-amber-600/30">
+        <div className="flex items-center gap-3 min-w-0">
           <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-amber-500/20 to-amber-600/5 border border-amber-600/30 text-amber-500 shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
@@ -23,7 +23,7 @@ export default function PaymentSection() {
           </span>
           <legend className="font-serif text-lg text-amber-50">Datos de pago</legend>
         </div>
-        <span className="flex items-center gap-1.5 text-[10px] tracking-[0.2em] uppercase text-amber-100/40">
+        <span className="flex shrink-0 items-center gap-1.5 text-[10px] tracking-[0.15em] sm:tracking-[0.2em] uppercase text-amber-100/40">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
             <rect x="2.5" y="5.5" width="7" height="5" rx="1" stroke="currentColor" strokeWidth="1" />
             <path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" stroke="currentColor" strokeWidth="1" />
@@ -74,26 +74,26 @@ export default function PaymentSection() {
                 aria-hidden="true"
                 className="h-7 w-10 rounded-md bg-linear-to-br from-amber-300/80 to-amber-600/70 shadow-inner ring-1 ring-amber-200/30"
               />
-              <p className="font-sans text-lg sm:text-xl tabular-nums tracking-[0.18em] text-amber-50 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)]">
+              <p className="font-sans text-base sm:text-xl tabular-nums tracking-[0.08em] sm:tracking-[0.18em] text-amber-50 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)]">
                 4242 4242 4242 4242
               </p>
             </div>
 
             {/* Fila inferior: titular / vencimiento / cvc */}
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <span className="block text-[8px] uppercase tracking-[0.25em] text-amber-100/40">
+            <div className="flex items-end justify-between gap-2 sm:gap-4">
+              <div className="min-w-0">
+                <span className="block text-[8px] uppercase tracking-[0.2em] sm:tracking-[0.25em] text-amber-100/40">
                   Titular
                 </span>
-                <span className="font-sans text-xs tracking-[0.15em] text-amber-50/85">
+                <span className="block truncate font-sans text-[11px] sm:text-xs tracking-[0.08em] sm:tracking-[0.15em] text-amber-50/85">
                   BOTAS DON CHUY
                 </span>
               </div>
-              <div className="text-right">
-                <span className="block text-[8px] uppercase tracking-[0.25em] text-amber-100/40">
+              <div className="shrink-0 text-right">
+                <span className="block text-[8px] uppercase tracking-[0.2em] sm:tracking-[0.25em] text-amber-100/40">
                   Vence · CVC
                 </span>
-                <span className="font-sans text-xs tabular-nums tracking-[0.15em] text-amber-50/85">
+                <span className="font-sans text-[11px] sm:text-xs tabular-nums tracking-[0.08em] sm:tracking-[0.15em] text-amber-50/85">
                   12/34 · •••
                 </span>
               </div>

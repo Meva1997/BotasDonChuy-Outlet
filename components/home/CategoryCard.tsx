@@ -27,7 +27,7 @@ export default function CategoryCard({
         <motion.article
           whileHover={{ y: -4 }}
           transition={{ duration: 0.35, ease: EASE_LUXE }}
-          className="relative w-full h-56 sm:h-64 md:h-80 rounded-sm overflow-hidden group border border-amber-400/10 hover:border-amber-400/30 transition-colors duration-300"
+          className="relative w-xs mx-auto md:w-full h-56 sm:h-64 md:h-80 rounded-sm overflow-hidden group border border-amber-400/10 hover:border-amber-400/30 transition-colors duration-300"
           style={{ backgroundColor: "#2c1f10" }}
         >
           <motion.div
