@@ -21,14 +21,28 @@ Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependenci
 - **Next.js 16** with App Router (all pages in `app/`)
 - **React 19**, **TypeScript**
 - **Tailwind CSS v4** — configured via `@import "tailwindcss"` in `globals.css`, not a `tailwind.config.*` file. Custom theme tokens (fonts, `tobacco-*` color scale) live in a `@theme {}` block in `globals.css`.
-- **Playwright** (`@playwright/test`) — installed as a dev dependency for e2e testing.
+- **Testing** — no hay runner instalado. Playwright se eliminó (nunca tuvo config ni specs). Las pruebas futuras van con **Jest + React Testing Library**; no reintroducir e2e sin pedirlo.
 
 ## Architecture
 
 ```
 app/              # Next.js App Router
-  layout.tsx      # Root layout: fonts, base classes, metadata, QueryProvider + CartProvider
-  page.tsx        # Home page — composes NavHeader + Hero + Footer
+  layout.tsx      # Root layout: fonts, base classes, QueryProvider + CartProvider + la metadata
+                  #   global de SEO (metadataBase, title.template, OG/Twitter, robots) — ver "SEO"
+  page.tsx        # Home page — composes NavHeader + Hero + Footer (+ JSON-LD de ClothingStore)
+  sitemap.ts      # /sitemap.xml — rutas estáticas + un <url> por producto (recorre el catálogo
+                  #   paginado). `revalidate = 3600`. Si el backend no responde, loguea y emite
+                  #   solo las estáticas (no revienta el deploy)
+  robots.ts       # /robots.txt — disallow de /admin, /login, /forgot-password, /checkout, /api/
+  opengraph-image.tsx # Imagen de compartir 1200x630 generada con next/og en build. Al vivir en la
+                  #   raíz la heredan todas las rutas que no definan la suya. Playfair se baja de
+                  #   Google Fonts con fallback a serif del sistema (una fuente fea > un build roto)
+  global-error.tsx # Boundary de último recurso: el ÚNICO que atrapa errores del layout raíz (el
+                  #   hueco que error.tsx no cubre). Trae su propio <html>/<body> porque el layout
+                  #   que heredaría es justo el que falló → aquí NO existen QueryProvider/
+                  #   BrandProvider/CartProvider. Por eso NO reusa NavHeader/Footer: pintaría un
+                  #   botón de carrito cuyo drawer no está montado. Todo sale de BRAND (estático).
+                  #   Solo se ve en producción (en dev gana el overlay de Next)
   not-found.tsx   # 404 a la medida (root, cubre toda la app) — importa NavHeader/Footer directo
                   #   (no los hereda del layout raíz, igual que page.tsx), reusa el patrón de
                   #   stamp de EmptyState + links a categorías vía CATEGORIES
@@ -42,14 +56,20 @@ app/              # Next.js App Router
                   #   contexto que lee useRouter). `reset()` solo NO basta: limpia el estado sin
                   #   re-fetchear → no recupera errores de Server Component; el refresh() previo
                   #   es lo que pide datos nuevos. Muestra `error.digest` como referencia de log.
-                  #   No cubre errores del layout raíz (eso sería global-error.tsx).
+                  #   No cubre errores del layout raíz: de eso se encarga global-error.tsx (arriba).
   admin/
-    layout.tsx    # Admin layout: AdminGuard (route protection) + full-height tobacco-950 shell
+    layout.tsx    # Admin layout: AdminGuard (route protection) + full-height tobacco-950 shell +
+                  #   `robots: noindex` para TODO /admin/* (va en el layout, no por página, para que
+                  #   cualquier sección futura lo herede sin acordarse)
     page.tsx      # Admin dashboard — Sidebar + section routing (AdminSection type)
   (public)/
     outlet/
       [slug]/
-        producto/ # Product detail page (async RSC → ProductInfo client component)
+        producto/ # Product detail page (async RSC → ProductInfo client component).
+                  #   generateMetadata: título/description/canonical + OG con la FOTO REAL del
+                  #   producto, y JSON-LD de Product + BreadcrumbList. Comparte el producto con la
+                  #   página vía React `cache()` (si no, serían 2 GET idénticos: axios no deduplica
+                  #   como fetch()). SIN loading.tsx a propósito (soft 404) — ver "Estados de carga"
     terminos/     # Terms & Conditions page → TermsConditions component
     privacidad/   # Privacy Policy page → PrivacyPolicy component
     envios/       # Shipping Policy page → ShippingInfo component
@@ -58,7 +78,10 @@ app/              # Next.js App Router
   forgot-password/ # Forgot password page → AuthShell + ForgotPasswordForm
 components/
   home/           # Page-level sections (NavHeader, Hero, Footer) + CategoryCard (tile usado por Hero). Hero pide el conteo real de piezas por categoría vía getProducts({ categoria, perPage: 1 }) (lib/api/products) — solo usa el total, no la lista
-  outlet/         # OutletView — product listing with category filters; OutletCard + EmptyState (single consumer: OutletView)
+  outlet/         # OutletView — product listing with category filters; OutletCard + EmptyState (single consumer: OutletView).
+                  #   OutletSkeleton — fallback del <Suspense> de las 4 rutas de listado (ver "Estados de carga")
+  seo/            # JsonLd — pinta un bloque schema.org como <script type="application/ld+json">.
+                  #   Escapa `<` (un `</script>` en una cadena cerraría la etiqueta antes de tiempo)
   product/        # ProductInfo — panel de detalle de producto (galería vía ImageCarousel + size picker + add-to-cart), consumido por la página de producto. La galería sale de product.images (Cloudinary, hasta 3), con fallback a imageSrc o placeholder
   ui/             # Primitivas realmente globales: Cart, CartProvider (drawer montado en root layout), FormControls (TextField/SelectField, compartido por checkout/ y auth/), ImageCarousel (carousel reutilizable: flechas + puntos, framer-motion + next/image, respeta reduced-motion; consumido por ProductInfo)
   checkout/       # Multi-step checkout flow (see "Checkout flow" below)
@@ -110,6 +133,13 @@ lib/
     cart.ts       # computeTotals(items) — pure subtotal/savings/total helper
     brand.ts      # BRAND — defaults/fallback de identidad/copy de marca (nombre, email, hero, tagline, cartNotice…). El storefront se hidrata desde el backend vía BrandProvider/useBrand; BRAND es el fallback SSR. resolveBrand(settings) mergea BrandSettings (backend) ← BRAND: mapea tagline (string \n) → taglineLines[] y conserva namePrimary/nameAccent/email/instagram (que el backend no tiene). ResolvedBrand = forma que consume el storefront
     categories.ts # CATEGORIES + CategoryInfo/ProductType + categoryPlural()/categorySingular() — fuente única de categorías y etiquetas (antes duplicadas en ~10 archivos). DEFAULT_DIMENSIONS: defaults de empaque (peso/dimensiones) por categoría, usados por ProductForm para pre-llenar al crear (editables)
+  seo/            # metadata y datos estructurados (sin React)
+    site.ts       # SITE_URL (NEXT_PUBLIC_SITE_URL ?? localhost:3000, sin barra final) +
+                  #   absoluteUrl(path) + SITE_KEYWORDS. Fuente única de la URL pública: la
+                  #   consumen metadataBase, los canonicals, sitemap.ts y robots.ts
+    jsonLd.ts     # builders de schema.org: storeJsonLd() (ClothingStore, home), productJsonLd()
+                  #   (Product + offers en salePrice, stock → InStock/SoldOut — el outlet no repone)
+                  #   y breadcrumbJsonLd(). Regla: solo describir lo que la página realmente muestra
   stripe/         # pasarela de pago
     client.ts     # getStripe() — singleton loadStripe(NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) a nivel de módulo (una sola vez, no por render). Devuelve null si falta la llave → la UI degrada con mensaje de config. Solo lo consume components/checkout/usePlaceOrder.ts
   ui/             # helpers de presentación
@@ -148,7 +178,28 @@ Stack de datos: **TanStack Query + Axios + Zod**. `QueryProvider` (`components/p
 
 > Modelo de seguridad: token en localStorage + guard cliente es lo correcto para el approach axios/SPA en esta etapa sin backend. En producción (con backend) conviene cookie `httpOnly` + middleware de Next; el interceptor 401 ya deja listo el camino. `unitCost`/márgenes solo deben exponerse en rutas `/api/admin/*` autenticadas.
 
-Env: `NEXT_PUBLIC_API_URL` apunta al backend (sin definir → `/api`). `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` = llave **publicable** de Stripe (`pk_test_…` en sandbox), de la **misma cuenta** que la `STRIPE_SECRET_KEY` del backend; es una llave pública (segura para el bundle), nunca poner una llave secreta/restringida (`sk_`/`rk_`) en un `NEXT_PUBLIC_`. Las `NEXT_PUBLIC_*` se inyectan en build → tras cambiarlas hay que reiniciar `pnpm dev`. No commitear secretos.
+Env: `NEXT_PUBLIC_API_URL` apunta al backend (sin definir → `/api`). `NEXT_PUBLIC_SITE_URL` = origen público del sitio, base de canonicals/sitemap/OG (sin definir → `http://localhost:3000`; ver "SEO"). `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` = llave **publicable** de Stripe (`pk_test_…` en sandbox), de la **misma cuenta** que la `STRIPE_SECRET_KEY` del backend; es una llave pública (segura para el bundle), nunca poner una llave secreta/restringida (`sk_`/`rk_`) en un `NEXT_PUBLIC_`. Las `NEXT_PUBLIC_*` se inyectan en build → tras cambiarlas hay que reiniciar `pnpm dev`. No commitear secretos.
+
+## SEO
+
+La metadata global vive en el root layout (`app/layout.tsx`): `metadataBase`, `title.template` (`%s | Botas Don Chuy Outlet`), description, keywords, OG/Twitter, `formatDetection` (Safari convierte precios/CPs en enlaces de teléfono si no se apaga) y `robots` con `max-image-preview: large` (lo que permite que la foto salga grande en el resultado de búsqueda). Cada página solo define lo suyo.
+
+- **`lib/seo/site.ts` es la fuente única de la URL pública.** `NEXT_PUBLIC_SITE_URL` se inyecta en build; sin definir cae a `http://localhost:3000`. **Hay que definirla en Vercel (Production)** con el origen real y sin barra final, o los canonicals y el `sitemap.xml` publicados apuntarán a localhost.
+- **Canonicals de listado sin query**: `/outlet?categoria=bota&pagina=2` canonicaliza a `/outlet`. Sin esto, cada combinación de filtros se indexa como duplicado y se reparte la autoridad entre todas.
+- **Rutas privadas**: `/admin/*`, `/login`, `/forgot-password` y `/checkout` llevan `robots: noindex` **y** están en el disallow de `robots.txt`. No es redundante: robots.txt impide el *crawl*, el meta impide el *índice* — una URL bloqueada en robots.txt pero enlazada desde fuera puede indexarse igual. `unitCost`/márgenes nunca deben acabar en un índice.
+- **Datos estructurados** (`lib/seo/jsonLd.ts` + `components/seo/JsonLd.tsx`): `ClothingStore` en el home, `Product` + `BreadcrumbList` en producto. Regla dura: **solo describir lo que la página realmente muestra** — marcar datos que el usuario no ve viola las políticas de Google y puede costar los rich results de todo el dominio. `image` se **omite** si el producto no tiene fotos (`image: []` no es "sin imagen": es propiedad inválida y arrastra al bloque entero).
+- **Imagen OG**: `app/opengraph-image.tsx` (generada, heredada por todas las rutas). La página de producto la sobreescribe con la foto real. **Ojo**: declarar `openGraph` en un `generateMetadata` reemplaza el bloque heredado del layout **incluida la imagen del archivo** — por eso producto define un fallback explícito a `/opengraph-image` cuando la pieza no tiene foto; si no, se quedaría sin ninguna `og:image` (enlace pelón en WhatsApp), que hoy es el caso más común del catálogo.
+- Al tocar el catálogo, recordar que `sitemap.ts` tiene `MAX_PAGES` como tope de seguridad del recorrido paginado.
+
+## Estados de carga (loading.tsx vs Suspense)
+
+Las rutas de catálogo suspenden por motivos distintos, y por eso el skeleton va en lugares distintos — o no va. **No unificar sin leer esto**, las dos decisiones tienen una razón medida detrás:
+
+- **Listados** (`/outlet`, `/botas`, `/sombreros`, `/ropa`) **NO son RSC async**: `OutletView` es un client component que hace su propio fetch con TanStack Query. Lo que suspende en el prerender es su `useSearchParams`, y ese bailout lo atrapa **el boundary más cercano**, que es el `<Suspense>` que la página ya tenía dentro. Por eso el skeleton va como `fallback={<OutletSkeleton />}` de ese Suspense: **un `loading.tsx` en esas rutas nunca se alcanzaría**. Ya hidratado, manda el spinner propio de OutletView. `OutletSkeleton` replica la rejilla real (mismas columnas, mismo `aspect-square`) para que al llegar los productos no salte el layout.
+
+- **Producto** (`/outlet/[slug]/producto`) **sí es un RSC async** y aun así **NO lleva loading.tsx, a propósito**. Cualquier boundary que streamee obliga a Next a mandar el shell antes de saber si el producto existe → el status queda en 200 y el `notFound()` posterior pinta el 404 con status 200 (**soft 404**). Medido: con `loading.tsx`, `/outlet/999999/producto` → 200; sin él → 404. En un outlet las piezas se agotan y se retiran, y sus URLs (indexadas y en el sitemap) se crawlean seguido, así que se priorizó el status correcto sobre el skeleton — el costo aceptado es que al hacer clic en una tarjeta no hay feedback hasta que responde el backend. `generateStaticParams` + `dynamicParams: false` daría ambas, pero cualquier producto creado tras el build daría 404 hasta el siguiente deploy: peor. El razonamiento está también en un comentario al inicio de `page.tsx`.
+
+`loadProduct` valida el slug (`Number.isInteger(id) && id > 0`) antes de llamar al backend: `/outlet/abc/producto` daba `Number("abc")` → `NaN` → `GET /products/NaN` → **400**, que `getProductById` no atrapa (solo mapea 404 → null) → la ruta reventaba con un 500 en vez del 404 limpio. Los crawlers y los enlaces viejos pegan a URLs basura de forma rutinaria.
 
 ## Checkout flow
 

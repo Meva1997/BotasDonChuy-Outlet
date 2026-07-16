@@ -48,9 +48,6 @@ importers:
         specifier: ^5.0.14
         version: 5.0.14(@types/react@19.2.17)(immer@11.1.8)(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
     devDependencies:
-      '@playwright/test':
-        specifier: ^1.61.0
-        version: 1.61.0
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.0
@@ -2624,6 +2621,7 @@ snapshots:
   '@playwright/test@1.61.0':
     dependencies:
       playwright: 1.61.0
+    optional: true
 
   '@reduxjs/toolkit@2.12.0(react-redux@9.3.0(@types/react@19.2.17)(react@19.2.4)(redux@5.0.1))(react@19.2.4)':
     dependencies:
@@ -4137,13 +4135,15 @@ snapshots:
 
   picomatch@4.0.4: {}
 
-  playwright-core@1.61.0: {}
+  playwright-core@1.61.0:
+    optional: true
 
   playwright@1.61.0:
     dependencies:
       playwright-core: 1.61.0
     optionalDependencies:
       fsevents: 2.3.2
+    optional: true
 
   possible-typed-array-names@1.1.0: {}
 
