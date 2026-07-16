@@ -37,7 +37,10 @@ export const metadata: Metadata = {
   authors: [{ name: BRAND.name }],
   creator: BRAND.name,
   publisher: BRAND.name,
-  alternates: { canonical: "/" },
+  // OJO: aquí NO va `alternates`. Las páginas hijas heredan el objeto completo si
+  // no definen el suyo, así que un `canonical: "/"` en el layout haría que toda
+  // página que se olvide del suyo se declare duplicada del home. El canonical del
+  // home vive en app/page.tsx; el del resto sale de pageMetadata() (lib/seo/metadata).
   // Safari convierte cadenas de dígitos (precios, CPs, códigos de producto) en
   // enlaces de teléfono si no se apaga.
   formatDetection: { telephone: false, address: false, email: false },

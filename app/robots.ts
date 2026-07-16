@@ -22,6 +22,9 @@ export default function robots(): MetadataRoute.Robots {
       ],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
-    host: SITE_URL,
+    // `Host` es una directiva de Yandex y espera el dominio pelón, sin esquema
+    // (Google la ignora por completo). Con la URL entera quedaba
+    // `Host: http://localhost:3000`, que no es un valor válido.
+    host: new URL(SITE_URL).host,
   };
 }

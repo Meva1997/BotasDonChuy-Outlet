@@ -73,8 +73,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: product.name,
     description,
     alternates: { canonical: path },
+    // No usa pageMetadata(): la imagen es la foto de la pieza, no la genérica del
+    // sitio. Sí repite `siteName`/`locale` por el mismo motivo que el helper — al
+    // declarar `openGraph` se reemplaza el bloque heredado del layout completo.
     openGraph: {
       type: "website",
+      locale: "es_MX",
+      siteName: BRAND.name,
       title: product.name,
       description,
       url: path,

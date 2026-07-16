@@ -4,19 +4,16 @@ import OutletView from "@/components/outlet/OutletView";
 import OutletSkeleton from "@/components/outlet/OutletSkeleton";
 import JsonLd from "@/components/seo/JsonLd";
 import { breadcrumbJsonLd } from "@/lib/seo/jsonLd";
+import { pageMetadata } from "@/lib/seo/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Sombreros vaqueros de outlet",
   description:
     "Sombreros vaqueros de outlet en materiales y hormas originales. Piezas finales de inventario, sin reposición. Envíos a todo México desde Celaya, Guanajuato.",
-  alternates: { canonical: "/sombreros" },
-  openGraph: {
-    title: "Sombreros vaqueros de outlet",
-    description:
-      "Sombreros vaqueros a precio de liquidación. Piezas únicas, sin reposición.",
-    url: "/sombreros",
-  },
-};
+  path: "/sombreros",
+  ogDescription:
+    "Sombreros vaqueros a precio de liquidación. Piezas únicas, sin reposición.",
+});
 
 export default function SombrerosPage() {
   return (

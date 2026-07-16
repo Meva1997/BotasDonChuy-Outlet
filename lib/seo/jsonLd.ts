@@ -63,7 +63,10 @@ export function productJsonLd(product: Product) {
     ...(images.length > 0 ? { image: images } : {}),
     sku: product.code ?? String(product.id),
     category: categorySingular(product.type),
-    brand: { "@type": "Brand", name: BRAND.name },
+    // `brand` se omite a propósito. En schema.org es el FABRICANTE (Cuadra, etc.),
+    // no la tienda — para eso está `offers.seller`, que sí somos nosotros. El
+    // Product del backend no guarda la marca, así que no hay nada honesto que
+    // poner: es recomendada, no obligatoria, y el rich result es válido sin ella.
     offers: {
       "@type": "Offer",
       url,

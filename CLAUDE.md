@@ -137,6 +137,10 @@ lib/
     site.ts       # SITE_URL (NEXT_PUBLIC_SITE_URL ?? localhost:3000, sin barra final) +
                   #   absoluteUrl(path) + SITE_KEYWORDS. Fuente única de la URL pública: la
                   #   consumen metadataBase, los canonicals, sitemap.ts y robots.ts
+    metadata.ts   # pageMetadata({ title, description, path, ogDescription }) — constructor de
+                  #   la metadata de una página pública (canonical + bloque OG/Twitter completo).
+                  #   Úsalo SIEMPRE en páginas nuevas: existe porque `alternates` se hereda y
+                  #   `openGraph` se reemplaza entero — ver "SEO"
     jsonLd.ts     # builders de schema.org: storeJsonLd() (ClothingStore, home), productJsonLd()
                   #   (Product + offers en salePrice, stock → InStock/SoldOut — el outlet no repone)
                   #   y breadcrumbJsonLd(). Regla: solo describir lo que la página realmente muestra
@@ -184,11 +188,18 @@ Env: `NEXT_PUBLIC_API_URL` apunta al backend (sin definir → `/api`). `NEXT_PUB
 
 La metadata global vive en el root layout (`app/layout.tsx`): `metadataBase`, `title.template` (`%s | Botas Don Chuy Outlet`), description, keywords, OG/Twitter, `formatDetection` (Safari convierte precios/CPs en enlaces de teléfono si no se apaga) y `robots` con `max-image-preview: large` (lo que permite que la foto salga grande en el resultado de búsqueda). Cada página solo define lo suyo.
 
+**Toda página pública nueva arma su metadata con `pageMetadata()` (`lib/seo/metadata.ts`)** — no a mano. El helper existe por dos trampas de la herencia de metadata de Next, las dos verificadas contra el HTML del build (no en teoría):
+
+1. **`alternates` se HEREDA** si la página no lo define. Por eso el root layout **no** declara `canonical` (el del home vive en `app/page.tsx`): con un `canonical: "/"` arriba, toda página que se olvidara del suyo se declaraba duplicada del home — le pasó a `/terminos`, `/privacidad`, `/envios` y `/nosotros`, que además están en el sitemap.
+2. **`openGraph` se REEMPLAZA entero** al declararlo, no se mezcla. Una página que solo quería su título perdía `siteName`, `locale`, `type` y la imagen de `opengraph-image.tsx` (enlace pelón en WhatsApp). Por eso el helper siempre emite el bloque completo, imagen y medidas incluidas.
+
+Las únicas dos páginas públicas que no pasan por el helper lo hacen por una razón: el **home** solo declara `alternates` (su título/OG ya son los defaults del layout y tocarlos reemplazaría el bloque heredado), y **producto** arma el suyo en `generateMetadata` porque su imagen es la foto real de la pieza.
+
 - **`lib/seo/site.ts` es la fuente única de la URL pública.** `NEXT_PUBLIC_SITE_URL` se inyecta en build; sin definir cae a `http://localhost:3000`. **Hay que definirla en Vercel (Production)** con el origen real y sin barra final, o los canonicals y el `sitemap.xml` publicados apuntarán a localhost.
 - **Canonicals de listado sin query**: `/outlet?categoria=bota&pagina=2` canonicaliza a `/outlet`. Sin esto, cada combinación de filtros se indexa como duplicado y se reparte la autoridad entre todas.
 - **Rutas privadas**: `/admin/*`, `/login`, `/forgot-password` y `/checkout` llevan `robots: noindex` **y** están en el disallow de `robots.txt`. No es redundante: robots.txt impide el *crawl*, el meta impide el *índice* — una URL bloqueada en robots.txt pero enlazada desde fuera puede indexarse igual. `unitCost`/márgenes nunca deben acabar en un índice.
-- **Datos estructurados** (`lib/seo/jsonLd.ts` + `components/seo/JsonLd.tsx`): `ClothingStore` en el home, `Product` + `BreadcrumbList` en producto. Regla dura: **solo describir lo que la página realmente muestra** — marcar datos que el usuario no ve viola las políticas de Google y puede costar los rich results de todo el dominio. `image` se **omite** si el producto no tiene fotos (`image: []` no es "sin imagen": es propiedad inválida y arrastra al bloque entero).
-- **Imagen OG**: `app/opengraph-image.tsx` (generada, heredada por todas las rutas). La página de producto la sobreescribe con la foto real. **Ojo**: declarar `openGraph` en un `generateMetadata` reemplaza el bloque heredado del layout **incluida la imagen del archivo** — por eso producto define un fallback explícito a `/opengraph-image` cuando la pieza no tiene foto; si no, se quedaría sin ninguna `og:image` (enlace pelón en WhatsApp), que hoy es el caso más común del catálogo.
+- **Datos estructurados** (`lib/seo/jsonLd.ts` + `components/seo/JsonLd.tsx`): `ClothingStore` en el home, `Product` + `BreadcrumbList` en producto. Regla dura: **solo describir lo que la página realmente muestra** — marcar datos que el usuario no ve viola las políticas de Google y puede costar los rich results de todo el dominio. `image` se **omite** si el producto no tiene fotos (`image: []` no es "sin imagen": es propiedad inválida y arrastra al bloque entero). `brand` también se omite: en schema.org es el **fabricante** (Cuadra…), no la tienda —esa va en `offers.seller`—, y el `Product` del backend no guarda la marca; es recomendada, no obligatoria.
+- **Imagen OG**: `app/opengraph-image.tsx` (generada). Solo la heredan las rutas que **no** declaran `openGraph` (hoy: el home). Las demás la referencian explícitamente vía `pageMetadata()`; producto la usa como fallback cuando la pieza no tiene foto — si no, se quedaría sin ninguna `og:image` (enlace pelón en WhatsApp), que hoy es el caso más común del catálogo.
 - Al tocar el catálogo, recordar que `sitemap.ts` tiene `MAX_PAGES` como tope de seguridad del recorrido paginado.
 
 ## Estados de carga (loading.tsx vs Suspense)
