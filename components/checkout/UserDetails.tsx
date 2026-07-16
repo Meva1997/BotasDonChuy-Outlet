@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCartStore } from "@/store/cartStore";
@@ -17,16 +18,30 @@ import OrderTotals from "./OrderTotals";
 
 export default function UserDetails() {
   const items = useCartStore((s) => s.items);
-  const { goToReview, completeOrder } = useCheckout();
+  const { goToReview, completeOrder, getShippingDraft, setShippingDraft } =
+    useCheckout();
 
   const {
     register,
     handleSubmit,
+    getValues,
     formState: { errors },
   } = useForm<ShippingData>({
     resolver: zodResolver(shippingSchema),
     mode: "onBlur",
+    // `defaultValues` solo se lee al montar, así que llamar al getter en el
+    // render no reinicia nada: siembra el formulario con lo que el usuario ya
+    // había escrito antes de irse al resumen.
+    defaultValues: getShippingDraft() ?? undefined,
   });
+
+  // El flujo desmonta este paso al navegar (CheckoutFlow lo renderiza
+  // condicionalmente): guardamos lo capturado —sin validar, puede ir a medias—
+  // para resembrarlo al volver. Cubre tanto "Volver al resumen" como el Stepper.
+  useEffect(
+    () => () => setShippingDraft(getValues()),
+    [getValues, setShippingDraft]
+  );
 
   // Flujo de dos fases: POST /api/orders (backend recalcula totales y descuenta
   // stock) → confirmar el pago con Stripe. Solo tras el `succeeded` se congela

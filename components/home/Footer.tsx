@@ -75,6 +75,8 @@ export default function Footer() {
                     <li key={label}>
                       <Link
                         href={href}
+                        target={label === "Instagram" ? "_blank" : undefined}
+                        rel={label === "Instagram" ? "noopener noreferrer" : undefined}
                         className="text-sm text-amber-100/50 hover:text-amber-100/90 transition-colors duration-200"
                       >
                         {label}
