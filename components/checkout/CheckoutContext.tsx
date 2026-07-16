@@ -34,12 +34,18 @@ export interface CompletedOrder {
 
 interface CheckoutContextValue {
   step: CheckoutStep;
+  /** Paso más avanzado al que se ha llegado; el Stepper deja saltar hasta aquí. */
+  maxVisitedStep: CheckoutStep;
   acceptedTerms: boolean;
   setAcceptedTerms: (value: boolean) => void;
   order: CompletedOrder | null;
   goTo: (step: CheckoutStep) => void;
   goToReview: () => void;
   goToDetails: () => void;
+  /** Devuelve lo último capturado en el formulario de envío (sin validar), o `null`. */
+  getShippingDraft: () => Partial<ShippingData> | null;
+  /** Guarda el borrador del formulario de envío para resembrarlo al remontarlo. */
+  setShippingDraft: (data: Partial<ShippingData>) => void;
   /** Devuelve la orden pendiente cacheada solo si corresponde al carrito actual (misma firma). */
   getPendingOrder: (signature: string) => PendingOrder | null;
   /** Cachea (o limpia, con `null`) la orden pendiente junto a la firma del carrito que la originó. */
@@ -52,12 +58,19 @@ const CheckoutContext = createContext<CheckoutContextValue | null>(null);
 
 export function CheckoutProvider({ children }: { children: React.ReactNode }) {
   const [step, setStep] = useState<CheckoutStep>(0);
+  const [maxVisitedStep, setMaxVisitedStep] = useState<CheckoutStep>(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [order, setOrder] = useState<CompletedOrder | null>(null);
 
-  const goTo = useCallback((target: CheckoutStep) => setStep(target), []);
+  // Avanzar de paso también amplía hasta dónde puede saltar el Stepper.
+  const visit = useCallback((target: CheckoutStep) => {
+    setStep(target);
+    setMaxVisitedStep((max) => (target > max ? target : max));
+  }, []);
+
+  const goTo = useCallback((target: CheckoutStep) => visit(target), [visit]);
   const goToReview = useCallback(() => setStep(0), []);
-  const goToDetails = useCallback(() => setStep(1), []);
+  const goToDetails = useCallback(() => visit(1), [visit]);
 
   // Caché de la orden creada en el backend a la espera de que el pago se
   // confirme. Vive en el contexto (no en el ref de UserDetails) para sobrevivir
@@ -68,6 +81,18 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
     signature: string;
     pending: PendingOrder;
   } | null>(null);
+
+  // Borrador del formulario de envío. Vive aquí (y no en UserDetails) porque el
+  // flujo desmonta el paso al navegar: react-hook-form destruiría su estado y el
+  // usuario tendría que retipear todo al volver. Es un ref y no state porque
+  // nadie re-renderiza con él: solo se lee al montar, para los `defaultValues`.
+  const shippingDraftRef = useRef<Partial<ShippingData> | null>(null);
+
+  const getShippingDraft = useCallback(() => shippingDraftRef.current, []);
+
+  const setShippingDraft = useCallback((data: Partial<ShippingData>) => {
+    shippingDraftRef.current = data;
+  }, []);
 
   const getPendingOrder = useCallback(
     (signature: string): PendingOrder | null => {
@@ -101,31 +126,40 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
         customer,
       });
       clearCart();
-      setStep(2);
+      // El pedido ya está congelado arriba: el borrador solo dejaría datos
+      // personales en memoria sin uso.
+      shippingDraftRef.current = null;
+      visit(2);
     },
-    []
+    [visit]
   );
 
   const value = useMemo(
     () => ({
       step,
+      maxVisitedStep,
       acceptedTerms,
       setAcceptedTerms,
       order,
       goTo,
       goToReview,
       goToDetails,
+      getShippingDraft,
+      setShippingDraft,
       getPendingOrder,
       setPendingOrder,
       completeOrder,
     }),
     [
       step,
+      maxVisitedStep,
       acceptedTerms,
       order,
       goTo,
       goToReview,
       goToDetails,
+      getShippingDraft,
+      setShippingDraft,
       getPendingOrder,
       setPendingOrder,
       completeOrder,

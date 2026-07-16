@@ -23,7 +23,7 @@ const HEADINGS = [
 ] as const;
 
 export default function CheckoutFlow() {
-  const { step, goTo } = useCheckout();
+  const { step, maxVisitedStep, goTo } = useCheckout();
   const heading = HEADINGS[step];
 
   return (
@@ -34,7 +34,7 @@ export default function CheckoutFlow() {
       />
 
       <div className="relative">
-        <Stepper current={step} onNavigate={goTo} />
+        <Stepper current={step} maxVisited={maxVisitedStep} onNavigate={goTo} />
 
         <header
           key={step}

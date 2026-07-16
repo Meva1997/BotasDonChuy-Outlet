@@ -31,11 +31,15 @@ app/              # Next.js App Router
   layout.tsx      # Root layout: fonts, base classes, metadata, QueryProvider + CartProvider
   page.tsx        # Home page
   not-found.tsx   # Custom 404 (catches any unmatched URL app-wide)
+  error.tsx       # Root error boundary (client component) — catches RSC throws (e.g. backend down)
+                  #   and replaces Next's raw overlay with the site's look; "Retry" re-fetches via
+                  #   router.refresh() + reset()
   admin/          # Admin dashboard (Sidebar + section routing)
   (public)/
     outlet/[slug]/producto/  # Product detail view
     botas/ sombreros/ ropa/  # Category listings (reuse OutletView)
     terminos/ privacidad/ envios/  # Legal pages
+    nosotros/       # About Us page
   login/                # Login page
   forgot-password/      # Forgot password wizard
 components/
@@ -46,6 +50,7 @@ components/
   providers/      # QueryProvider (TanStack Query), BrandProvider (brand identity)
   checkout/       # Multi-step checkout wizard
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
+  nosotros/       # AboutUs — static "About Us" page
   auth/           # AuthShell, LoginForm, ForgotPasswordForm (+ CodeInput/ResetCodeForm/NewPasswordForm), AdminGuard
   admin/          # Sidebar, types.ts + sections/ (Marca, Productos, Pedidos, Datos, Reportes, Configuración)
                   #   data/ — chart/table subcomponents (recharts)
@@ -81,13 +86,14 @@ See `CLAUDE.md` for the full architecture reference (file-by-file responsibiliti
 | `/terminos` | Terms & Conditions |
 | `/privacidad` | Privacy Policy |
 | `/envios` | Shipping Policy |
+| `/nosotros` | About Us |
 | `/admin` | Admin panel (brand, products, orders, data, reports, config) |
 | `/login` | Login form |
 | `/forgot-password` | Password recovery wizard (email → 5-digit code → new password) |
 
 ## Planned routes
 
-`/carrito`, `/nosotros`, `/devoluciones`
+`/carrito`, `/devoluciones`
 
 ## Shopping cart
 
@@ -103,10 +109,10 @@ Env: set `NEXT_PUBLIC_API_URL` to the backend URL (defaults to `/api`) and `NEXT
 
 ## Checkout flow
 
-`/checkout` is a 3-step wizard (state held in React context, resets on refresh):
+`/checkout` is a 3-step wizard (state held in React context, resets on refresh). Steps render conditionally, so navigating away unmounts them — anything that must survive back-and-forth lives in the context instead: a shipping draft (restored when `UserDetails` remounts), the pending Stripe order, and `acceptedTerms`. The `Stepper` distinguishes three states per step (done / visited-but-not-current / pending), letting users jump back to any step they've already seen.
 
 1. **Resumen** — read-only cart review; requires accepting terms & privacy before continuing.
-2. **Datos de envío + pago** — shipping form validated with react-hook-form + zod (Mexico only). On submit `usePlaceOrder` runs a two-phase flow: (1) **posts the order** (`POST /api/orders` via `createOrder` in `lib/api/orders.ts`) — only `{ items: [{ productId, size, quantity }], customer }`, no amounts; the backend recalculates totals, atomically decrements stock, and returns a Stripe `clientSecret`; a `409` (out of stock) or `400` keeps the user on the form. (2) **confirms payment** with Stripe.js (`confirmCardPayment`). Running in **test/sandbox**, so the test card is hardcoded (`pm_card_visa` = `4242 4242 4242 4242`) and `PaymentSection` is a read-only test-card panel. Only after `succeeded` does it freeze the order snapshot and advance; the `paid` status is reconciled by the backend webhook.
+2. **Datos de envío + pago** — shipping form validated with react-hook-form + zod (Mexico only). On submit `usePlaceOrder` runs a two-phase flow: (1) **posts the order** (`POST /api/orders` via `createOrder` in `lib/api/orders.ts`) — only `{ items: [{ productId, size, quantity }], customer }`, no amounts; the backend recalculates totals, atomically decrements stock, and returns a Stripe `clientSecret`; a `409` (out of stock) or `400` keeps the user on the form. (2) **confirms payment** with Stripe.js (`confirmCardPayment`). Running in **test/sandbox**, so the test card is hardcoded (`pm_card_visa` = `4242 4242 4242 4242`) and `PaymentSection` is a read-only test-card panel. Only after `succeeded` does it freeze the order snapshot and advance; the `paid` status is reconciled by the backend webhook. The created order is cached (keyed by cart contents **and** customer data) so retrying doesn't duplicate it, and editing the address after a failed payment correctly invalidates the cache.
 3. **Confirmación** — frozen order snapshot (with `Pedido #<id>` and the server's authoritative totals) plus shipping address.
 
 Key files: `app/(public)/checkout/`, `components/checkout/`, `schemas/checkout.ts`, `lib/domain/cart.ts`, `lib/api/orders.ts`.

@@ -32,6 +32,17 @@ app/              # Next.js App Router
   not-found.tsx   # 404 a la medida (root, cubre toda la app) — importa NavHeader/Footer directo
                   #   (no los hereda del layout raíz, igual que page.tsx), reusa el patrón de
                   #   stamp de EmptyState + links a categorías vía CATEGORIES
+  error.tsx       # Frontera de error raíz (client component) — cubre cualquier throw de un RSC
+                  #   (p. ej. backend caído → ECONNREFUSED en getProductById) y reemplaza el
+                  #   overlay crudo de Next con la estética del sitio. "Reintentar" NO usa el prop
+                  #   de retry de Next: lo recompone con API estable — startTransition(() => {
+                  #   router.refresh(); reset(); }) — porque el nombre del prop es inestable
+                  #   (`unstable_retry` en 16.2, `retry` en canary). Es equivalente exacto al
+                  #   built-in (error-boundary.js hace lo mismo sobre AppRouterContext, el mismo
+                  #   contexto que lee useRouter). `reset()` solo NO basta: limpia el estado sin
+                  #   re-fetchear → no recupera errores de Server Component; el refresh() previo
+                  #   es lo que pide datos nuevos. Muestra `error.digest` como referencia de log.
+                  #   No cubre errores del layout raíz (eso sería global-error.tsx).
   admin/
     layout.tsx    # Admin layout: AdminGuard (route protection) + full-height tobacco-950 shell
     page.tsx      # Admin dashboard — Sidebar + section routing (AdminSection type)
@@ -42,6 +53,7 @@ app/              # Next.js App Router
     terminos/     # Terms & Conditions page → TermsConditions component
     privacidad/   # Privacy Policy page → PrivacyPolicy component
     envios/       # Shipping Policy page → ShippingInfo component
+    nosotros/     # About Us page → AboutUs component (components/nosotros/)
   login/          # Login page → AuthShell + LoginForm
   forgot-password/ # Forgot password page → AuthShell + ForgotPasswordForm
 components/
@@ -51,6 +63,7 @@ components/
   ui/             # Primitivas realmente globales: Cart, CartProvider (drawer montado en root layout), FormControls (TextField/SelectField, compartido por checkout/ y auth/), ImageCarousel (carousel reutilizable: flechas + puntos, framer-motion + next/image, respeta reduced-motion; consumido por ProductInfo)
   checkout/       # Multi-step checkout flow (see "Checkout flow" below)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal content pages
+  nosotros/       # AboutUs — página estática "Sobre nosotros" (historia, marcas, qué es el outlet). Enlazada desde el footer ("Sobre nosotros")
   auth/           # AuthShell (split-panel layout) + LoginForm — react-hook-form + zod (schemas/auth.ts) + TanStack Query (useMutation), YA conectados al backend vía lib/api/auth. AdminGuard — protege /admin y valida el token contra GET /auth/me (ver "Auth & data fetching"). ForgotPasswordForm es un wizard de 3 pasos (Fase 10): email → código de 5 dígitos → nueva contraseña → /login. Estado local (no persistido). Subcomponentes: CodeInput (primitivo OTP de 5 casillas: auto-avance, backspace, pegar; estética de FormControls), ResetCodeForm (verifyResetCode + enlace "Reenviar código" que rellama forgotPassword) y NewPasswordForm (resetPassword + redirect a /login)
   providers/      # QueryProvider — QueryClientProvider de TanStack Query (montado en root layout)
                   # BrandProvider — hidrata la marca desde GET /api/admin/brand (público) y la
@@ -112,9 +125,9 @@ store/
   authStore.ts    # Zustand store (persist, key botas-don-chuy-auth) — token + user ({ id, name, email, role }) de sesión admin, login()/setUser()/logout()/isAuthenticated(). Fuente única del token (axios client + AdminGuard). El tipo AuthUser vive en lib/api/auth.ts
 ```
 
-**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/botas`, `/sombreros`, `/ropa`, `/checkout`, `/terminos`, `/privacidad`, `/envios`, `/admin`, `/login`, `/forgot-password` (las 3 de categoría reutilizan `OutletView` con `defaultCategoria`)
+**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/botas`, `/sombreros`, `/ropa`, `/checkout`, `/terminos`, `/privacidad`, `/envios`, `/nosotros`, `/admin`, `/login`, `/forgot-password` (las 3 de categoría reutilizan `OutletView` con `defaultCategoria`)
 
-**Planned routes** (not yet built): `/carrito`, `/nosotros`, `/devoluciones`
+**Planned routes** (not yet built): `/carrito`, `/devoluciones`
 
 ## State Management
 
@@ -139,10 +152,12 @@ Env: `NEXT_PUBLIC_API_URL` apunta al backend (sin definir → `/api`). `NEXT_PUB
 
 ## Checkout flow
 
-`/checkout` is a 3-step wizard. Step state is held in a React context (`components/checkout/CheckoutContext.tsx`, scoped via `CheckoutProvider` in the page — not persisted, so a refresh restarts at step 0):
+`/checkout` is a 3-step wizard. Step state is held in a React context (`components/checkout/CheckoutContext.tsx`, scoped via `CheckoutProvider` in the page — not persisted, so a refresh restarts at step 0).
+
+`CheckoutFlow` renderiza los pasos condicionalmente (`{step === 1 && <UserDetails />}`), así que **navegar desmonta el paso**. Todo lo que deba sobrevivir a ir y volver vive en el contexto, no en los componentes de paso: `acceptedTerms` (state, controla el checkbox del resumen), el **borrador de envío** (`shippingDraftRef` + `getShippingDraft`/`setShippingDraft`) y la orden pendiente de Stripe (`pendingOrderRef`). Los dos últimos son **refs**, no state: solo se leen al montar / al hacer submit, así que re-renderizar con ellos sería ruido. `UserDetails` siembra `useForm({ defaultValues: getShippingDraft() ?? undefined })` y guarda `getValues()` en el cleanup de un `useEffect` (es decir, al desmontarse) — sin validar, el borrador puede ir a medias. `completeOrder` lo limpia junto con el carrito. El `Stepper` recibe `maxVisited={maxVisitedStep}` y deja saltar a **cualquier paso ya visitado** (atrás o adelante), nunca a uno sin visitar ni una vez confirmado el pedido; `maxVisitedStep` lo sube el helper `visit()` del contexto. Pinta **tres niveles** por paso, no dos: `isDone` (`index < current`, palomita ámbar), `isVisited` (`index > current && index <= maxVisited` — se estuvo ahí y se retrocedió: número en ámbar tenue, ni completado ni intacto) y pendiente (apagado). Sin el nivel intermedio, retroceder hacía que el paso ya lleno se viera idéntico a uno nunca tocado.
 
 1. **Resumen** (`OrderSummary`) — read-only cart review + **required** terms & privacy checkbox; "Continuar" is disabled until accepted.
-2. **Datos de envío + pago** (`UserDetails`) — shipping form validated with `react-hook-form` + `zodResolver` against `schemas/checkout.ts`. Shipping is restricted to Mexico via the `MEXICAN_STATES` enum. **Pago con Stripe conectado (Fase 8, test/sandbox)**: el submit corre `usePlaceOrder` (`components/checkout/usePlaceOrder.ts`), un flujo de **dos fases** — (1) `createOrder()` (`lib/api/orders.ts`) postea `buildOrderPayload()` = `{ items: [{ productId, size, quantity }], customer }` **sin montos** (el backend recalcula totales, descuenta stock por talla atómicamente y devuelve `{ order, clientSecret }`); (2) `stripe.confirmCardPayment(clientSecret, { payment_method: "pm_card_visa" })` con Stripe.js (`lib/stripe/client.ts` = singleton `loadStripe`). La **tarjeta de prueba está hardcodeada** (`pm_card_visa` = `4242 4242 4242 4242`) porque todo corre en sandbox; `PaymentSection` es un panel de tarjeta de prueba de solo lectura. La orden creada se **cachea en el `CheckoutContext`** (firmada con `productId+talla+cantidad`) para no duplicarla en un reintento; al vivir en el contexto sobrevive a "Volver al resumen" (que remonta `UserDetails`), y se invalida sola si el carrito cambió. Errores mapeados: `409` (sin stock) muestra el mensaje del backend inline, `400` datos, `clientSecret` nulo / Stripe no cargado → mensaje de config, y el `error.message` de Stripe; el usuario permanece en el formulario. **Solo tras `paymentIntent.status === "succeeded"`** se llama `completeOrder(customer, order)`, que congela el snapshot (con `orderId` + los **totales autoritativos del servidor**), vacía el carrito y avanza. El estado `paid` real lo concilia el **webhook** del backend de forma asíncrona.
+2. **Datos de envío + pago** (`UserDetails`) — shipping form validated with `react-hook-form` + `zodResolver` against `schemas/checkout.ts`. Shipping is restricted to Mexico via the `MEXICAN_STATES` enum. **Pago con Stripe conectado (Fase 8, test/sandbox)**: el submit corre `usePlaceOrder` (`components/checkout/usePlaceOrder.ts`), un flujo de **dos fases** — (1) `createOrder()` (`lib/api/orders.ts`) postea `buildOrderPayload()` = `{ items: [{ productId, size, quantity }], customer }` **sin montos** (el backend recalcula totales, descuenta stock por talla atómicamente y devuelve `{ order, clientSecret }`); (2) `stripe.confirmCardPayment(clientSecret, { payment_method: "pm_card_visa" })` con Stripe.js (`lib/stripe/client.ts` = singleton `loadStripe`). La **tarjeta de prueba está hardcodeada** (`pm_card_visa` = `4242 4242 4242 4242`) porque todo corre en sandbox; `PaymentSection` es un panel de tarjeta de prueba de solo lectura. La orden creada se **cachea en el `CheckoutContext`** (`orderSignature` = `productId+talla+cantidad` del carrito **+ los datos del cliente**) para no duplicarla en un reintento; al vivir en el contexto sobrevive a "Volver al resumen" (que remonta `UserDetails`), y se invalida sola si cambió el carrito **o el cliente corrigió sus datos** — sin esto último, editar la dirección tras un pago fallido reconfirmaría la orden vieja y el pedido saldría a la dirección anterior. Errores mapeados: `409` (sin stock) muestra el mensaje del backend inline, `400` datos, `clientSecret` nulo / Stripe no cargado → mensaje de config, y el `error.message` de Stripe; el usuario permanece en el formulario. **Solo tras `paymentIntent.status === "succeeded"`** se llama `completeOrder(customer, order)`, que congela el snapshot (con `orderId` + los **totales autoritativos del servidor**), vacía el carrito y avanza. El estado `paid` real lo concilia el **webhook** del backend de forma asíncrona.
 3. **Confirmación** (`Success`) — renders the frozen order snapshot (con "Pedido #<id>") + shipping address.
 
 Shared, prop-driven pieces: `Stepper` (wizard indicator), `OrderItems`, `OrderTotals`, and `FormControls` (`TextField`/`SelectField` — `forwardRef` inputs that take RHF `register()` spread + an `error` string).

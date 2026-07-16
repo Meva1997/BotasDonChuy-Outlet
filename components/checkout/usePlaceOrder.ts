@@ -21,13 +21,17 @@ const TEST_PAYMENT_METHOD = "pm_card_visa";
 
 type PlaceOrderStatus = "idle" | "processing";
 
-// Firma del carrito sobre los mismos campos que determinan la orden en el
-// backend (productId + talla + cantidad). Si cambia, la orden pendiente
-// cacheada ya no corresponde al carrito y se descarta (se crea una nueva).
-function cartSignature(items: CartItem[]): string {
-  return items
+// Firma sobre todo lo que determina la orden en el backend: el carrito
+// (productId + talla + cantidad) y los datos del cliente. Si cambia cualquiera,
+// la orden pendiente cacheada ya no corresponde a lo que el usuario está
+// pidiendo y se descarta (se crea una nueva). Incluir al cliente es lo que evita
+// que, tras corregir la dirección después de un pago fallido, se reconfirme la
+// orden vieja y se envíe a la dirección anterior.
+function orderSignature(items: CartItem[], customer: ShippingData): string {
+  const cart = items
     .map((item) => `${item.product.id}:${item.size}:${item.quantity}`)
     .join("|");
+  return `${cart}#${JSON.stringify(customer)}`;
 }
 
 // Traduce un error del flujo de pedido/pago en un mensaje para el usuario.
@@ -37,14 +41,20 @@ function placeOrderErrorMessage(error: unknown): string {
   if (error instanceof OrderResponseParseError)
     return "Tu pedido se registró correctamente, pero no pudimos mostrar la confirmación. No vuelvas a enviarlo; te contactaremos para confirmar los detalles.";
   if (axios.isAxiosError(error)) {
-    const message = error.response?.data?.message as string | undefined;
-    if (error.response?.status === 409)
+    // Sin `response`: la petición nunca llegó a buen puerto (backend caído,
+    // red del usuario, timeout) — no es un error de los datos que capturó.
+    if (!error.response)
+      return "No pudimos conectar con el servidor. Inténtalo de nuevo en unos minutos.";
+    const message = error.response.data?.message as string | undefined;
+    if (error.response.status === 409)
       return (
         message ??
         "Uno o más artículos se quedaron sin stock. Revisa tu carrito."
       );
-    if (error.response?.status === 400)
+    if (error.response.status === 400)
       return "Revisa los datos del pedido e inténtalo de nuevo.";
+    if (error.response.status >= 500)
+      return "Tuvimos un problema en el servidor. Inténtalo de nuevo en unos minutos.";
   }
   return "No pudimos completar tu pedido. Inténtalo de nuevo.";
 }
@@ -57,7 +67,8 @@ function placeOrderErrorMessage(error: unknown): string {
  * La orden creada se cachea en el CheckoutContext (no en un ref local): si el
  * pago falla y el usuario reintenta —incluso tras "Volver al resumen" y regresar,
  * que remonta este hook— se re-confirma la MISMA orden en lugar de crear una
- * duplicada. El caché se invalida si el carrito cambió (firma distinta). Solo
+ * duplicada. El caché se invalida si cambió el carrito o los datos del cliente
+ * (firma distinta), en cuyo caso se crea una orden nueva y correcta. Solo
  * tras un `succeeded` se llama `onSuccess` (que congela el snapshot y avanza de
  * paso). El estado `paid` real lo concilia el webhook del backend de forma asíncrona.
  */
@@ -74,10 +85,10 @@ export function usePlaceOrder() {
     ) => {
       setStatus("processing");
       setError(null);
-      const signature = cartSignature(items);
+      const signature = orderSignature(items, customer);
       try {
         // 1. Crear la orden (o reusar la de un intento previo que falló en el
-        //    pago, siempre que el carrito no haya cambiado desde entonces).
+        //    pago, siempre que ni el carrito ni los datos hayan cambiado).
         let pending = getPendingOrder(signature);
         if (!pending) {
           const res = await createOrder(buildOrderPayload(items, customer));
