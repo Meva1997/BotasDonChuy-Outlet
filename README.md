@@ -13,8 +13,9 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **@stripe/stripe-js** — checkout payment gateway (test/sandbox)
 - **framer-motion** — animations (drawers, transitions, carousels)
 - **recharts** — admin dashboard charts
-- **Playwright** — installed as a dev dependency for e2e testing
 - **pnpm** as package manager
+
+> No test runner is installed yet. Unit/component tests are planned with **Jest + React Testing Library**.
 
 ## Commands
 
@@ -28,15 +29,22 @@ pnpm lint       # ESLint
 
 ```
 app/              # Next.js App Router
-  layout.tsx      # Root layout: fonts, base classes, metadata, QueryProvider + CartProvider
-  page.tsx        # Home page
+  layout.tsx      # Root layout: fonts, base classes, global metadata (SEO), QueryProvider + CartProvider
+  page.tsx        # Home page (+ ClothingStore JSON-LD)
   not-found.tsx   # Custom 404 (catches any unmatched URL app-wide)
   error.tsx       # Root error boundary (client component) — catches RSC throws (e.g. backend down)
                   #   and replaces Next's raw overlay with the site's look; "Retry" re-fetches via
                   #   router.refresh() + reset()
-  admin/          # Admin dashboard (Sidebar + section routing)
+  global-error.tsx # Last-resort boundary — the only one that catches root-layout errors. Ships its
+                  #   own <html>/<body> (the layout it would inherit is the thing that failed), so no
+                  #   providers exist here: it's fully static, no NavHeader/Footer. Production only.
+  sitemap.ts      # /sitemap.xml — static routes + every product, revalidated hourly
+  robots.ts       # /robots.txt — disallows /admin, /login, /forgot-password, /checkout, /api/
+  opengraph-image.tsx # Generated 1200x630 share image (next/og), inherited by every route
+  admin/          # Admin dashboard (Sidebar + section routing). Layout carries noindex for all /admin/*
   (public)/
-    outlet/[slug]/producto/  # Product detail view
+    outlet/[slug]/producto/  # Product detail view (generateMetadata + Product/Breadcrumb JSON-LD).
+                             #   Deliberately has no loading.tsx — see "Loading & error states"
     botas/ sombreros/ ropa/  # Category listings (reuse OutletView)
     terminos/ privacidad/ envios/  # Legal pages
     nosotros/       # About Us page
@@ -44,7 +52,8 @@ app/              # Next.js App Router
   forgot-password/      # Forgot password wizard
 components/
   home/           # Page sections (NavHeader, Hero, Footer, CategoryCard)
-  outlet/         # OutletView — product listing with category filters
+  outlet/         # OutletView — product listing with category filters; OutletSkeleton (Suspense fallback)
+  seo/            # JsonLd — renders a schema.org block into the HTML
   product/        # ProductInfo — product detail panel (gallery, size picker, add-to-cart)
   ui/             # Global primitives: Cart, CartProvider, FormControls, ImageCarousel
   providers/      # QueryProvider (TanStack Query), BrandProvider (brand identity)
@@ -60,6 +69,7 @@ lib/
                   #   auth, products, adminProducts, adminOrders, adminUsers, account,
                   #   dashboard, reports, brand, orders
   domain/         # pure business logic: cart.ts (totals), brand.ts (fallback identity), categories.ts
+  seo/            # site.ts (SITE_URL/absoluteUrl/keywords) + jsonLd.ts (schema.org builders)
   stripe/         # getStripe() singleton (Stripe.js)
   ui/             # motion.ts — shared framer-motion variants
   utils/          # formatPrice() helper
@@ -95,6 +105,15 @@ See `CLAUDE.md` for the full architecture reference (file-by-file responsibiliti
 
 `/carrito`, `/devoluciones`
 
+## Loading & error states
+
+The catalog routes suspend for different reasons, so they get different treatment — or none. Both decisions are deliberate:
+
+- **Listing routes** (`/outlet`, `/botas`, `/sombreros`, `/ropa`) are *not* async RSCs — `OutletView` is a client component that fetches with TanStack Query. What suspends during prerender is its `useSearchParams`, and that bailout is caught by the nearest boundary: the `<Suspense>` inside the page. So the skeleton goes there as `fallback={<OutletSkeleton />}` (a `loading.tsx` would never be reached). Once hydrated, OutletView's own spinner takes over.
+- **Product detail** (`/outlet/[slug]/producto`) is an async Server Component and still has **no `loading.tsx`, on purpose**. Any streaming boundary forces Next to send the shell before it knows whether the product exists, committing a 200 status — so the later `notFound()` renders the 404 page with HTTP 200 (a **soft 404**). Measured: with `loading.tsx`, `/outlet/999999/producto` returns 200; without it, 404. Since sold-out pieces get retired and their indexed URLs keep getting crawled, the correct status won over the skeleton; the accepted cost is no feedback between clicking a card and the backend answering.
+
+Error boundaries stack: `error.tsx` covers RSC throws (e.g. backend down) and `global-error.tsx` covers failures of the root layout itself — see the structure tree above.
+
 ## Shopping cart
 
 The cart is a slide-in drawer powered by a Zustand store persisted to localStorage. Opening/closing is triggered from `NavHeader` (desktop and mobile). Adding items is done from the product detail page (`ProductInfo`) with per-size stock validation — the button is disabled when the selected size is already at stock limit.
@@ -105,7 +124,18 @@ Key files: `store/cartStore.ts`, `components/ui/Cart.tsx`, `components/ui/CartPr
 
 `/admin` is protected by `AdminGuard` (`components/auth/AdminGuard.tsx`): without a session token it redirects to `/login`, and it also validates the token against `GET /api/auth/me`, rehydrating the user. The session (`{ token, user }`) lives in `store/authStore.ts` (Zustand + persist). `LoginForm` uses a TanStack Query `useMutation` connected to the real backend (`POST /api/auth/login`). Password recovery (`ForgotPasswordForm`) is a 3-step wizard — email → 5-digit code (`CodeInput`) → new password — backed by `POST /api/auth/forgot-password`, `/verify-reset-code`, `/reset-password`. The axios client (`lib/api/client.ts`) attaches `Authorization: Bearer <token>` and, on a `401`, clears the session and redirects to `/login`. Logout lives in the admin **Configuración** section.
 
-Env: set `NEXT_PUBLIC_API_URL` to the backend URL (defaults to `/api`) and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` to Stripe's **publishable** key (`pk_test_…` in sandbox, same account as the backend's `STRIPE_SECRET_KEY`). `NEXT_PUBLIC_*` vars are inlined at build time — restart the dev server after changing them. See `BACKEND.md` for the full API contract.
+Env: set `NEXT_PUBLIC_API_URL` to the backend URL (defaults to `/api`), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` to Stripe's **publishable** key (`pk_test_…` in sandbox, same account as the backend's `STRIPE_SECRET_KEY`), and `NEXT_PUBLIC_SITE_URL` to the site's public origin (see SEO below). `NEXT_PUBLIC_*` vars are inlined at build time — restart the dev server after changing them. See `BACKEND.md` for the full API contract.
+
+## SEO
+
+All storefront routes carry title/description/canonical/Open Graph metadata; `/admin`, `/login`, `/forgot-password` and `/checkout` are `noindex` and also disallowed in `robots.txt` (two layers: robots.txt blocks crawling, the meta tag blocks indexing of URLs linked from elsewhere).
+
+- **Build public pages' metadata with `pageMetadata()`** (`lib/seo/metadata.ts`), not by hand. Next inherits `alternates` from the parent layout but *replaces* `openGraph` wholesale, so hand-rolled metadata silently ends up either canonicalized to the wrong URL or stripped of its share image. The helper always emits the full block. Exceptions: the home page (defines only `alternates`; its OG block is the layout's default) and product pages (their image is the real photo).
+- **`NEXT_PUBLIC_SITE_URL`** is the base for `metadataBase`, canonicals, the sitemap and OG image URLs. Unset it falls back to `http://localhost:3000` (`lib/seo/site.ts`) — **set it in Vercel (Production) to the real origin, no trailing slash**, otherwise canonicals and `sitemap.xml` will point at localhost.
+- **Listing canonicals drop the query string**: `/outlet?categoria=bota&pagina=2` canonicalizes to `/outlet`, so filter combinations aren't indexed as duplicates competing with each other.
+- **Structured data** (`lib/seo/jsonLd.ts`, rendered by `components/seo/JsonLd.tsx`): `ClothingStore` on the home page (Celaya address, Instagram), `Product` + `BreadcrumbList` on product pages. `Product.offers` reflects `salePrice` (the price actually charged) and maps stock to `InStock`/`SoldOut` — the outlet never restocks, so a sold-out piece is `SoldOut`, not "back soon". Only describe what the page actually shows: marking data users can't see violates Google's policy and can cost the whole domain its rich results.
+- **Share image**: `app/opengraph-image.tsx` generates a branded 1200x630 PNG at build time (Playfair fetched from Google Fonts, falling back to a system serif if the fetch fails). Only routes that don't declare `openGraph` inherit it automatically; the rest reference it explicitly through `pageMetadata()`. Product pages override it with the real product photo, falling back to the site image when a product has no photos yet.
+- **`sitemap.xml`** lists static routes plus every product, paging through the catalog and revalidating hourly. If the backend is unreachable at build time it logs and emits static routes only, rather than failing the deploy.
 
 ## Checkout flow
 

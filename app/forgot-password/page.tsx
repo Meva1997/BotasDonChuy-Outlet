@@ -5,6 +5,7 @@ import ForgotPasswordForm from "@/components/auth/ForgotPasswordForm";
 export const metadata = {
   title: "Recuperar contraseña",
   description: "Recupera el acceso a tu cuenta de Botas Don Chuy Outlet.",
+  robots: { index: false, follow: false },
 };
 
 export default function ForgotPasswordPage() {
