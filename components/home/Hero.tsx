@@ -13,7 +13,7 @@ import { CATEGORIES, type ProductType } from "@/lib/domain/categories";
 const CATEGORY_IMAGES: Record<ProductType, string> = {
   bota: "/botasOutlet.png",
   sombrero: "/sombreroOutlet.png",
-  ropa: "",
+  ropa: "/chaquetaOutlet.png",
 };
 
 // Solo nos interesa `total` (conteo de piezas de la categoría), así que
