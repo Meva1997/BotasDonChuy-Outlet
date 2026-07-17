@@ -70,6 +70,14 @@ const nonNegNumber = z
   .number({ error: "Ingresa un número válido" })
   .nonnegative("Debe ser ≥ 0");
 
+// Medidas de envío: el backend las exige > 0 (van a Skydropx para cotizar en
+// vivo — un valor en 0 tumbaría la cotización, ver backend/CLAUDE.md § Envío
+// en vivo / Skydropx), así que el form debe rechazarlas aquí también, no solo
+// dejar que el submit falle con un 400 después.
+const positiveNumber = z
+  .number({ error: "Ingresa un número válido" })
+  .positive("Debe ser mayor a 0");
+
 const productSchema = z
   .object({
     name: z.string().min(1, "El nombre es requerido"),
@@ -80,10 +88,10 @@ const productSchema = z
     unitCost: nonNegNumber,
     sizes: z.string(),
     code: z.string(),
-    weightKg: nonNegNumber,
-    lengthCm: nonNegNumber,
-    widthCm: nonNegNumber,
-    heightCm: nonNegNumber,
+    weightKg: positiveNumber,
+    lengthCm: positiveNumber,
+    widthCm: positiveNumber,
+    heightCm: positiveNumber,
     description: z.string(),
   })
   .refine((d) => d.salePrice <= d.originalPrice, {
@@ -714,7 +722,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
               <input
                 id="field-weight"
                 type="number"
-                min={0}
+                min={0.01}
                 step="any"
                 {...register("weightKg", { valueAsNumber: true })}
                 className={inputCls}
@@ -732,7 +740,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
               <input
                 id="field-length"
                 type="number"
-                min={0}
+                min={0.01}
                 step="any"
                 {...register("lengthCm", { valueAsNumber: true })}
                 className={inputCls}
@@ -750,7 +758,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
               <input
                 id="field-width"
                 type="number"
-                min={0}
+                min={0.01}
                 step="any"
                 {...register("widthCm", { valueAsNumber: true })}
                 className={inputCls}
@@ -768,7 +776,7 @@ export default function ProductForm({ category, product, onBack }: Props) {
               <input
                 id="field-height"
                 type="number"
-                min={0}
+                min={0.01}
                 step="any"
                 {...register("heightCm", { valueAsNumber: true })}
                 className={inputCls}
