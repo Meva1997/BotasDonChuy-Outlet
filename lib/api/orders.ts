@@ -2,6 +2,8 @@ import { z } from "zod";
 import { api } from "@/lib/api/client";
 import type { CartItem } from "@/store/cartStore";
 import type { ShippingData } from "@/schemas/checkout";
+import type { SelectedShippingRate } from "@/lib/api/shipping";
+import { mapCartItemsToOrderItems } from "@/lib/domain/cart";
 
 // Renglón de la orden que devuelve el backend (POST /api/orders). Refleja
 // `OrderItem` de ../backend/src/models/OrderItem.ts pero SIN `unitCost`: la ruta
@@ -57,10 +59,17 @@ export type CreateOrderResponse = z.infer<typeof CreateOrderResponseSchema>;
 
 // Payload del checkout: identificadores + cliente, NUNCA montos. El backend
 // recalcula totales y descuenta stock por talla de forma atómica.
+// `quotationId`/`rateId` identifican la cotización de envío en vivo elegida en
+// ShippingOptions (Fase 8.4): van juntos o ninguno (igual que
+// createOrderSchema.refine() en el backend). Cuando vienen, el servidor
+// RE-CONSULTA Skydropx por el total autoritativo de esa tarifa; si no, cae a
+// su propia tarifa plana (computeShipping).
 export interface CreateOrderPayload {
   items: Array<{ productId: number; size: number; quantity: number }>;
   customer: ShippingData;
   shippingCarrier?: string;
+  quotationId?: string;
+  rateId?: string;
 }
 
 // Query key factory (mismo patrón que productKeys / authKeys). Sin consumo
@@ -69,21 +78,25 @@ export const orderKeys = {
   all: ["orders"] as const,
 };
 
-// Convierte el carrito local en los renglones que espera el backend. `CartItem.id`
-// es un id compuesto de cliente (`"12-28"`); se envía el `product.id` numérico.
+// Convierte el carrito local en los renglones que espera el backend, y adjunta
+// la tarifa de envío elegida en ShippingOptions (si la hubo). `selectedRate` es
+// null en la tarifa plana de respaldo (rateId/quotationId null): en ese caso
+// solo se manda el `carrier` ("Estándar") y NUNCA quotationId/rateId, para
+// respetar el both-or-neither del backend.
 export function buildOrderPayload(
   items: CartItem[],
   customer: ShippingData,
-  shippingCarrier?: string
+  selectedRate?: SelectedShippingRate | null
 ): CreateOrderPayload {
+  const liveRate =
+    selectedRate?.quotationId && selectedRate?.rateId ? selectedRate : null;
   return {
-    items: items.map((item) => ({
-      productId: item.product.id,
-      size: item.size,
-      quantity: item.quantity,
-    })),
+    items: mapCartItemsToOrderItems(items),
     customer,
-    ...(shippingCarrier ? { shippingCarrier } : {}),
+    ...(selectedRate?.carrier ? { shippingCarrier: selectedRate.carrier } : {}),
+    ...(liveRate
+      ? { quotationId: liveRate.quotationId!, rateId: liveRate.rateId! }
+      : {}),
   };
 }
 

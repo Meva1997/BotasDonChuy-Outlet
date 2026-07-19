@@ -57,7 +57,7 @@ components/
   product/        # ProductInfo — product detail panel (gallery, size picker, add-to-cart)
   ui/             # Global primitives: Cart, CartProvider, FormControls, ImageCarousel
   providers/      # QueryProvider (TanStack Query), BrandProvider (brand identity)
-  checkout/       # Multi-step checkout wizard
+  checkout/       # 4-step checkout wizard, incl. ShippingOptions (live Skydropx rate quoting)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
   nosotros/       # AboutUs — static "About Us" page
   auth/           # AuthShell, LoginForm, ForgotPasswordForm (+ CodeInput/ResetCodeForm/NewPasswordForm), AdminGuard
@@ -67,8 +67,9 @@ components/
 lib/
   api/            # axios client + per-domain contracts (Zod schemas + fetchers + query keys):
                   #   auth, products, adminProducts, adminOrders, adminUsers, account,
-                  #   dashboard, reports, brand, orders
-  domain/         # pure business logic: cart.ts (totals), brand.ts (fallback identity), categories.ts
+                  #   dashboard, reports, brand, orders, shipping (live Skydropx rate quotes)
+  domain/         # pure business logic: cart.ts (totals + shared item/signature helpers),
+                  #   brand.ts (fallback identity), categories.ts
   seo/            # site.ts (SITE_URL/absoluteUrl/keywords) + jsonLd.ts (schema.org builders)
   stripe/         # getStripe() singleton (Stripe.js)
   ui/             # motion.ts — shared framer-motion variants
@@ -92,7 +93,7 @@ See `CLAUDE.md` for the full architecture reference (file-by-file responsibiliti
 | `/outlet` | Product listing with category filters |
 | `/botas`, `/sombreros`, `/ropa` | Category listings (same `OutletView`, scoped) |
 | `/outlet/[slug]/producto` | Product detail |
-| `/checkout` | 3-step checkout wizard |
+| `/checkout` | 4-step checkout wizard (incl. live shipping-rate selection) |
 | `/terminos` | Terms & Conditions |
 | `/privacidad` | Privacy Policy |
 | `/envios` | Shipping Policy |
@@ -139,19 +140,18 @@ All storefront routes carry title/description/canonical/Open Graph metadata; `/a
 
 ## Checkout flow
 
-`/checkout` is a 3-step wizard (state held in React context, resets on refresh). Steps render conditionally, so navigating away unmounts them — anything that must survive back-and-forth lives in the context instead: a shipping draft (restored when `UserDetails` remounts), the pending Stripe order, and `acceptedTerms`. The `Stepper` distinguishes three states per step (done / visited-but-not-current / pending), letting users jump back to any step they've already seen.
+`/checkout` is a 4-step wizard (state held in React context, resets on refresh). Steps render conditionally, so navigating away unmounts them — anything that must survive back-and-forth lives in the context instead: a shipping draft (restored when `UserDetails` remounts), the validated address (`confirmedCustomer`, what step 3 quotes against), the selected shipping rate (cached by cart+customer signature), the pending Stripe order, and `acceptedTerms`. The `Stepper` distinguishes three states per step (done / visited-but-not-current / pending), letting users jump back to any step they've already seen.
 
-1. **Resumen** — read-only cart review; requires accepting terms & privacy before continuing.
-2. **Datos de envío + pago** — shipping form validated with react-hook-form + zod (Mexico only). On submit `usePlaceOrder` runs a two-phase flow: (1) **posts the order** (`POST /api/orders` via `createOrder` in `lib/api/orders.ts`) — only `{ items: [{ productId, size, quantity }], customer }`, no amounts; the backend recalculates totals, atomically decrements stock, and returns a Stripe `clientSecret`; a `409` (out of stock) or `400` keeps the user on the form. (2) **confirms payment** with Stripe.js (`confirmCardPayment`). Running in **test/sandbox**, so the test card is hardcoded (`pm_card_visa` = `4242 4242 4242 4242`) and `PaymentSection` is a read-only test-card panel. Only after `succeeded` does it freeze the order snapshot and advance; the `paid` status is reconciled by the backend webhook. The created order is cached (keyed by cart contents **and** customer data) so retrying doesn't duplicate it, and editing the address after a failed payment correctly invalidates the cache.
-3. **Confirmación** — frozen order snapshot (with `Pedido #<id>` and the server's authoritative totals) plus shipping address.
+1. **Resumen** — read-only cart review; requires accepting terms & privacy before continuing. Shows a flat-rate shipping estimate (no address yet, never charged).
+2. **Dirección** — shipping address form validated with react-hook-form + zod (Mexico only). Submitting just saves the validated address to context and advances — no order, no payment yet.
+3. **Envío** — **live shipping-rate quoting** against Skydropx (`POST /api/shipping/rates` via `lib/api/shipping.ts`; always resolves 200, falling back to the same flat rate as step 1 if Skydropx is unavailable). One option auto-selects; two or more require an explicit pick. The total shown here is exactly what gets charged. On "Pagar y confirmar", `usePlaceOrder` runs a two-phase flow: (1) **posts the order** (`POST /api/orders` via `createOrder` in `lib/api/orders.ts`) — `{ items, customer, quotationId?, rateId? }`, no amounts; the backend re-queries Skydropx for that exact quote (or falls back to its own flat rate) and returns a Stripe `clientSecret`; a `409` (out of stock, or an expired quote — which also clears the selected rate so the user re-quotes) or `400` keeps the user on the form. (2) **confirms payment** with Stripe.js (`confirmCardPayment`). Running in **test/sandbox**, so the test card is hardcoded (`pm_card_visa` = `4242 4242 4242 4242`) and `PaymentSection` is a read-only test-card panel. Only after `succeeded` does it freeze the order snapshot and advance; the `paid` status is reconciled by the backend webhook. The created order is cached (keyed by cart contents, customer data, **and** the selected rate) so retrying doesn't duplicate it.
+4. **Confirmación** — frozen order snapshot (with `Pedido #<id>` and the server's authoritative totals) plus shipping address.
 
-Key files: `app/(public)/checkout/`, `components/checkout/`, `schemas/checkout.ts`, `lib/domain/cart.ts`, `lib/api/orders.ts`.
+Key files: `app/(public)/checkout/`, `components/checkout/` (incl. `ShippingOptions.tsx`), `schemas/checkout.ts`, `lib/domain/cart.ts`, `lib/api/orders.ts`, `lib/api/shipping.ts`.
 
 ## Shipping
 
-Shipping is calculated in `lib/domain/cart.ts` via flat rates by product type (boots › hats › clothing) — the rate of the highest-priced item in the cart applies to the whole order. `CartTotals.shipping` flows through `OrderTotals`, `OrderSummary`, `Success`, and the order snapshot in `CheckoutContext`.
-
-When ready to integrate a real carrier API (Skydropx), only the shipping calculation needs to be replaced. See `CLAUDE.md` for the full migration guide.
+Shipping is quoted **live** against Skydropx from checkout step 3 (see above) — the backend is the authority and re-queries the chosen quote when creating the order, so the amount shown always matches the amount charged. `lib/domain/cart.ts`'s flat-rate table (`computeShipping`, boots › hats › clothing) is kept as the frontend's copy of the backend's own fallback rate: it's used as a pre-address estimate in step 1 (`OrderSummary`), and both copies must stay in sync with what the backend charges when Skydropx is unavailable. See `CLAUDE.md`'s "Shipping" section for the full contract.
 
 ## Admin panel
 

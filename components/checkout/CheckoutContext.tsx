@@ -12,9 +12,10 @@ import { useCartStore, type CartItem } from "@/store/cartStore";
 import type { CartTotals } from "@/lib/domain/cart";
 import type { ShippingData } from "@/schemas/checkout";
 import type { OrderResponse } from "@/lib/api/orders";
+import type { SelectedShippingRate } from "@/lib/api/shipping";
 
-export const CHECKOUT_STEPS = ["Resumen", "Datos de envío", "Confirmación"] as const;
-export type CheckoutStep = 0 | 1 | 2;
+export const CHECKOUT_STEPS = ["Resumen", "Dirección", "Envío", "Confirmación"] as const;
+export type CheckoutStep = 0 | 1 | 2 | 3;
 
 /** Orden creada en el backend a la espera de que el pago se confirme. */
 export interface PendingOrder {
@@ -46,6 +47,14 @@ interface CheckoutContextValue {
   getShippingDraft: () => Partial<ShippingData> | null;
   /** Guarda el borrador del formulario de envío para resembrarlo al remontarlo. */
   setShippingDraft: (data: Partial<ShippingData>) => void;
+  /** Dirección VALIDADA por UserDetails (paso 1); lo que ShippingOptions cotiza. */
+  confirmedCustomer: ShippingData | null;
+  /** Guarda la dirección validada, invalida la tarifa elegida y avanza al paso de envío. */
+  confirmShipping: (customer: ShippingData) => void;
+  /** Devuelve la tarifa elegida solo si corresponde al carrito+cliente actual (misma firma). */
+  getSelectedRate: (signature: string) => SelectedShippingRate | null;
+  /** Cachea (o limpia, con `null`) la tarifa de envío elegida junto a su firma. */
+  setSelectedRate: (signature: string, rate: SelectedShippingRate | null) => void;
   /** Devuelve la orden pendiente cacheada solo si corresponde al carrito actual (misma firma). */
   getPendingOrder: (signature: string) => PendingOrder | null;
   /** Cachea (o limpia, con `null`) la orden pendiente junto a la firma del carrito que la originó. */
@@ -94,6 +103,52 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
     shippingDraftRef.current = data;
   }, []);
 
+  // Dirección VALIDADA (a diferencia del draft de arriba) capturada al enviar
+  // el formulario de paso 1. Es state (no ref) porque ShippingOptions —un
+  // componente hermano montado por separado— debe re-renderizar en cuanto
+  // exista, para poder cotizar contra ella.
+  const [confirmedCustomer, setConfirmedCustomer] = useState<ShippingData | null>(
+    null
+  );
+
+  // Tarifa de envío elegida en ShippingOptions, cacheada por firma
+  // (carrito+cliente) con el mismo criterio que `pendingOrderRef` de abajo,
+  // pero como state: a diferencia de la orden pendiente, la selección debe
+  // reflejarse visualmente (tarjeta resaltada, total actualizado).
+  const [selectedRateEntry, setSelectedRateEntry] = useState<{
+    signature: string;
+    rate: SelectedShippingRate;
+  } | null>(null);
+
+  const getSelectedRate = useCallback(
+    (signature: string): SelectedShippingRate | null =>
+      selectedRateEntry && selectedRateEntry.signature === signature
+        ? selectedRateEntry.rate
+        : null,
+    [selectedRateEntry]
+  );
+
+  const setSelectedRate = useCallback(
+    (signature: string, rate: SelectedShippingRate | null) => {
+      setSelectedRateEntry(rate ? { signature, rate } : null);
+    },
+    []
+  );
+
+  // Guarda la dirección validada y avanza a elegir método de envío. Cualquier
+  // tarifa elegida antes se invalida sin condición: una dirección nueva (o
+  // reenviada) puede cotizar distinto — se re-cotiza siempre en el paso
+  // siguiente en vez de arriesgar un envío mostrado con una tarifa que ya no
+  // corresponde al destino.
+  const confirmShipping = useCallback(
+    (customer: ShippingData) => {
+      setConfirmedCustomer(customer);
+      setSelectedRateEntry(null);
+      visit(2);
+    },
+    [visit]
+  );
+
   const getPendingOrder = useCallback(
     (signature: string): PendingOrder | null => {
       const cached = pendingOrderRef.current;
@@ -129,7 +184,7 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
       // El pedido ya está congelado arriba: el borrador solo dejaría datos
       // personales en memoria sin uso.
       shippingDraftRef.current = null;
-      visit(2);
+      visit(3);
     },
     [visit]
   );
@@ -146,6 +201,10 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
       goToDetails,
       getShippingDraft,
       setShippingDraft,
+      confirmedCustomer,
+      confirmShipping,
+      getSelectedRate,
+      setSelectedRate,
       getPendingOrder,
       setPendingOrder,
       completeOrder,
@@ -160,6 +219,10 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
       goToDetails,
       getShippingDraft,
       setShippingDraft,
+      confirmedCustomer,
+      confirmShipping,
+      getSelectedRate,
+      setSelectedRate,
       getPendingOrder,
       setPendingOrder,
       completeOrder,

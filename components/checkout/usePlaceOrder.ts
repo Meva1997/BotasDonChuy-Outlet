@@ -9,6 +9,9 @@ import {
   OrderResponseParseError,
   type OrderResponse,
 } from "@/lib/api/orders";
+import { shippingKeys, type SelectedShippingRate } from "@/lib/api/shipping";
+import { cartLineSignature, shippingSignature } from "@/lib/domain/cart";
+import { useQueryClient } from "@tanstack/react-query";
 import type { CartItem } from "@/store/cartStore";
 import type { ShippingData } from "@/schemas/checkout";
 import { useCheckout } from "./CheckoutContext";
@@ -22,16 +25,36 @@ const TEST_PAYMENT_METHOD = "pm_card_visa";
 type PlaceOrderStatus = "idle" | "processing";
 
 // Firma sobre todo lo que determina la orden en el backend: el carrito
-// (productId + talla + cantidad) y los datos del cliente. Si cambia cualquiera,
-// la orden pendiente cacheada ya no corresponde a lo que el usuario está
-// pidiendo y se descarta (se crea una nueva). Incluir al cliente es lo que evita
-// que, tras corregir la dirección después de un pago fallido, se reconfirme la
-// orden vieja y se envíe a la dirección anterior.
-function orderSignature(items: CartItem[], customer: ShippingData): string {
-  const cart = items
-    .map((item) => `${item.product.id}:${item.size}:${item.quantity}`)
-    .join("|");
-  return `${cart}#${JSON.stringify(customer)}`;
+// (productId + talla + cantidad), los datos del cliente y la tarifa de envío
+// elegida. Si cambia cualquiera, la orden pendiente cacheada ya no corresponde
+// a lo que el usuario está pidiendo y se descarta (se crea una nueva). Incluir
+// al cliente es lo que evita que, tras corregir la dirección después de un pago
+// fallido, se reconfirme la orden vieja y se envíe a la dirección anterior;
+// incluir la tarifa evita reconfirmar un PaymentIntent cotizado con una opción
+// de envío distinta a la que el usuario acaba de elegir.
+function orderSignature(
+  items: CartItem[],
+  customer: ShippingData,
+  rate: SelectedShippingRate
+): string {
+  const rateKey = `${rate.quotationId ?? "flat"}:${rate.rateId ?? "flat"}`;
+  return `${cartLineSignature(items)}#${JSON.stringify(customer)}#${rateKey}`;
+}
+
+// El backend re-consulta la cotización de Skydropx al crear la orden; si
+// expiró (duran 24 h) responde 409 con un mensaje que contiene esta frase.
+// A diferencia del 409 genérico de "sin stock", aquí la tarifa elegida ya no
+// sirve: hay que limpiarla para que el usuario no reintente contra la misma
+// quotationId/rateId caducada.
+const RATE_EXPIRED_HINT = "cotizaciones expiran";
+
+function isRateExpiredError(error: unknown): boolean {
+  return (
+    axios.isAxiosError(error) &&
+    error.response?.status === 409 &&
+    typeof error.response.data?.message === "string" &&
+    error.response.data.message.includes(RATE_EXPIRED_HINT)
+  );
 }
 
 // Traduce un error del flujo de pedido/pago en un mensaje para el usuario.
@@ -67,31 +90,37 @@ function placeOrderErrorMessage(error: unknown): string {
  * La orden creada se cachea en el CheckoutContext (no en un ref local): si el
  * pago falla y el usuario reintenta —incluso tras "Volver al resumen" y regresar,
  * que remonta este hook— se re-confirma la MISMA orden en lugar de crear una
- * duplicada. El caché se invalida si cambió el carrito o los datos del cliente
- * (firma distinta), en cuyo caso se crea una orden nueva y correcta. Solo
+ * duplicada. El caché se invalida si cambió el carrito, los datos del cliente,
+ * o la tarifa de envío elegida (firma distinta), en cuyo caso se crea una
+ * orden nueva y correcta. Solo
  * tras un `succeeded` se llama `onSuccess` (que congela el snapshot y avanza de
  * paso). El estado `paid` real lo concilia el webhook del backend de forma asíncrona.
  */
 export function usePlaceOrder() {
   const [status, setStatus] = useState<PlaceOrderStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-  const { getPendingOrder, setPendingOrder } = useCheckout();
+  const { getPendingOrder, setPendingOrder, setSelectedRate } = useCheckout();
+  const queryClient = useQueryClient();
 
   const placeOrder = useCallback(
     async (
       items: CartItem[],
       customer: ShippingData,
+      selectedRate: SelectedShippingRate,
       onSuccess: (order: OrderResponse) => void
     ) => {
       setStatus("processing");
       setError(null);
-      const signature = orderSignature(items, customer);
+      const signature = orderSignature(items, customer, selectedRate);
       try {
         // 1. Crear la orden (o reusar la de un intento previo que falló en el
-        //    pago, siempre que ni el carrito ni los datos hayan cambiado).
+        //    pago, siempre que ni el carrito, los datos, ni la tarifa elegida
+        //    hayan cambiado).
         let pending = getPendingOrder(signature);
         if (!pending) {
-          const res = await createOrder(buildOrderPayload(items, customer));
+          const res = await createOrder(
+            buildOrderPayload(items, customer, selectedRate)
+          );
           if (!res.clientSecret) {
             setError(
               "Los pagos no están disponibles en este momento. Inténtalo más tarde."
@@ -147,11 +176,26 @@ export function usePlaceOrder() {
         );
         setStatus("idle");
       } catch (err) {
+        if (isRateExpiredError(err)) {
+          // La tarifa cotizada ya no es válida (Skydropx la olvidó a las
+          // 24 h): la orden pendiente cacheada quedó con ese total viejo y la
+          // selección hecha en ShippingOptions ya no sirve — se limpian ambas.
+          // Limpiar la selección NO basta: la query de tarifas sigue guardando
+          // la MISMA quotationId caducada, así que ShippingOptions la volvería
+          // a elegir (auto-select de tarifa única) o el usuario la re-elegiría
+          // y caería en el mismo 409. Se invalida la query para forzar una
+          // cotización nueva de verdad, en vez de reintentar en bucle.
+          setPendingOrder(signature, null);
+          setSelectedRate(shippingSignature(items, customer), null);
+          queryClient.invalidateQueries({
+            queryKey: shippingKeys.rates(items, customer),
+          });
+        }
         setError(placeOrderErrorMessage(err));
         setStatus("idle");
       }
     },
-    [getPendingOrder, setPendingOrder]
+    [getPendingOrder, setPendingOrder, setSelectedRate, queryClient]
   );
 
   return { status, error, placeOrder };

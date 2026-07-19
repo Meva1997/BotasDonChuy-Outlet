@@ -4,6 +4,7 @@ import { useCheckout } from "./CheckoutContext";
 import Stepper from "./Stepper";
 import OrderSummary from "./OrderSummary";
 import UserDetails from "./UserDetails";
+import ShippingOptions from "./ShippingOptions";
 import Success from "./Success";
 
 const HEADINGS = [
@@ -14,7 +15,11 @@ const HEADINGS = [
   },
   {
     title: "¿A dónde enviamos tu pedido?",
-    subtitle: "Completa tus datos de envío y pago para finalizar la compra.",
+    subtitle: "Completa tu dirección de envío.",
+  },
+  {
+    title: "Elige tu método de envío",
+    subtitle: "Selecciona la opción de paquetería que prefieras y confirma tu pago.",
   },
   {
     title: "¡Listo!",
@@ -50,7 +55,8 @@ export default function CheckoutFlow() {
 
         {step === 0 && <OrderSummary />}
         {step === 1 && <UserDetails />}
-        {step === 2 && <Success />}
+        {step === 2 && <ShippingOptions />}
+        {step === 3 && <Success />}
       </div>
     </div>
   );
