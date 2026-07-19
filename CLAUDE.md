@@ -84,7 +84,8 @@ components/
                   #   Escapa `<` (un `</script>` en una cadena cerraría la etiqueta antes de tiempo)
   product/        # ProductInfo — panel de detalle de producto (galería vía ImageCarousel + size picker + add-to-cart), consumido por la página de producto. La galería sale de product.images (Cloudinary, hasta 3), con fallback a imageSrc o placeholder
   ui/             # Primitivas realmente globales: Cart, CartProvider (drawer montado en root layout), FormControls (TextField/SelectField, compartido por checkout/ y auth/), ImageCarousel (carousel reutilizable: flechas + puntos, framer-motion + next/image, respeta reduced-motion; consumido por ProductInfo)
-  checkout/       # Multi-step checkout flow (see "Checkout flow" below)
+  checkout/       # Checkout flow de 4 pasos (see "Checkout flow" below). ShippingOptions —
+                  #   paso 3, cotización de envío en vivo vía lib/api/shipping.ts
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal content pages
   nosotros/       # AboutUs — página estática "Sobre nosotros" (historia, marcas, qué es el outlet). Enlazada desde el footer ("Sobre nosotros")
   auth/           # AuthShell (split-panel layout) + LoginForm — react-hook-form + zod (schemas/auth.ts) + TanStack Query (useMutation), YA conectados al backend vía lib/api/auth. AdminGuard — protege /admin y valida el token contra GET /auth/me (ver "Auth & data fetching"). ForgotPasswordForm es un wizard de 3 pasos (Fase 10): email → código de 5 dígitos → nueva contraseña → /login. Estado local (no persistido). Subcomponentes: CodeInput (primitivo OTP de 5 casillas: auto-avance, backspace, pegar; estética de FormControls), ResetCodeForm (verifyResetCode + enlace "Reenviar código" que rellama forgotPassword) y NewPasswordForm (resetPassword + redirect a /login)
@@ -120,7 +121,8 @@ lib/
   api/
     client.ts     # instancia axios (baseURL NEXT_PUBLIC_API_URL ?? /api) + interceptors: request adjunta Bearer del authStore, response cierra sesión y va a /login en 401. Flags de config: skipAuth (pública: sin Bearer, 401 no redirige) y skipAuthRedirect (autenticada, pero 401 con otro significado —p. ej. contraseña incorrecta— NO cierra sesión: lo maneja la UI inline)
     auth.ts       # contratos de auth (patrón getProducts): schemas Zod + login()/forgotPassword()/verifyResetCode()/resetPassword()/getMe() + authKeys. Fuente única del tipo AuthUser ({ id, name, email, role }). YA conectado al backend (POST /auth/login, POST /auth/forgot-password, POST /auth/verify-reset-code, POST /auth/reset-password, GET /auth/me). Los endpoints de recuperación son públicos y solo devuelven { ok: true }
-    orders.ts     # contrato del checkout (patrón getProducts): OrderResponseSchema + CreateOrderResponseSchema ({ order, clientSecret }) (Zod, items SIN unitCost) + buildOrderPayload(items, customer) + createOrder() + orderKeys. YA conectado (POST /api/orders): envía { items, customer } sin montos; el backend recalcula totales, descuenta stock por talla y devuelve el clientSecret del PaymentIntent de Stripe (Fase 8)
+    orders.ts     # contrato del checkout (patrón getProducts): OrderResponseSchema + CreateOrderResponseSchema ({ order, clientSecret }) (Zod, items SIN unitCost) + buildOrderPayload(items, customer, selectedRate?) + createOrder() + orderKeys. YA conectado (POST /api/orders): envía { items, customer, quotationId?, rateId? } sin montos; el backend recalcula totales (re-consultando Skydropx por esa cotización si vino) y devuelve el clientSecret del PaymentIntent de Stripe (Fase 8). quotationId/rateId van juntos o ninguno (both-or-neither, igual que createOrderSchema en el backend) — vienen de la tarifa elegida en ShippingOptions (lib/api/shipping.ts, Fase 8.4)
+    shipping.ts   # contrato de cotización de envío en vivo (patrón getProducts): ShippingRateSchema/ShippingRatesResponseSchema (Zod) + SelectedShippingRate (= ShippingRate + quotationId, la forma que viaja por CheckoutContext/usePlaceOrder) + shippingKeys + getShippingRates(items, customer). YA conectado (POST /api/shipping/rates, pública). SIEMPRE responde 200 (el backend cae a su propia tarifa plana si Skydropx falla); usa `.parse` simple (no hay OrderResponseParseError aquí — es de solo lectura, un parse fallido es reintentable sin riesgo de duplicar nada)
     adminProducts.ts # contrato del catálogo admin (patrón getProducts): AdminProductSchema (SÍ trae unitCost + images: { url, publicId }[]) + adminProductKeys + getAdminProducts()/createProduct()/updateProduct()/deleteProduct() + addProductImages()/deleteProductImage(). YA conectado (GET/POST/PUT/DELETE /api/admin/products + POST/DELETE /api/admin/products/:id/images). AdminProductInput manda sizes como CSV donde repetir talla = unidades de stock (el backend agrupa en filas ProductSize) y YA NO incluye imageSrc (las imágenes se gestionan solo por los endpoints dedicados: addProductImages sube multipart `images` 1-3 File, tope 3 total; deleteProductImage borra por publicId)
     adminOrders.ts # contrato de pedidos admin (patrón getProducts): AdminOrderSchema/AdminOrderItemSchema (Zod, item SÍ trae unitCost) + adminOrderKeys + getAdminOrders(page, perPage). YA conectado (GET /api/admin/orders, PAGINADO en servidor → { orders, total, page, perPage, totalPages }). status y paymentStatus son campos INDEPENDIENTES. Solo lectura (no hay mutación de estado todavía)
     dashboard.ts  # contrato de métricas admin (patrón getProducts): DashboardSchema (Zod, valida la forma de components/admin/data/types.ts) + dashboardKeys + getAdminDashboard(). YA conectado (GET /api/admin/dashboard). kpisByPeriod/profitKpisByPeriod llegan igual que revenueByPeriod — las tres ventanas (7/30/90) precalculadas en un solo response, sin query params; DataSection alterna en cliente. recentSales[].day es una clave ISO UTC ("2026-07-13") junto al display date ("3 jul · 14:30"), para que SalesTable filtre por día de forma fiable
@@ -130,7 +132,11 @@ lib/
     account.ts    # contrato de cuenta propia: AccountUpdateResponseSchema + updateOwnAccount(). YA conectado (PUT /api/admin/account). currentPassword es obligatoria para cualquier cambio; email va sembrado con el actual (el backend solo lo cambia si difiere). El PUT va con skipAuthRedirect (el 401 = contraseña incorrecta, se muestra inline sin cerrar sesión). No devuelve el user → la UI rehidrata con authStore.setUser + invalidación de authKeys.me
     products.ts   # getProducts(filters), getProductById(id) — fetcher público del catálogo (patrón hermano de adminProducts.ts). YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible) pero SÍ trae images: { url }[] (galería Cloudinary, hasta 3, sin publicId) + imageSrc (primera imagen, compat). 404 → null. El storefront ya no usa mocks (db/ eliminado en la Fase 4).
   domain/         # datos/lógica de negocio puros (sin React, sin I/O)
-    cart.ts       # computeTotals(items) — pure subtotal/savings/total helper
+    cart.ts       # computeTotals(items) — pure subtotal/savings/total helper (tarifa plana, usada
+                  #   como estimado pre-dirección en OrderSummary y como fallback si Skydropx cae).
+                  #   mapCartItemsToOrderItems(items) y cartLineSignature(items) — compartidos por
+                  #   lib/api/orders.ts y lib/api/shipping.ts para no duplicar el mapeo carrito→renglón
+                  #   ni las firmas de caché (pendingOrder/selectedRate) que usa CheckoutContext
     brand.ts      # BRAND — defaults/fallback de identidad/copy de marca (nombre, email, hero, tagline, cartNotice…). El storefront se hidrata desde el backend vía BrandProvider/useBrand; BRAND es el fallback SSR. resolveBrand(settings) mergea BrandSettings (backend) ← BRAND: mapea tagline (string \n) → taglineLines[] y conserva namePrimary/nameAccent/email/instagram (que el backend no tiene). ResolvedBrand = forma que consume el storefront
     categories.ts # CATEGORIES + CategoryInfo/ProductType + categoryPlural()/categorySingular() — fuente única de categorías y etiquetas (antes duplicadas en ~10 archivos). DEFAULT_DIMENSIONS: defaults de empaque (peso/dimensiones) por categoría, usados por ProductForm para pre-llenar al crear (editables)
   seo/            # metadata y datos estructurados (sin React)
@@ -214,107 +220,32 @@ Las rutas de catálogo suspenden por motivos distintos, y por eso el skeleton va
 
 ## Checkout flow
 
-`/checkout` is a 3-step wizard. Step state is held in a React context (`components/checkout/CheckoutContext.tsx`, scoped via `CheckoutProvider` in the page — not persisted, so a refresh restarts at step 0).
+`/checkout` is a 4-step wizard. Step state is held in a React context (`components/checkout/CheckoutContext.tsx`, scoped via `CheckoutProvider` in the page — not persisted, so a refresh restarts at step 0).
 
-`CheckoutFlow` renderiza los pasos condicionalmente (`{step === 1 && <UserDetails />}`), así que **navegar desmonta el paso**. Todo lo que deba sobrevivir a ir y volver vive en el contexto, no en los componentes de paso: `acceptedTerms` (state, controla el checkbox del resumen), el **borrador de envío** (`shippingDraftRef` + `getShippingDraft`/`setShippingDraft`) y la orden pendiente de Stripe (`pendingOrderRef`). Los dos últimos son **refs**, no state: solo se leen al montar / al hacer submit, así que re-renderizar con ellos sería ruido. `UserDetails` siembra `useForm({ defaultValues: getShippingDraft() ?? undefined })` y guarda `getValues()` en el cleanup de un `useEffect` (es decir, al desmontarse) — sin validar, el borrador puede ir a medias. `completeOrder` lo limpia junto con el carrito. El `Stepper` recibe `maxVisited={maxVisitedStep}` y deja saltar a **cualquier paso ya visitado** (atrás o adelante), nunca a uno sin visitar ni una vez confirmado el pedido; `maxVisitedStep` lo sube el helper `visit()` del contexto. Pinta **tres niveles** por paso, no dos: `isDone` (`index < current`, palomita ámbar), `isVisited` (`index > current && index <= maxVisited` — se estuvo ahí y se retrocedió: número en ámbar tenue, ni completado ni intacto) y pendiente (apagado). Sin el nivel intermedio, retroceder hacía que el paso ya lleno se viera idéntico a uno nunca tocado.
+`CheckoutFlow` renderiza los pasos condicionalmente (`{step === 1 && <UserDetails />}`), así que **navegar desmonta el paso**. Todo lo que deba sobrevivir a ir y volver vive en el contexto, no en los componentes de paso: `acceptedTerms` (state, controla el checkbox del resumen), el **borrador de envío** (`shippingDraftRef` + `getShippingDraft`/`setShippingDraft`, sin validar — resiembra el form de `UserDetails`), la **dirección confirmada** (`confirmedCustomer`, state — validada al enviar el paso 1, es lo que `ShippingOptions` cotiza), la **tarifa de envío elegida** (`selectedRateEntry`/`getSelectedRate`/`setSelectedRate`, cacheada por firma carrito+cliente igual que la orden pendiente) y la orden pendiente de Stripe (`pendingOrderRef`). `shippingDraftRef`/`pendingOrderRef` son **refs**, no state: solo se leen al montar / al hacer submit, así que re-renderizar con ellos sería ruido; `confirmedCustomer`/`selectedRateEntry` sí son state porque otro componente (paso 3) debe re-renderizar en cuanto existen o cambian. `UserDetails` siembra `useForm({ defaultValues: getShippingDraft() ?? undefined })` y guarda `getValues()` en el cleanup de un `useEffect` (es decir, al desmontarse) — sin validar, el borrador puede ir a medias. `completeOrder` lo limpia junto con el carrito. El `Stepper` recibe `maxVisited={maxVisitedStep}` y deja saltar a **cualquier paso ya visitado** (atrás o adelante), nunca a uno sin visitar ni una vez confirmado el pedido; `maxVisitedStep` lo sube el helper `visit()` del contexto. Pinta **tres niveles** por paso, no dos: `isDone` (`index < current`, palomita ámbar), `isVisited` (`index > current && index <= maxVisited` — se estuvo ahí y se retrocedió: número en ámbar tenue, ni completado ni intacto) y pendiente (apagado). Sin el nivel intermedio, retroceder hacía que el paso ya lleno se viera idéntico a uno nunca tocado.
 
-1. **Resumen** (`OrderSummary`) — read-only cart review + **required** terms & privacy checkbox; "Continuar" is disabled until accepted.
-2. **Datos de envío + pago** (`UserDetails`) — shipping form validated with `react-hook-form` + `zodResolver` against `schemas/checkout.ts`. Shipping is restricted to Mexico via the `MEXICAN_STATES` enum. **Pago con Stripe conectado (Fase 8, test/sandbox)**: el submit corre `usePlaceOrder` (`components/checkout/usePlaceOrder.ts`), un flujo de **dos fases** — (1) `createOrder()` (`lib/api/orders.ts`) postea `buildOrderPayload()` = `{ items: [{ productId, size, quantity }], customer }` **sin montos** (el backend recalcula totales, descuenta stock por talla atómicamente y devuelve `{ order, clientSecret }`); (2) `stripe.confirmCardPayment(clientSecret, { payment_method: "pm_card_visa" })` con Stripe.js (`lib/stripe/client.ts` = singleton `loadStripe`). La **tarjeta de prueba está hardcodeada** (`pm_card_visa` = `4242 4242 4242 4242`) porque todo corre en sandbox; `PaymentSection` es un panel de tarjeta de prueba de solo lectura. La orden creada se **cachea en el `CheckoutContext`** (`orderSignature` = `productId+talla+cantidad` del carrito **+ los datos del cliente**) para no duplicarla en un reintento; al vivir en el contexto sobrevive a "Volver al resumen" (que remonta `UserDetails`), y se invalida sola si cambió el carrito **o el cliente corrigió sus datos** — sin esto último, editar la dirección tras un pago fallido reconfirmaría la orden vieja y el pedido saldría a la dirección anterior. Errores mapeados: `409` (sin stock) muestra el mensaje del backend inline, `400` datos, `clientSecret` nulo / Stripe no cargado → mensaje de config, y el `error.message` de Stripe; el usuario permanece en el formulario. **Solo tras `paymentIntent.status === "succeeded"`** se llama `completeOrder(customer, order)`, que congela el snapshot (con `orderId` + los **totales autoritativos del servidor**), vacía el carrito y avanza. El estado `paid` real lo concilia el **webhook** del backend de forma asíncrona.
-3. **Confirmación** (`Success`) — renders the frozen order snapshot (con "Pedido #<id>") + shipping address.
+1. **Resumen** (`OrderSummary`) — read-only cart review + **required** terms & privacy checkbox; "Continuar" is disabled until accepted. Muestra `computeTotals(items)` como estimado de envío (tarifa plana) porque todavía no hay dirección — nunca se cobra este número.
+2. **Dirección** (`UserDetails`) — solo captura y valida la dirección con `react-hook-form` + `zodResolver` contra `schemas/checkout.ts` (restringida a México vía `MEXICAN_STATES`). Al enviarse, `confirmShipping(data)` (`CheckoutContext`) guarda la dirección validada, **invalida sin condición** cualquier tarifa elegida antes (una dirección nueva puede cotizar distinto) y avanza al paso 3. No crea orden ni toca Stripe; el sidebar solo muestra el subtotal outlet, con nota de que el envío se calcula en el siguiente paso.
+3. **Envío** (`ShippingOptions`) — cotización de envío **en vivo** contra Skydropx (Fase 8.4). `useQuery({ queryKey: shippingKeys.rates(items, confirmedCustomer), queryFn: () => getShippingRates(...) })` llama a `POST /api/shipping/rates` (`lib/api/shipping.ts`), que SIEMPRE responde 200 — si Skydropx falla/hace timeout, el backend cae a su propia tarifa plana (`rateId`/`quotationId` null, `carrier: "Estándar"`). Con una sola opción se preselecciona sola (nada que decidir); con 2+ no se preselecciona nada — elegir es el punto de este paso. Los totales del sidebar (`OrderTotals`) se arman localmente: `computeTotals(items)` da `subtotal`/`savings`, y `.shipping`/`.total` se sobreescriben con la tarifa elegida — así el monto que se ve aquí es el mismo que se cobra. **Pago con Stripe conectado (Fase 8, test/sandbox)**: "Pagar y confirmar" corre `usePlaceOrder` (`components/checkout/usePlaceOrder.ts`), un flujo de **dos fases** — (1) `createOrder()` (`lib/api/orders.ts`) postea `buildOrderPayload(items, customer, selectedRate)` = `{ items, customer, quotationId?, rateId? }` **sin montos** (el backend re-consulta Skydropx por esa cotización —o cae a su tarifa plana si no vinieron— y devuelve `{ order, clientSecret }`); (2) `stripe.confirmCardPayment(clientSecret, { payment_method: "pm_card_visa" })` con Stripe.js (`lib/stripe/client.ts` = singleton `loadStripe`). La **tarjeta de prueba está hardcodeada** (`pm_card_visa` = `4242 4242 4242 4242`) porque todo corre en sandbox; `PaymentSection` (movido aquí desde el paso de dirección — el pago no puede confirmarse sin una tarifa elegida) es un panel de tarjeta de prueba de solo lectura. La orden creada se **cachea en el `CheckoutContext`** (`orderSignature` = `productId+talla+cantidad` del carrito **+ los datos del cliente + la tarifa elegida**) para no duplicarla en un reintento; se invalida sola si cambió el carrito, el cliente, o la tarifa. Errores mapeados: `409` "sin stock" muestra el mensaje del backend inline; `409` de **cotización expirada** (quotations duran 24 h — se detecta por el texto "cotizaciones expiran" en el mensaje) además limpia la tarifa elegida (`setSelectedRate(..., null)`) para forzar una nueva cotización en vez de reintentar en bucle contra un `quotationId`/`rateId` caducado; `400` datos; `clientSecret` nulo / Stripe no cargado → mensaje de config; `error.message` de Stripe. El usuario permanece en el paso. **Solo tras `paymentIntent.status === "succeeded"`** se llama `completeOrder(customer, order)`, que congela el snapshot (con `orderId` + los **totales autoritativos del servidor**), vacía el carrito y avanza. El estado `paid` real lo concilia el **webhook** del backend de forma asíncrona.
+4. **Confirmación** (`Success`) — renders the frozen order snapshot (con "Pedido #<id>") + shipping address.
 
-Shared, prop-driven pieces: `Stepper` (wizard indicator), `OrderItems`, `OrderTotals`, and `FormControls` (`TextField`/`SelectField` — `forwardRef` inputs that take RHF `register()` spread + an `error` string).
+Shared, prop-driven pieces: `Stepper` (wizard indicator — genérico, escala solo con `CHECKOUT_STEPS` sin cambios de código), `OrderItems`, `OrderTotals`, and `FormControls` (`TextField`/`SelectField` — `forwardRef` inputs that take RHF `register()` spread + an `error` string).
 
-## Shipping — estado actual y hoja de ruta
+## Shipping — cotización en vivo (Skydropx, Fase 8.4)
 
-### Estado actual: tarifa plana por categoría
+El checkout cotiza envío **en vivo** contra Skydropx desde el paso 3 (`ShippingOptions`, ver "Checkout flow"). El backend (`backend/src/controllers/shipping.controller.ts` + `services/skydropx.service.ts`) ya está construido y es la autoridad: arma un solo parcel apilado a partir de las dimensiones del producto (`weightKg`/`lengthCm`/`widthCm`/`heightCm`), cotiza contra Skydropx, y responde `{ quotationId, rates: [{ rateId, carrier, service, amount, total, days }] }`. Origen fijo: Celaya, Guanajuato, CP 38000.
 
-`lib/domain/cart.ts` contiene toda la lógica de envío. El campo `CartTotals.shipping` fluye por todo el sistema — `OrderTotals`, `OrderSummary`, `Success`, y la snapshot en `CheckoutContext.completeOrder()`. No hay más lugares que actualizar.
+**Frontend → backend**: `lib/api/shipping.ts` (`getShippingRates(items, customer)`) postea `POST /api/shipping/rates` con `{ customer, items: [{ productId, size, quantity }] }` (mapeo compartido con `orders.ts` vía `mapCartItemsToOrderItems`). `ShippingData` (schemas/checkout.ts) mapea directo a los campos de dirección de Skydropx: `postalCode`→`postal_code`, `state`→`area_level1`, `city`→`area_level2`, `neighborhood`→`area_level3`.
 
-Regla activa: se cobra la tarifa del producto más caro del carrito (la bota domina sobre el sombrero, el sombrero sobre la ropa). Origen: Celaya, Guanajuato, CP 38000.
-
-```
-SHIPPING_BY_TYPE = { bota: 160, sombrero: 130, ropa: 100 }  // MXN
-```
-
-### Migración a Skydropx (cuando el volumen lo justifique)
-
-La documentación oficial fue verificada contra la API real de Skydropx. Todo lo que se describe abajo está basado en endpoints confirmados.
-
-**Lo que ya está listo en el proyecto**
-
-- `MockProduct` ya incluye `weightKg`, `lengthCm`, `widthCm`, `heightCm` en todos los productos — los únicos datos de empaque que Skydropx necesita.
-- `ShippingData` (schemas/checkout.ts) ya captura `postalCode`, `state`, `city`, `neighborhood` — que mapean directamente a los campos de Skydropx:
-
-  | Campo en ShippingData | Campo en Skydropx |
-  |---|---|
-  | `postalCode` | `postal_code` |
-  | `state` | `area_level1` |
-  | `city` | `area_level2` |
-  | `neighborhood` | `area_level3` |
-
-**Paso 1 — Obtener credenciales**
-
-Crear cuenta en skydropx.com y obtener el API key desde el panel. Agregar a Vercel:
+**Fallback de tarifa plana**: si Skydropx falla, hace timeout, o el producto tiene alguna dimensión en 0, el backend responde 200 igual con `quotationId: null` y una sola tarifa sintética (`rateId: null`, `carrier: "Estándar"`) calculada con su propia copia de la tarifa plana:
 
 ```
-SKYDROPX_API_KEY=tu_api_key_aqui
+SHIPPING_BY_TYPE = { bota: 160, sombrero: 130, ropa: 100 }  // MXN — el más caro del carrito domina
 ```
 
-Base URL: `https://pro.skydropx.com`  
-Autenticación: header `Authorization: Bearer $SKYDROPX_API_KEY`
+`lib/domain/cart.ts`'s `computeShipping`/`SHIPPING_BY_TYPE` es la copia **frontend** de esa misma tabla — se mantiene (no se eliminó) porque `OrderSummary` (paso 1, antes de tener dirección) la usa como estimado pre-cotización, y porque ambas copias deben seguir coincidiendo con el fallback del backend. `CartTotals.shipping` sigue fluyendo igual por `OrderTotals`/`Success`/`CheckoutContext.completeOrder()` — solo cambió de dónde viene el valor en el paso 3.
 
-**Paso 2 — Crear API route para cotización**
-
-`app/api/shipping/rates/route.ts` — recibe el CP destino + items del carrito, llama a Skydropx y devuelve las opciones disponibles.
-
-Endpoint Skydropx: `POST /api/v1/quotations`
-
-```typescript
-// Payload que construir con los datos que ya tenemos:
-{
-  quotation: {
-    order_id: crypto.randomUUID(),          // UUID aleatorio por cotización
-    address_from: {
-      country_code: "MX",
-      postal_code: "38000",                 // CP fijo de Celaya
-      area_level1: "Guanajuato",
-      area_level2: "Celaya",
-      area_level3: "Centro",
-    },
-    address_to: {
-      country_code: "MX",
-      postal_code: shippingData.postalCode,
-      area_level1: shippingData.state,
-      area_level2: shippingData.city,
-      area_level3: shippingData.neighborhood,
-    },
-    parcels: [
-      // Un parcel por cada CartItem, usando las dimensiones del producto:
-      {
-        weight: item.product.weightKg,
-        length: item.product.lengthCm,
-        width: item.product.widthCm,
-        height: item.product.heightCm,
-      }
-    ],
-  }
-}
-```
-
-La respuesta de Skydropx incluye: `provider_display_name`, `amount` (precio sin IVA), `total` (con IVA), `days` (días estimados de entrega).
-
-**Paso 3 — Agregar paso de selección de envío al checkout**
-
-Insertar un paso entre "Datos de envío" y "Confirmación":
-- `CHECKOUT_STEPS` en `CheckoutContext.tsx` pasa de 3 a 4 elementos
-- Nuevo componente `ShippingOptions.tsx` llama al API route y muestra las opciones con precio y días
-- La opción elegida (carrier + precio) se guarda en el context y se pasa a `completeOrder()`
-
-**Paso 4 — Reemplazar `computeShipping`**
-
-`computeShipping(items)` en `lib/domain/cart.ts` se elimina o queda como fallback. El costo de envío pasa a venir del context (opción elegida por el cliente). `CartTotals.shipping` no cambia — solo cambia de dónde viene el valor.
-
-**Nada más cambia.** `OrderTotals`, `OrderSummary`, `Success`, y `CheckoutContext` consumen `CartTotals.shipping` de forma genérica y no necesitan modificaciones.
+**Monto mostrado = monto cobrado**: la tarifa que el comprador elige en `ShippingOptions` (`quotationId`+`rateId`, o `null`+`null` en el fallback) se manda en `POST /api/orders`. El backend **re-consulta Skydropx** por esa cotización exacta y usa su `total` como `order.shipping` — nunca confía en un monto del cliente. Si la cotización expiró (duran 24 h), el backend responde 409 y el frontend limpia la tarifa elegida para forzar una nueva cotización (ver "Checkout flow", paso 3). Esto es lo que cierra la brecha que existía antes de la Fase 8.4: el frontend ya no calcula el envío por su cuenta para mostrarlo — lo cotiza y lo cobra con el mismo número.
 
 ## Reportes, forecast y reposición
 
@@ -359,7 +290,7 @@ Ambos reportes exportan CSV con un helper `csvField()` (escapado RFC 4180: envue
 
 ## Backend (Express.js) — contrato base
 
-El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/api/products.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Marca (Fase 5), usuarios/cuenta (Fase 6), pedidos del admin (Fase 7, `GET /api/admin/orders` → `OrdersSection`) y pagos (Fase 8, Stripe en **test/sandbox**: `usePlaceOrder` + `confirmCardPayment` con `pm_card_visa`) YA están conectados. Ya no quedan fases pendientes del roadmap de integración (Skydropx sigue diferido).
+El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/api/products.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Marca (Fase 5), usuarios/cuenta (Fase 6), pedidos del admin (Fase 7, `GET /api/admin/orders` → `OrdersSection`), pagos (Fase 8, Stripe en **test/sandbox**: `usePlaceOrder` + `confirmCardPayment` con `pm_card_visa`) y cotización de envío en vivo (Fase 8.4, Skydropx: `lib/api/shipping.ts` + `ShippingOptions`, ver "Shipping") YA están conectados. Ya no quedan fases pendientes del roadmap de integración.
 
 > **Principio:** la lógica de negocio (forecast, reposición, totales de carrito, envío) es de funciones puras que reciben números. Forecast y reposición ya viven en el backend (`backend/src/services/`); el frontend solo pinta las filas ya calculadas. La única matriz "fuente de verdad" es ventas-por-mes-por-producto (las órdenes pagadas).
 

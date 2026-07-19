@@ -4,21 +4,18 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCartStore } from "@/store/cartStore";
-import { computeTotals } from "@/lib/domain/cart";
+import { formatPrice } from "@/lib/utils";
 import {
   shippingSchema,
   MEXICAN_STATES,
   type ShippingData,
 } from "@/schemas/checkout";
 import { useCheckout } from "./CheckoutContext";
-import { usePlaceOrder } from "./usePlaceOrder";
 import { TextField, SelectField } from "@/components/ui/FormControls";
-import PaymentSection from "./PaymentSection";
-import OrderTotals from "./OrderTotals";
 
 export default function UserDetails() {
   const items = useCartStore((s) => s.items);
-  const { goToReview, completeOrder, getShippingDraft, setShippingDraft } =
+  const { confirmShipping, getShippingDraft, setShippingDraft, goToReview } =
     useCheckout();
 
   const {
@@ -43,17 +40,13 @@ export default function UserDetails() {
     [getValues, setShippingDraft]
   );
 
-  // Flujo de dos fases: POST /api/orders (backend recalcula totales y descuenta
-  // stock) → confirmar el pago con Stripe. Solo tras el `succeeded` se congela
-  // el snapshot (completeOrder) y se avanza a la confirmación.
-  const { status, error, placeOrder } = usePlaceOrder();
-  const isProcessing = status === "processing";
-
+  // Este paso solo captura y valida la dirección. `confirmShipping` la guarda
+  // en el contexto (invalidando cualquier tarifa elegida antes) y avanza al
+  // paso de método de envío, donde recién se cotiza contra ella y se paga —
+  // ver components/checkout/ShippingOptions.tsx.
   const onSubmit = handleSubmit((data) => {
-    placeOrder(items, data, (order) => completeOrder(data, order));
+    confirmShipping(data);
   });
-
-  const totals = computeTotals(items);
 
   return (
     <form
@@ -170,54 +163,38 @@ export default function UserDetails() {
             {...register("references")}
           />
         </fieldset>
-
-        <div className="rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
-          <PaymentSection />
-        </div>
       </div>
 
-      {/* Columna lateral: total + acciones */}
+      {/* Columna lateral: subtotal + acciones */}
       <aside className="rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/50 to-stone-900/20 p-6 space-y-6 lg:sticky lg:top-6 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
         <h3 className="font-serif text-lg text-amber-50">Tu pedido</h3>
-        <OrderTotals totals={totals} />
 
-        {error && (
-          <p
-            role="alert"
-            className="text-[12px] leading-relaxed text-red-400/90 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2"
-          >
-            {error}
+        <div className="space-y-2">
+          <div className="flex justify-between items-baseline">
+            <span className="font-serif text-lg text-amber-50">
+              Precio outlet
+            </span>
+            <span className="text-amber-400 font-medium">
+              {formatPrice(
+                items.reduce(
+                  (acc, item) => acc + item.product.salePrice * item.quantity,
+                  0
+                )
+              )}
+            </span>
+          </div>
+          <p className="text-[11px] text-amber-100/40 leading-relaxed">
+            El costo de envío se calcula en el siguiente paso, según tu
+            dirección.
           </p>
-        )}
+        </div>
 
         <button
           type="submit"
-          disabled={isProcessing || items.length === 0}
-          className="btn-shimmer w-full rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)] cursor-pointer disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          disabled={items.length === 0}
+          className="btn-shimmer w-full rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)] cursor-pointer disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed"
         >
-          {isProcessing && (
-            <svg
-              fill="none"
-              aria-hidden="true"
-              className="animate-spin w-3.5 h-3.5 shrink-0"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="3"
-                className="opacity-25"
-              />
-              <path
-                fill="currentColor"
-                d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4z"
-                className="opacity-75"
-              />
-            </svg>
-          )}
-          {isProcessing ? "Procesando…" : "Pagar y confirmar"}
+          Continuar a método de envío
         </button>
 
         <button
