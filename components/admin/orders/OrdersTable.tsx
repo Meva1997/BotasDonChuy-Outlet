@@ -2,7 +2,11 @@
 
 import type { AdminOrder } from "@/lib/api/adminOrders";
 import { formatPrice } from "@/lib/utils";
-import { OrderStatusBadge, PaymentStatusBadge } from "./StatusBadges";
+import {
+  OrderStatusBadge,
+  PaymentStatusBadge,
+  DropoffBadge,
+} from "./StatusBadges";
 
 interface Props {
   orders: AdminOrder[];
@@ -76,9 +80,10 @@ export default function OrdersTable({ orders, onSelect }: Props) {
               <span className="text-[11px] text-amber-100/40 font-sans">
                 {totalPiezas(order)} pz
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
                 <OrderStatusBadge status={order.status} />
                 <PaymentStatusBadge status={order.paymentStatus} />
+                {order.shippingRequiresDropoff && <DropoffBadge />}
               </div>
             </div>
           </button>
@@ -96,6 +101,7 @@ export default function OrdersTable({ orders, onSelect }: Props) {
               <th className={thR}>Piezas</th>
               <th className={th}>Estado</th>
               <th className={th}>Pago</th>
+              <th className={th}>Envío</th>
               <th className={thR}>Total</th>
             </tr>
           </thead>
@@ -135,6 +141,13 @@ export default function OrdersTable({ orders, onSelect }: Props) {
                 </td>
                 <td className={td}>
                   <PaymentStatusBadge status={order.paymentStatus} />
+                </td>
+                <td className={td}>
+                  {order.shippingRequiresDropoff ? (
+                    <DropoffBadge />
+                  ) : (
+                    <span className="text-amber-100/20">—</span>
+                  )}
                 </td>
                 <td
                   className={`${tdR} text-amber-400 font-semibold tabular-nums whitespace-nowrap`}

@@ -40,6 +40,11 @@ export const AdminOrderSchema = z.object({
   postalCode: z.string(),
   references: z.string().nullable().optional(),
   shippingCarrier: z.string().nullable().optional(),
+  // Bandera operativa (Skydropx, ver CLAUDE.md "Shipping"): true cuando la paquetería
+  // no recoge a domicilio y el dueño debe llevar el paquete a su sucursal. Viene del
+  // rate re-consultado en createOrder; null en el fallback de tarifa plana (nunca vino
+  // de Skydropx). Excluida de la respuesta pública del checkout — solo /admin/orders.
+  shippingRequiresDropoff: z.boolean().nullable().optional(),
   paymentIntentId: z.string().nullable().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),

@@ -211,6 +211,22 @@ export default function OrderDetailModal({ order, onClose }: Props) {
               </Field>
             </div>
 
+            {order.shippingRequiresDropoff && (
+              <div
+                role="alert"
+                className="flex items-start gap-2.5 rounded-md border border-red-400/40 bg-red-500/10 px-4 py-3"
+              >
+                <span aria-hidden="true" className="shrink-0 leading-none">
+                  ⚠️
+                </span>
+                <p className="text-[13px] leading-relaxed text-red-300">
+                  Sin recolección — lleva el paquete a la sucursal de{" "}
+                  {order.shippingCarrier || "la paquetería"}. Esta paquetería
+                  no pasa a recogerlo a la tienda.
+                </p>
+              </div>
+            )}
+
             <div className="border-t border-stone-700/40" />
 
             {/* Artículos */}

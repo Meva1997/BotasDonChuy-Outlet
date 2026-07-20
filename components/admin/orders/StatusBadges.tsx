@@ -47,3 +47,17 @@ export function PaymentStatusBadge({
   const meta = PAYMENT_META[status];
   return <span className={`${PILL_BASE} ${meta.classes}`}>{meta.label}</span>;
 }
+
+// Bandera operativa "sin recolección a domicilio" (Skydropx, ver CLAUDE.md
+// "Shipping"): el dueño debe llevar el paquete a la sucursal de la paquetería,
+// o el pedido nunca sale de la tienda. En rojo (mismo tono que "urgente" en
+// ReplenishmentReport) porque el costo de pasarlo por alto es dinero perdido.
+export function DropoffBadge() {
+  return (
+    <span
+      className={`${PILL_BASE} border-red-400/40 text-red-400 bg-red-500/10`}
+    >
+      Sin recolección
+    </span>
+  );
+}
