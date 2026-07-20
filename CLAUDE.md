@@ -105,7 +105,13 @@ components/
                   #     (mobile) + OrderDetailModal (diálogo con trampa de foco). Subcomponentes en
                   #     components/admin/orders/: OrdersTable, OrdersPagination (ventana + elipsis),
                   #     OrderDetailModal, StatusBadges (fuente única de color de status/paymentStatus —
-                  #     campos INDEPENDIENTES). El modal muestra unitCost + margen (dato sensible, solo /admin/*)
+                  #     campos INDEPENDIENTES, más DropoffBadge). El modal muestra unitCost + margen
+                  #     (dato sensible, solo /admin/*). `shippingRequiresDropoff` (bandera operativa de
+                  #     Skydropx, ver "Shipping" — el dueño debe llevar el paquete a la sucursal, esa
+                  #     paquetería no recoge a domicilio) se pinta como DropoffBadge en la tabla (columna
+                  #     "Envío", desktop y mobile) y como aviso ⚠️ en el modal junto a "Paquetería": es
+                  #     dato admin-only (excluido de la respuesta pública del checkout) y de perderse de
+                  #     vista significa que el pedido nunca sale de la tienda
                   #   sections/DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable). YA conectado vía lib/api/dashboard (GET /api/admin/dashboard). Dueño de un selector 7/30/90 días (mismo Period que RevenueChart) que indexa kpisByPeriod/profitKpisByPeriod antes de pasarlos a los dos KpiGrid (Ventas / Rentabilidad); KpiGrid sigue siendo puramente presentacional (recibe kpis: KpiData[] ya resuelto). SalesTable es stateful: pagina las ventas de 5 en 5 (reutiliza orders/OrdersPagination) y filtra por día vía un `<input type="date">` (sin día = todas; con día = solo ese, paginado). El date picker se acota al rango [minDay, maxDay] presente en los datos; un día sin ventas muestra un estado vacío con buen UX ("Ver todas las ventas"). Filtra por SaleRow.day (clave ISO UTC)
                   #   sections/ReportesSection — análisis mensual con pestañas Ventas / Reposición + selector de mes
                   #   sections/ConfigSection — usuarios del panel + cuenta propia. YA conectado (Fase 6):
