@@ -11,6 +11,7 @@ import {
 interface Props {
   orders: AdminOrder[];
   onSelect: (order: AdminOrder) => void;
+  emptyMessage?: string;
 }
 
 function formatDate(iso?: string): string {
@@ -35,11 +36,15 @@ const thR = `${th} text-center`;
 const td = "py-3 pr-4 last:pr-0 align-top";
 const tdR = `${td} text-center`;
 
-export default function OrdersTable({ orders, onSelect }: Props) {
+export default function OrdersTable({
+  orders,
+  onSelect,
+  emptyMessage = "Aún no hay pedidos",
+}: Props) {
   if (orders.length === 0) {
     return (
       <div className="py-16 text-center border border-amber-400/10">
-        <p className="text-amber-100/30 text-sm">Aún no hay pedidos</p>
+        <p className="text-amber-100/30 text-sm">{emptyMessage}</p>
       </div>
     );
   }

@@ -68,20 +68,24 @@ export type AdminOrderListResponse = z.infer<typeof AdminOrderListResponseSchema
 const DEFAULT_PER_PAGE = 20;
 
 // Query key factory (mismo patrón que adminProductKeys / productKeys). El listado
-// es paginado, así que la key incluye page/perPage para que TanStack Query
-// cachee y refetchee por página.
+// es paginado, así que la key incluye page/perPage/date para que TanStack Query
+// cachee y refetchee por página y por filtro de fecha.
 export const adminOrderKeys = {
   all: ["adminOrders"] as const,
-  list: (page: number, perPage: number) =>
-    ["adminOrders", "list", page, perPage] as const,
+  list: (page: number, perPage: number, date?: string) =>
+    ["adminOrders", "list", page, perPage, date ?? null] as const,
 };
 
-// GET /api/admin/orders?page=&perPage= — sin filtros ni cambio de status todavía
-// (el backend no expone PATCH/PUT para eso; ver ROADMAP-BACKEND-INTEGRATION.md).
+// GET /api/admin/orders?page=&perPage=&date= — `date` (YYYY-MM-DD, opcional)
+// acota a los pedidos de ese día; sin filtro de status todavía (el backend no
+// expone PATCH/PUT para eso; ver ROADMAP-BACKEND-INTEGRATION.md).
 export async function getAdminOrders(
   page = 1,
-  perPage = DEFAULT_PER_PAGE
+  perPage = DEFAULT_PER_PAGE,
+  date?: string
 ): Promise<AdminOrderListResponse> {
-  const { data } = await api.get("/admin/orders", { params: { page, perPage } });
+  const { data } = await api.get("/admin/orders", {
+    params: { page, perPage, date },
+  });
   return AdminOrderListResponseSchema.parse(data);
 }
