@@ -44,7 +44,7 @@ migración.
 | `POST /api/admin/users` | `components/admin/ConfigSection.tsx` → `createAdminUser()` (`useMutation` + invalidación) | ✅ | — |
 | `DELETE /api/admin/users/:id` | `components/admin/ConfigSection.tsx` → `deleteAdminUser()` (`useMutation`, confirmación inline) | ✅ | — |
 | `PUT /api/admin/account` | `components/admin/ConfigSection.tsx` → `updateOwnAccount()` de `lib/api/account.ts` (`useMutation`) | ✅ | — |
-| `GET /api/admin/orders` | *(sin UI todavía)* | ⚪ | Construir vista de pedidos del admin y conectar |
+| `GET /api/admin/orders` | `components/admin/sections/OrdersSection.tsx` → `getAdminOrders()` de `lib/api/adminOrders.ts` (`useQuery` paginado + filtro de fecha) | 🔴 | Vista base ✅ (**Fase 7**); falta mostrar guía/rastreo Skydropx (**Fase 11**) |
 | `POST /api/orders` → `clientSecret` | `components/checkout/usePlaceOrder.ts` confirma el pago con Stripe.js (`confirmCardPayment` + `pm_card_visa`) usando el `clientSecret` que devuelve `createOrder()`; `PaymentSection.tsx` es el panel de tarjeta de prueba | ✅ | Fase 8 (Stripe, **test/sandbox**) |
 | `POST /api/webhooks/stripe` | *(lo invoca Stripe, no el front)* — el pago se confirma en el cliente; el webhook marca la orden `paid` | ✅ | Fase 8: backend activo (firma verificada); no requiere código de front |
 
@@ -160,8 +160,22 @@ migración.
   (refleja el backend, que solo exige `requireAuth`). El backend igual protege
   borrar la propia cuenta y al único propietario.
 
-### Fase 7 — Admin: pedidos *(UI nueva)*
-- `GET /api/admin/orders` (paginado, incluye `unitCost`) — construir la vista y conectarla.
+### Fase 7 — Admin: pedidos ✅
+- ✅ `GET /api/admin/orders` — contrato centralizado en `lib/api/adminOrders.ts` (patrón
+  `getProducts.ts`): `AdminOrderSchema`/`AdminOrderItemSchema` (Zod, item **sí** trae
+  `unitCost`), `adminOrderKeys`, `getAdminOrders(page, perPage, date?)`. Paginado en
+  servidor (`{ orders, total, page, perPage, totalPages }`), solo lectura.
+- ✅ `components/admin/sections/OrdersSection.tsx` es dueño de la query: filtro de fecha
+  (`<input type="date">`, viaja al backend — no filtra en cliente, ver "Notas de
+  implementación" en `CLAUDE.md`) y tamaño de página según viewport
+  (`useSyncExternalStore` sobre `matchMedia`, 20 en desktop / 5 en mobile).
+- ✅ Subcomponentes en `components/admin/orders/`: `OrdersTable` (tabla desktop / cards
+  mobile), `OrdersPagination` (ventana + elipsis), `OrderDetailModal` (con trampa de
+  foco; muestra `unitCost` + margen), `StatusBadges` (color de `status`/`paymentStatus`
+  — campos independientes — más `DropoffBadge`, que ya pinta el aviso "Sin recolección"
+  cuando `shippingRequiresDropoff === true`, tanto en la tabla como en el modal).
+- **Pendiente:** el resto de la data de envío que el endpoint ya manda pero el schema
+  descarta (`trackingNumber`/`trackingUrl`/`labelUrl`/`shipmentStatus`) — ver **Fase 11**.
 
 ### Fase 9 — Outlet: sincronización en vivo con el admin ✅
 - **Problema 1 — altas no aparecen:** `components/outlet/OutletView.tsx` (`useQuery` sobre
@@ -301,6 +315,50 @@ ahora.
 5. ✅ **Reenviar código:** enlace "Reenviar código" en `ResetCodeForm` que rellama
    `forgotPassword()` (el backend regenera el código y resetea los intentos a 0).
 
+### Fase 11 — Admin: envíos y guía Skydropx en pedidos 🔴 *(UI nueva — depende de Fase 7)*
+
+> **Contexto.** El backend ya integra Skydropx de punta a punta (`../backend/roadmap-skydropx.md`
+> Fases 8.1–8.6): al confirmarse el pago genera la guía automáticamente y el webhook
+> `POST /api/webhooks/skydropx` puebla, en cuanto la paquetería la procesa (asíncrono),
+> `trackingNumber` / `trackingUrl` / `labelUrl` (PDF de la guía) / `shipmentStatus` en la orden.
+> **Ese dato ya viaja al front en `GET /api/admin/orders`** — el backend hace `Order.findAll`
+> sin excluir atributos — pero hoy el frontend lo descarta y no lo muestra. Esta fase cierra ese
+> hueco: que el dueño pueda **descargar la guía e ver el rastreo** desde el panel de pedidos.
+
+**Lo que el backend ya hace (referencia — no tocar):**
+- `GET /api/admin/orders` `[auth]` devuelve cada pedido con las columnas de envío ya pobladas
+  por el webhook de Skydropx: `labelUrl` (PDF de la guía para imprimir), `trackingNumber`,
+  `trackingUrl` (rastreo del carrier), `shipmentStatus` (estado crudo: `in_transit`,
+  `delivered`, etc.) y `skydropxShipmentId`. Nacen `null` y se llenan cuando el webhook los
+  reporta (la creación de la guía es asíncrona — ver `roadmap-skydropx.md` §Fase 8.5/8.6).
+- `Order.status` avanza solo hacia adelante (`paid` → `shipped` → `delivered`) desde el mismo
+  webhook, así que el estado del pedido ya refleja el envío sin polling.
+- `shippingRequiresDropoff` (bandera operativa: la paquetería no recoge a domicilio, hay que
+  llevar el paquete a sucursal) ya está en el contrato y **ya se valida** en `AdminOrderSchema`.
+
+**Trabajo del frontend (esta fase):**
+1. **Extender el contrato Zod:** en `lib/api/adminOrders.ts`, agregar a `AdminOrderSchema` los
+   campos que hoy el schema descarta: `trackingNumber` / `trackingUrl` / `labelUrl` /
+   `shipmentStatus` / `skydropxShipmentId` (todos `z.string().nullable().optional()`). Zod
+   descarta las llaves no declaradas, por eso hoy no llegan a la UI aunque el backend las mande.
+2. **Mostrar la guía en la vista de pedidos** (`components/admin/sections/OrdersSection.tsx`,
+   sobre la vista base de la Fase 7): por pedido, cuando `labelUrl` no sea `null`, un botón/enlace
+   **"Descargar guía"** (`<a href={labelUrl} target="_blank" rel="noopener">`, el PDF vive en
+   Skydropx). Cuando siga `null`, mostrar un estado "Guía en proceso" (la paquetería aún no la
+   emite) en vez de un hueco vacío.
+3. **Mostrar el rastreo:** cuando exista `trackingNumber`, pintarlo (enlazado a `trackingUrl` si
+   viene) y mostrar `shipmentStatus` como etiqueta legible. Traducir/normalizar los estados crudos
+   de Skydropx a copy en español si se desea (`in_transit` → "En tránsito", etc.).
+4. **Estado del pedido:** reflejar `status` (`shipped`/`delivered`) en el badge del pedido — el
+   backend ya lo avanza, el front solo lo pinta.
+5. **Bandera de recolección:** si `shippingRequiresDropoff === true`, un aviso discreto al dueño
+   ("Llevar a sucursal — sin recolección a domicilio").
+6. **Contrato validado con Zod**, igual que el resto (`getProducts.ts`); no romper la vista de la
+   Fase 7 si los campos llegan `null` (pedidos con fallback de tarifa plana nunca tienen guía).
+
+**Salida:** el dueño imprime la guía y sigue el rastreo de cada pedido desde el panel, sin entrar
+al dashboard de Skydropx.
+
 ## Notas de implementación
 
 - **Base URL:** `NEXT_PUBLIC_API_URL` debe apuntar al backend (`http://localhost:4000`);
@@ -310,6 +368,9 @@ ahora.
   cada respuesta con Zod, igual que en `getProducts.ts`.
 - **Datos sensibles:** `unitCost` y márgenes solo llegan por rutas `/api/admin/*`
   autenticadas — nunca en el catálogo público.
-- **Envíos (Skydropx):** `POST /api/shipping/rates` está documentado en `BACKEND.md`
-  §5.4 y `CLAUDE.md`, pero **aún no está montado** en el backend. Se aborda cuando el
-  volumen lo justifique (hoy: tarifa plana en `lib/domain/cart.ts`).
+- **Envíos (Skydropx):** el backend **ya integra Skydropx de punta a punta** (cotización en
+  vivo `POST /api/shipping/rates`, guía automática al pagar y webhook de estado —
+  `../backend/roadmap-skydropx.md` Fases 8.1–8.6). En el frontend queda pendiente: (a) que el
+  checkout llame a `/api/shipping/rates` en vez de la tarifa plana local de `lib/domain/cart.ts`
+  (o el monto mostrado y el cobrado divergen), y (b) mostrar la guía/rastreo en el panel de
+  pedidos — **Fase 11**.
