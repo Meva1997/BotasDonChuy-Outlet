@@ -61,3 +61,41 @@ export function DropoffBadge() {
     </span>
   );
 }
+
+// `Order.shipmentStatus` (Fase 11) es el string crudo que reporta Skydropx —
+// no un enum cerrado validado por el backend, así que este diccionario cubre
+// los valores más comunes del carrier y cualquier otro cae a un fallback
+// legible en vez de mostrar la clave cruda o reventar.
+const SHIPMENT_STATUS_META: Record<string, { label: string; classes: string }> = {
+  pre_transit: { label: "Guía generada", classes: "border-sky-400 text-sky-400" },
+  label_created: { label: "Guía generada", classes: "border-sky-400 text-sky-400" },
+  in_transit: {
+    label: "En tránsito",
+    classes: "border-violet-400 text-violet-400",
+  },
+  out_for_delivery: {
+    label: "En reparto",
+    classes: "border-violet-400 text-violet-400",
+  },
+  delivered: {
+    label: "Entregado",
+    classes: "border-emerald-400 text-emerald-400",
+  },
+  exception: { label: "Incidencia", classes: "border-red-400 text-red-400" },
+  failure: { label: "Incidencia", classes: "border-red-400 text-red-400" },
+  cancelled: { label: "Cancelado", classes: "border-red-400 text-red-400" },
+};
+
+function fallbackShipmentLabel(raw: string): string {
+  return raw
+    .replace(/_/g, " ")
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+export function ShipmentStatusBadge({ status }: { status: string }) {
+  const meta = SHIPMENT_STATUS_META[status.toLowerCase()] ?? {
+    label: fallbackShipmentLabel(status),
+    classes: "border-stone-500 text-stone-400",
+  };
+  return <span className={`${PILL_BASE} ${meta.classes}`}>{meta.label}</span>;
+}

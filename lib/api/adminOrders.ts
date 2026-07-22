@@ -46,6 +46,14 @@ export const AdminOrderSchema = z.object({
   // de Skydropx). Excluida de la respuesta pública del checkout — solo /admin/orders.
   shippingRequiresDropoff: z.boolean().nullable().optional(),
   paymentIntentId: z.string().nullable().optional(),
+  // Guía/rastreo Skydropx (Fase 11): la creación de la guía es asíncrona — nacen `null` y las
+  // puebla el webhook `POST /api/webhooks/skydropx` cuando la paquetería procesa el envío.
+  // `shipmentStatus` es el string crudo del carrier (no un enum cerrado), ver StatusBadges.tsx.
+  skydropxShipmentId: z.string().nullable().optional(),
+  trackingNumber: z.string().nullable().optional(),
+  trackingUrl: z.string().nullable().optional(),
+  labelUrl: z.string().nullable().optional(),
+  shipmentStatus: z.string().nullable().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
   items: z.array(AdminOrderItemSchema),
