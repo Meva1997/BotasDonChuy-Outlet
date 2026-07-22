@@ -16,7 +16,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **sileo** — toast notifications (admin panel only)
 - **pnpm** as package manager
 
-> No test runner is installed yet. Unit/component tests are planned with **Jest + React Testing Library**.
+> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`) but no specs exist yet.
 
 ## Commands
 
@@ -24,6 +24,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 pnpm dev        # Dev server (localhost:3000)
 pnpm build      # Production build
 pnpm lint       # ESLint
+pnpm test       # Jest (--passWithNoTests; no specs yet)
 ```
 
 ## Structure

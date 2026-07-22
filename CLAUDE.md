@@ -12,6 +12,7 @@ Before every git commit, proactively check if `README.md` and `CLAUDE.md` are up
 pnpm dev        # Start dev server (localhost:3000)
 pnpm build      # Production build
 pnpm lint       # ESLint
+pnpm test       # Jest (--passWithNoTests; no specs yet)
 ```
 
 Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependencies.
@@ -21,7 +22,7 @@ Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependenci
 - **Next.js 16** with App Router (all pages in `app/`)
 - **React 19**, **TypeScript**
 - **Tailwind CSS v4** — configured via `@import "tailwindcss"` in `globals.css`, not a `tailwind.config.*` file. Custom theme tokens (fonts, `tobacco-*` color scale) live in a `@theme {}` block in `globals.css`.
-- **Testing** — no hay runner instalado. Playwright se eliminó (nunca tuvo config ni specs). Las pruebas futuras van con **Jest + React Testing Library**; no reintroducir e2e sin pedirlo.
+- **Testing** — **Jest + React Testing Library** instalados (`jest.config.ts` usa `next/jest`; `jest.setup.ts` carga `@testing-library/jest-dom`). `pnpm test` corre con `--passWithNoTests` (aún no hay specs — solo el runner). Playwright se eliminó (nunca tuvo config ni specs); no reintroducir e2e sin pedirlo.
 - **Sileo** — librería de toasts (physics-based). Solo se usa en `/admin` (`<Toaster />` montado en `app/admin/layout.tsx`, no en el root layout, para no cargarla en el storefront público). Hoy su único consumidor es el polling de `OrdersSection` (ver abajo). `theme="light"` + `position="top-center"` + `options={{ fill: "#000000" }}` (píldora negra; `theme="light"` es lo que hace que Sileo pinte el texto claro — su CSS interno asume pill oscura en ese theme) + `styles: { description: "text-white/75!" }` (sube la opacidad del texto de descripción sobre el default blanco/50%). Tamaño de píldora y tipografía agrandados, y acento "info" ajustado al ámbar de marca — en `globals.css` con `!important` (necesario: `sileo/styles.css` se importa después y empata en especificidad con nuestros overrides).
 
 ## Architecture
