@@ -138,6 +138,38 @@ textarea:focus-visible,
   border-radius: 2px;
 }
 
+/* Theming de Sileo (toasts del panel admin, ver OrdersSection en CLAUDE.md).
+   `!important` en TODO este bloque a propósito: sileo/styles.css se importa en
+   app/admin/layout.tsx (un layout hijo), y Next concatena el CSS global en orden
+   de importación → esas reglas quedan DESPUÉS de este archivo en el bundle final.
+   Sin !important, un empate de especificidad (:root contra :root, o un selector
+   de atributo igual de específico) lo gana el último en el orden de carga, es
+   decir la librería, no nuestro override — se verificó exactamente así: el
+   acento "info" se quedaba en el azul default pese a este bloque. */
+:root {
+  /* Acento "info" alineado al ámbar de marca (mismo valor que --color-amber-400
+     de Tailwind) en vez del azul default de la librería. */
+  --sileo-state-info: oklch(82.8% 0.189 84.429) !important;
+
+  /* Píldora más grande (default 350×40) — el toast se veía chico y apretado. */
+  --sileo-width: 420px !important;
+  --sileo-height: 48px !important;
+}
+
+/* Tipografía más grande y legible. Los selectores de la librería
+   ([data-sileo-title]/[data-sileo-description]) empatan en especificidad con
+   estos — mismo motivo de !important que arriba. */
+[data-sileo-title] {
+  font-size: 0.9375rem !important;
+  line-height: 1.25rem !important;
+  font-weight: 600 !important;
+}
+
+[data-sileo-description] {
+  font-size: 0.9375rem !important;
+  line-height: 1.375rem !important;
+}
+
 /* Respeta la preferencia de movimiento reducido del sistema. */
 @media (prefers-reduced-motion: reduce) {
   *,

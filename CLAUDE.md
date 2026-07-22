@@ -22,6 +22,7 @@ Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependenci
 - **React 19**, **TypeScript**
 - **Tailwind CSS v4** — configured via `@import "tailwindcss"` in `globals.css`, not a `tailwind.config.*` file. Custom theme tokens (fonts, `tobacco-*` color scale) live in a `@theme {}` block in `globals.css`.
 - **Testing** — no hay runner instalado. Playwright se eliminó (nunca tuvo config ni specs). Las pruebas futuras van con **Jest + React Testing Library**; no reintroducir e2e sin pedirlo.
+- **Sileo** — librería de toasts (physics-based). Solo se usa en `/admin` (`<Toaster />` montado en `app/admin/layout.tsx`, no en el root layout, para no cargarla en el storefront público). Hoy su único consumidor es el polling de `OrdersSection` (ver abajo). `theme="light"` + `position="top-center"` + `options={{ fill: "#000000" }}` (píldora negra; `theme="light"` es lo que hace que Sileo pinte el texto claro — su CSS interno asume pill oscura en ese theme) + `styles: { description: "text-white/75!" }` (sube la opacidad del texto de descripción sobre el default blanco/50%). Tamaño de píldora y tipografía agrandados, y acento "info" ajustado al ámbar de marca — en `globals.css` con `!important` (necesario: `sileo/styles.css` se importa después y empata en especificidad con nuestros overrides).
 
 ## Architecture
 
@@ -126,7 +127,16 @@ components/
                   #     envío" junto a "Paquetería". `shipmentStatus` es el string crudo del carrier (no un
                   #     enum cerrado) — `ShipmentStatusBadge`/`SHIPMENT_STATUS_META` lo traduce con
                   #     fallback legible para valores no mapeados. `order.status` (`shipped`/`delivered`)
-                  #     ya lo pinta `OrderStatusBadge` sin cambios: el backend lo avanza vía el mismo webhook
+                  #     ya lo pinta `OrderStatusBadge` sin cambios: el backend lo avanza vía el mismo webhook.
+                  #     Polling cada 30 min (`refetchInterval`, TanStack Query) para enterarse de cambios del
+                  #     webhook sin recargar la pestaña, más un botón de refresh manual (ícono `RefreshCw` de
+                  #     lucide-react, gira mientras `isFetching`) para no depender del intervalo. Un
+                  #     `useEffect` guarda por vista (página+perPage+día) una firma `status|paymentStatus|
+                  #     shipmentStatus|labelUrl|trackingNumber` por pedido; si el refetch automático (no el
+                  #     manual, ni la primera carga de una vista nueva) trae una firma distinta para algún
+                  #     pedido ya visto, dispara un toast de Sileo (`sileo.info`, ver "Stack") — así no avisa
+                  #     al cambiar de página/filtro ni al usar el botón manual, solo cuando el polling
+                  #     realmente trajo algo nuevo
                   #   sections/DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable). YA conectado vía lib/api/dashboard (GET /api/admin/dashboard). Dueño de un selector 7/30/90 días (mismo Period que RevenueChart) que indexa kpisByPeriod/profitKpisByPeriod antes de pasarlos a los dos KpiGrid (Ventas / Rentabilidad); KpiGrid sigue siendo puramente presentacional (recibe kpis: KpiData[] ya resuelto). SalesTable es stateful: pagina las ventas de 5 en 5 (reutiliza orders/OrdersPagination) y filtra por día vía un `<input type="date">` (sin día = todas; con día = solo ese, paginado). El date picker se acota al rango [minDay, maxDay] presente en los datos; un día sin ventas muestra un estado vacío con buen UX ("Ver todas las ventas"). Filtra por SaleRow.day (clave ISO UTC)
                   #   sections/ReportesSection — análisis mensual con pestañas Ventas / Reposición + selector de mes
                   #   sections/ConfigSection — usuarios del panel + cuenta propia. YA conectado (Fase 6):
