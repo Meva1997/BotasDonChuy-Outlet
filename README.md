@@ -13,6 +13,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **@stripe/stripe-js** — checkout payment gateway (test/sandbox)
 - **framer-motion** — animations (drawers, transitions, carousels)
 - **recharts** — admin dashboard charts
+- **sileo** — toast notifications (admin panel only)
 - **pnpm** as package manager
 
 > No test runner is installed yet. Unit/component tests are planned with **Jest + React Testing Library**.

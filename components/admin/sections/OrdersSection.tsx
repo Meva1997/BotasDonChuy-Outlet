@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
+import { sileo } from "sileo";
 import { adminOrderKeys, getAdminOrders, type AdminOrder } from "@/lib/api/adminOrders";
 import OrdersTable from "../orders/OrdersTable";
 import OrdersPagination from "../orders/OrdersPagination";
@@ -9,6 +11,28 @@ import OrderDetailModal from "../orders/OrderDetailModal";
 
 const PER_PAGE_DESKTOP = 20;
 const PER_PAGE_MOBILE = 5;
+
+// Refetch en segundo plano para enterarse de cambios que llegan por el webhook
+// de Skydropx (status/paymentStatus/shipmentStatus/guía) sin que el admin tenga
+// que recargar la pestaña. TanStack Query ya pausa el intervalo si la pestaña
+// está oculta — no hace falta refetchIntervalInBackground.
+const POLL_INTERVAL_MS = 30 * 60 * 1000;
+
+// Firma comparable de los campos que puede tocar el webhook. Comparar por
+// pedido (no el objeto entero) evita falsos positivos por reordenamiento.
+function orderSignature(order: AdminOrder): string {
+  return [
+    order.status,
+    order.paymentStatus,
+    order.shipmentStatus ?? "",
+    order.labelUrl ?? "",
+    order.trackingNumber ?? "",
+  ].join("|");
+}
+
+function snapshotOrders(orders: AdminOrder[]): Map<number, string> {
+  return new Map(orders.map((o) => [o.id, orderSignature(o)]));
+}
 
 // Mismo corte que la tabla (OrdersTable: "hidden xl:block" / "xl:hidden"): por
 // debajo de xl (1280px) se pintan cards y el scroll vertical de 20 filas se
@@ -44,11 +68,51 @@ export default function OrdersSection() {
   const isDesktop = useIsDesktopViewport();
   const perPage = isDesktop ? PER_PAGE_DESKTOP : PER_PAGE_MOBILE;
 
-  const { data, isPending, isError, refetch } = useQuery({
+  const { data, isPending, isFetching, isError, refetch } = useQuery({
     queryKey: adminOrderKeys.list(page, perPage, selectedDay || undefined),
     queryFn: () => getAdminOrders(page, perPage, selectedDay || undefined),
     placeholderData: keepPreviousData,
+    refetchInterval: POLL_INTERVAL_MS,
   });
+
+  // Foto por vista (página+perPage+día) de la última respuesta vista, para
+  // distinguir "el polling trajo un cambio" de "el admin cambió de página/filtro"
+  // (una vista nueva no tiene foto previa → no dispara toast) y de "refresh manual"
+  // (el admin ya está mirando la tabla, no hace falta avisarle dos veces).
+  const snapshotsRef = useRef(new Map<string, Map<number, string>>());
+  const isManualRefreshRef = useRef(false);
+
+  useEffect(() => {
+    if (!data) return;
+    const key = JSON.stringify([page, perPage, selectedDay || null]);
+    const previous = snapshotsRef.current.get(key);
+    const current = snapshotOrders(data.orders);
+
+    if (previous && !isManualRefreshRef.current) {
+      const changed = data.orders.filter(
+        (o) => previous.get(o.id) !== undefined && previous.get(o.id) !== orderSignature(o)
+      );
+      if (changed.length === 1) {
+        sileo.info({
+          title: "Pedido actualizado",
+          description: `El pedido #${changed[0].id} tiene información nueva.`,
+        });
+      } else if (changed.length > 1) {
+        sileo.info({
+          title: "Pedidos actualizados",
+          description: `${changed.length} pedidos tienen información nueva.`,
+        });
+      }
+    }
+
+    snapshotsRef.current.set(key, current);
+    isManualRefreshRef.current = false;
+  }, [data, page, perPage, selectedDay]);
+
+  const handleManualRefresh = () => {
+    isManualRefreshRef.current = true;
+    refetch();
+  };
 
   const handleDayChange = (value: string) => {
     setSelectedDay(value);
@@ -98,6 +162,18 @@ export default function OrdersSection() {
               ✕ Limpiar
             </button>
           )}
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isFetching}
+            aria-label="Actualizar pedidos"
+            title="Actualizar pedidos"
+            className="text-amber-100/40 border border-amber-400/20 p-2.5 rounded hover:text-amber-400 hover:border-amber-400/40 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`size-4 ${isFetching ? "animate-spin" : ""}`}
+            />
+          </button>
         </div>
       </div>
 
