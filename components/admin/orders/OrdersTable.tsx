@@ -30,6 +30,12 @@ function totalPiezas(order: AdminOrder): number {
   return order.items.reduce((s, i) => s + i.quantity, 0);
 }
 
+// La guía solo puede existir una vez pagado el pedido; antes de eso "en
+// proceso" sería engañoso (no hay envío que generar todavía).
+function canHaveLabel(order: AdminOrder): boolean {
+  return order.status !== "pending" && order.status !== "cancelled";
+}
+
 const th =
   "pb-3 pr-4 last:pr-0 text-[10px] tracking-[0.2em] uppercase text-amber-100/50 font-normal font-sans";
 const thR = `${th} text-center`;
@@ -81,15 +87,45 @@ export default function OrdersTable({
                 {order.customerEmail}
               </p>
             </div>
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-amber-400/10">
-              <span className="text-[11px] text-amber-100/40 font-sans">
-                {totalPiezas(order)} pz
-              </span>
-              <div className="flex items-center gap-2 flex-wrap justify-end">
-                <OrderStatusBadge status={order.status} />
-                <PaymentStatusBadge status={order.paymentStatus} />
-                {order.shippingRequiresDropoff && <DropoffBadge />}
+            <div className="flex flex-col gap-2 pt-2 border-t border-amber-400/10">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-amber-100/40 font-sans">
+                  {totalPiezas(order)} pz
+                </span>
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <OrderStatusBadge status={order.status} />
+                  <PaymentStatusBadge status={order.paymentStatus} />
+                </div>
               </div>
+              {(order.shippingRequiresDropoff ||
+                order.labelUrl ||
+                canHaveLabel(order)) && (
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-[10px] tracking-[0.2em] uppercase text-amber-100/30">
+                    Envío
+                  </span>
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    {order.shippingRequiresDropoff && <DropoffBadge />}
+                    {order.labelUrl ? (
+                      <a
+                        href={order.labelUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[9px] tracking-[0.2em] uppercase text-amber-400 hover:underline"
+                      >
+                        Guía
+                      </a>
+                    ) : (
+                      canHaveLabel(order) && (
+                        <span className="text-[9px] tracking-[0.2em] uppercase text-amber-100/30">
+                          Guía en proceso
+                        </span>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </button>
         ))}
@@ -148,11 +184,28 @@ export default function OrdersTable({
                   <PaymentStatusBadge status={order.paymentStatus} />
                 </td>
                 <td className={td}>
-                  {order.shippingRequiresDropoff ? (
-                    <DropoffBadge />
-                  ) : (
-                    <span className="text-amber-100/20">—</span>
-                  )}
+                  <div className="flex flex-col items-center gap-1.5">
+                    {order.shippingRequiresDropoff && <DropoffBadge />}
+                    {order.labelUrl ? (
+                      <a
+                        href={order.labelUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[10px] tracking-[0.15em] uppercase text-amber-400 hover:underline"
+                      >
+                        Descargar guía
+                      </a>
+                    ) : canHaveLabel(order) ? (
+                      <span className="text-[10px] tracking-[0.15em] uppercase text-amber-100/30">
+                        Guía en proceso
+                      </span>
+                    ) : (
+                      !order.shippingRequiresDropoff && (
+                        <span className="text-amber-100/20">—</span>
+                      )
+                    )}
+                  </div>
                 </td>
                 <td
                   className={`${tdR} text-amber-400 font-semibold tabular-nums whitespace-nowrap`}

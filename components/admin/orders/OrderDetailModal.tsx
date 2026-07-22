@@ -5,7 +5,11 @@ import { motion, useReducedMotion } from "framer-motion";
 import type { AdminOrder } from "@/lib/api/adminOrders";
 import { formatPrice } from "@/lib/utils";
 import { EASE_LUXE } from "@/lib/ui/motion";
-import { OrderStatusBadge, PaymentStatusBadge } from "./StatusBadges";
+import {
+  OrderStatusBadge,
+  PaymentStatusBadge,
+  ShipmentStatusBadge,
+} from "./StatusBadges";
 
 interface Props {
   order: AdminOrder;
@@ -101,6 +105,9 @@ export default function OrderDetailModal({ order, onClose }: Props) {
 
   const created = formatDate(order.createdAt);
   const updated = formatDate(order.updatedAt);
+  // La guía solo puede existir una vez pagado el pedido; antes de eso "en
+  // proceso" sería engañoso (no hay envío que generar todavía).
+  const canHaveLabel = order.status !== "pending" && order.status !== "cancelled";
   const totalMargin = order.items.reduce(
     (s, i) => s + (i.unitSalePrice - i.unitCost) * i.quantity,
     0
@@ -207,6 +214,49 @@ export default function OrderDetailModal({ order, onClose }: Props) {
               <Field label="Paquetería">
                 {order.shippingCarrier || (
                   <span className="text-amber-100/30">Aún no asignado</span>
+                )}
+              </Field>
+              <Field label="Guía">
+                {order.labelUrl ? (
+                  <a
+                    href={order.labelUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-amber-400 hover:underline"
+                  >
+                    Descargar guía (PDF)
+                  </a>
+                ) : (
+                  <span className="text-amber-100/30">
+                    {canHaveLabel
+                      ? "Guía en proceso"
+                      : "Aún no generada"}
+                  </span>
+                )}
+              </Field>
+              <Field label="Rastreo">
+                {order.trackingNumber ? (
+                  order.trackingUrl ? (
+                    <a
+                      href={order.trackingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-amber-400 hover:underline"
+                    >
+                      {order.trackingNumber}
+                    </a>
+                  ) : (
+                    order.trackingNumber
+                  )
+                ) : (
+                  <span className="text-amber-100/30">—</span>
+                )}
+              </Field>
+              <Field label="Estado del envío">
+                {order.shipmentStatus ? (
+                  <ShipmentStatusBadge status={order.shipmentStatus} />
+                ) : (
+                  <span className="text-amber-100/30">—</span>
                 )}
               </Field>
             </div>
