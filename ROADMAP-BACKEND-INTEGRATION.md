@@ -45,7 +45,7 @@ migración.
 | `DELETE /api/admin/users/:id` | `components/admin/ConfigSection.tsx` → `deleteAdminUser()` (`useMutation`, confirmación inline) | ✅ | — |
 | `PUT /api/admin/account` | `components/admin/ConfigSection.tsx` → `updateOwnAccount()` de `lib/api/account.ts` (`useMutation`) | ✅ | — |
 | `GET /api/admin/orders` | `components/admin/sections/OrdersSection.tsx` → `getAdminOrders()` de `lib/api/adminOrders.ts` (`useQuery` paginado + filtro de fecha) | ✅ | Vista base (**Fase 7**) + guía/rastreo Skydropx (**Fase 11**) |
-| `POST /api/admin/orders/:id/cancel` | `components/admin/orders/OrderDetailModal.tsx` *(pendiente de cablear)* → `cancelAdminOrder()` de `lib/api/adminOrders.ts` (cancela/reembolsa un pedido) | 🔴 | **Fase 12** — cablear botón de cancelar/reembolsar |
+| `POST /api/admin/orders/:id/cancel` | `components/admin/orders/OrderDetailModal.tsx` → `cancelAdminOrder()` de `lib/api/adminOrders.ts` (`useMutation`, botón "Cancelar / reembolsar pedido") | ✅ | Fase 12 |
 | `POST /api/orders` → `clientSecret` | `components/checkout/usePlaceOrder.ts` confirma el pago con Stripe.js (`confirmCardPayment` + `pm_card_visa`) usando el `clientSecret` que devuelve `createOrder()`; `PaymentSection.tsx` es el panel de tarjeta de prueba | ✅ | Fase 8 (Stripe, **test/sandbox**) |
 | `POST /api/webhooks/stripe` | *(lo invoca Stripe, no el front)* — el pago se confirma en el cliente; el webhook marca la orden `paid` | ✅ | Fase 8: backend activo (firma verificada); no requiere código de front |
 
@@ -363,7 +363,7 @@ ahora.
 **Salida:** el dueño imprime la guía y sigue el rastreo de cada pedido desde el panel, sin entrar
 al dashboard de Skydropx.
 
-### Fase 12 — Admin: cancelación/reembolso manual de pedidos 🔴 *(depende de Fase 7)*
+### Fase 12 — Admin: cancelación/reembolso manual de pedidos ✅ *(depende de Fase 7)*
 
 > **Contexto.** El backend agregó `POST /api/admin/orders/:id/cancel` (Fase H.5 del
 > `../backend/roadmap-hardening.md`) para atender una cancelación pedida **fuera del flujo de
@@ -387,25 +387,31 @@ al dashboard de Skydropx.
   `refundId` / `refundedAt` (ver `../backend/CLAUDE.md`, sección Order + "Manual order
   cancel/refund").
 
-**Trabajo del frontend (esta fase — pendiente):**
-1. 🔴 **Contrato Zod:** en `lib/api/adminOrders.ts` agregar `"refunded"` al enum de
+**Trabajo del frontend (esta fase — hecho):**
+1. ✅ **Contrato Zod:** `lib/api/adminOrders.ts` agrega `"refunded"` al enum de
    `paymentStatus` de `AdminOrderSchema` y los campos `refundId` / `refundedAt`
-   (`z.string().nullable().optional()` — `refundedAt` como fecha ISO). Exponer
-   `cancelAdminOrder(id, reason?)` (`POST /:id/cancel`, valida la respuesta `{ order }` con el
-   schema existente) y su mutation key.
-2. 🔴 **Acción en la UI:** botón "Cancelar / reembolsar pedido" en `OrderDetailModal.tsx`,
-   visible **solo** cuando `status` es `pending` o `paid` (oculto/deshabilitado en
+   (`z.string().nullable().optional()`). Expone `cancelAdminOrder(id, reason?)`
+   (`POST /:id/cancel`, valida la respuesta `{ order }` con `AdminOrderSchema`).
+2. ✅ **Acción en la UI:** botón "Cancelar / reembolsar pedido" en `OrderDetailModal.tsx`,
+   visible **solo** cuando `status` es `pending` o `paid` (`canCancel`, oculto en
    `shipped`/`delivered`/`cancelled`, que el backend rechaza con 409). Confirmación inline
-   (el reembolso es irreversible) con un campo opcional de motivo (`reason`, máx. 200).
-3. 🔴 **Mutation + invalidación:** `useMutation({ mutationFn: cancelAdminOrder })` que al
-   `onSuccess` invalide `adminOrderKeys.all` (refresca la lista paginada) y, si aplica,
-   `adminProductKeys.all` / `productKeys.all` (el restock cambió el stock visible en el catálogo).
-4. 🔴 **Badges de estado:** `StatusBadges.tsx` debe pintar el nuevo `paymentStatus: refunded`
-   (color/etiqueta propios, p. ej. "Reembolsado") — hoy solo mapea `unpaid`/`processing`/`paid`/
-   `failed`.
-5. 🔴 **Errores mapeados:** `409` (estado no cancelable) y `502` (falló el reembolso) se muestran
-   inline con el `message` del backend —copia UI accionable— sin cerrar el modal; `400`/`404`
-   igual.
+   (el reembolso es irreversible) con un textarea opcional de motivo (`reason`, máx. 200,
+   contador de caracteres) y aviso distinto según `pending` (libera stock) vs `paid`
+   (reembolso Stripe + restock). `refundId`/`refundedAt` se muestran en el modal cuando
+   existen (junto a Totales).
+3. ✅ **Mutation + invalidación:** `useMutation({ mutationFn: cancelAdminOrder })` en
+   `OrderDetailModal.tsx` que al `onSuccess` invalida `adminOrderKeys.all`,
+   `adminProductKeys.all` y `productKeys.all` (el restock cambia el stock visible en el
+   catálogo admin y el outlet público) y notifica al padre vía `onCancelled(order)` —
+   `OrdersSection.tsx` usa ese callback para mantener `viewing` sincronizado (el modal
+   no se cierra solo, sigue mostrando el pedido ya cancelado/reembolsado) y marca el
+   refresh como "manual" (`isManualRefreshRef`) para no disparar el toast de polling que
+   normalmente avisa de cambios traídos por el webhook de Skydropx.
+4. ✅ **Badges de estado:** `StatusBadges.tsx` pinta `paymentStatus: refunded` ("Reembolsado",
+   acento violeta) junto a `unpaid`/`processing`/`paid`/`failed`.
+5. ✅ **Errores mapeados:** `409` (estado no cancelable) y `502` (falló el reembolso) se
+   muestran inline con el `message` del backend —copia UI accionable— sin cerrar el modal;
+   `400`/`404` igual (`cancelOrderErrorMessage()`).
 
 **Salida:** el dueño cancela y reembolsa un pedido desde el panel, con el stock restablecido
 automáticamente y el reembolso reflejado en Stripe, sin tocar el dashboard de Stripe.
@@ -423,6 +429,6 @@ automáticamente y el reembolso reflejado en Stripe, sin tocar el dashboard de S
   vivo `POST /api/shipping/rates`, guía automática al pagar y webhook de estado —
   `../backend/roadmap-skydropx.md` Fases 8.1–8.6). El checkout ya cotiza en vivo (ver "Shipping"
   en `CLAUDE.md`) y el panel de pedidos ya muestra guía/rastreo (**Fase 11** ✅).
-- **Pendiente:** la **Fase 12** (cancelación/reembolso manual de pedidos) es la única fase abierta
-  del roadmap de integración — el backend ya expone `POST /api/admin/orders/:id/cancel` (Fase H.5
-  del `../backend/roadmap-hardening.md`) y falta cablear el botón en el panel de pedidos.
+- Ya no quedan fases pendientes del roadmap de integración: la **Fase 12** (cancelación/reembolso
+  manual de pedidos) cierra el mapa de endpoints — `POST /api/admin/orders/:id/cancel` (Fase H.5
+  del `../backend/roadmap-hardening.md`) ya está cableado en el panel de pedidos.

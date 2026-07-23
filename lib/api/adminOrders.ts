@@ -25,7 +25,7 @@ export type AdminOrderItem = z.infer<typeof AdminOrderItemSchema>;
 export const AdminOrderSchema = z.object({
   id: z.number(),
   status: z.enum(["pending", "paid", "shipped", "delivered", "cancelled"]),
-  paymentStatus: z.enum(["unpaid", "processing", "paid", "failed"]),
+  paymentStatus: z.enum(["unpaid", "processing", "paid", "failed", "refunded"]),
   subtotal: z.number(),
   savings: z.number(),
   shipping: z.number(),
@@ -54,6 +54,11 @@ export const AdminOrderSchema = z.object({
   trackingUrl: z.string().nullable().optional(),
   labelUrl: z.string().nullable().optional(),
   shipmentStatus: z.string().nullable().optional(),
+  // Cancelación/reembolso manual (Fase 12, POST /:id/cancel): pobladas solo
+  // cuando un pedido `paid` se cancela y el backend emite el reembolso total
+  // en Stripe. Un pedido `pending` cancelado no pasa por Stripe → quedan null.
+  refundId: z.string().nullable().optional(),
+  refundedAt: z.string().nullable().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
   items: z.array(AdminOrderItemSchema),
@@ -96,4 +101,17 @@ export async function getAdminOrders(
     params: { page, perPage, date },
   });
   return AdminOrderListResponseSchema.parse(data);
+}
+
+// POST /api/admin/orders/:id/cancel — cancelación/reembolso manual (Fase 12,
+// fuera del flujo de Stripe). Solo `pending`/`paid` son cancelables; el
+// backend rechaza `shipped`/`delivered`/`cancelled` con 409 (ver
+// ROADMAP-BACKEND-INTEGRATION.md). `reason` es una nota opcional para el log,
+// no cambia el resultado.
+export async function cancelAdminOrder(
+  id: number,
+  reason?: string
+): Promise<AdminOrder> {
+  const { data } = await api.post(`/admin/orders/${id}/cancel`, { reason });
+  return AdminOrderSchema.parse(data.order);
 }

@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import type { AdminOrder } from "@/lib/api/adminOrders";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
+import {
+  adminOrderKeys,
+  cancelAdminOrder,
+  type AdminOrder,
+} from "@/lib/api/adminOrders";
+import { adminProductKeys } from "@/lib/api/adminProducts";
+import { productKeys } from "@/lib/api/products";
 import { formatPrice } from "@/lib/utils";
 import { EASE_LUXE } from "@/lib/ui/motion";
 import {
@@ -14,6 +22,35 @@ import {
 interface Props {
   order: AdminOrder;
   onClose: () => void;
+  // El padre (OrdersSection) sincroniza su snapshot `viewing` con el pedido ya
+  // cancelado, para que el modal siga mostrando badges frescos sin cerrarse.
+  onCancelled?: (order: AdminOrder) => void;
+}
+
+const REASON_MAX = 200;
+
+// 409 (estado no cancelable) y 502 (falló el reembolso en Stripe) traen un
+// `message` accionable del backend — se muestra tal cual, sin genérico encima.
+function cancelOrderErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const message = error.response?.data?.message as string | undefined;
+    if (error.response?.status === 409) {
+      return (
+        message ??
+        "Este pedido ya no se puede cancelar (ya fue enviado, entregado o cancelado)."
+      );
+    }
+    if (error.response?.status === 502) {
+      return (
+        message ??
+        "No se pudo procesar el reembolso en Stripe. El pedido no se canceló — inténtalo de nuevo o revisa el dashboard de Stripe."
+      );
+    }
+    if (error.response?.status === 404) return "El pedido ya no existe.";
+    if (error.response?.status === 400)
+      return message ?? "Revisa los datos e inténtalo de nuevo.";
+  }
+  return "No pudimos cancelar el pedido. Inténtalo de nuevo.";
 }
 
 function formatDate(iso?: string): string | null {
@@ -53,9 +90,32 @@ const thR = `${th} text-right`;
 const td = "py-2.5 pr-4 last:pr-0 align-top";
 const tdR = `${td} text-right`;
 
-export default function OrderDetailModal({ order, onClose }: Props) {
+export default function OrderDetailModal({
+  order,
+  onClose,
+  onCancelled,
+}: Props) {
   const reduceMotion = useReducedMotion();
   const panelRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+
+  const canCancel = order.status === "pending" || order.status === "paid";
+
+  const cancelMutation = useMutation({
+    mutationFn: () => cancelAdminOrder(order.id, cancelReason.trim() || undefined),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: adminOrderKeys.all });
+      // El restock (pending) o el reembolso+restock (paid) cambia el stock
+      // visible en el catálogo admin y el outlet público.
+      queryClient.invalidateQueries({ queryKey: adminProductKeys.all });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
+      setConfirmingCancel(false);
+      setCancelReason("");
+      onCancelled?.(updated);
+    },
+  });
 
   // Escape para cerrar + trampa de foco (Tab/Shift+Tab cicla dentro del diálogo)
   // + foco inicial dentro del panel y restauración al cerrar + bloqueo del scroll
@@ -371,6 +431,108 @@ export default function OrderDetailModal({ order, onClose }: Props) {
                 </span>
               </Field>
             </div>
+
+            {(order.refundId || order.refundedAt) && (
+              <>
+                <div className="border-t border-stone-700/40" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <Field label="Reembolso">
+                    {order.refundId || (
+                      <span className="text-amber-100/30">—</span>
+                    )}
+                  </Field>
+                  <Field label="Reembolsado el">
+                    {formatDate(order.refundedAt ?? undefined) ?? (
+                      <span className="text-amber-100/30">—</span>
+                    )}
+                  </Field>
+                </div>
+              </>
+            )}
+
+            {canCancel && (
+              <>
+                <div className="border-t border-stone-700/40" />
+                <div>
+                  <span className={labelCls}>
+                    Cancelación / reembolso
+                  </span>
+                  {!confirmingCancel ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        cancelMutation.reset();
+                        setConfirmingCancel(true);
+                      }}
+                      className="text-[11px] uppercase tracking-[0.2em] text-red-400/80 border border-red-400/30 px-4 py-2 hover:text-red-300 hover:border-red-400/60 transition-colors cursor-pointer"
+                    >
+                      Cancelar / reembolsar pedido
+                    </button>
+                  ) : (
+                    <div className="space-y-3 border border-red-400/30 bg-red-500/5 rounded-md p-4">
+                      <p className="text-[13px] text-red-300 leading-relaxed">
+                        {order.status === "paid"
+                          ? "Se emitirá un reembolso total en Stripe y se restablecerá el stock. Esta acción es irreversible."
+                          : "Se liberará el stock reservado y el pedido quedará cancelado. Esta acción es irreversible."}
+                      </p>
+                      <div>
+                        <label
+                          htmlFor="cancel-reason"
+                          className={labelCls}
+                        >
+                          Motivo (opcional)
+                        </label>
+                        <textarea
+                          id="cancel-reason"
+                          value={cancelReason}
+                          onChange={(e) =>
+                            setCancelReason(e.target.value.slice(0, REASON_MAX))
+                          }
+                          maxLength={REASON_MAX}
+                          rows={2}
+                          placeholder="Ej. cliente pidió cancelar por WhatsApp"
+                          className="w-full bg-stone-900 border border-amber-400/20 text-amber-50 text-sm font-sans px-3 py-2 rounded resize-none hover:border-amber-400/40 focus-visible:border-amber-400/60 transition-colors"
+                        />
+                        <span className="block text-right text-[10px] text-amber-100/30 mt-1">
+                          {cancelReason.length}/{REASON_MAX}
+                        </span>
+                      </div>
+
+                      {cancelMutation.isError && (
+                        <p role="alert" className="text-[12px] text-red-400/90">
+                          {cancelOrderErrorMessage(cancelMutation.error)}
+                        </p>
+                      )}
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          disabled={cancelMutation.isPending}
+                          onClick={() => cancelMutation.mutate()}
+                          className="bg-red-600/80 border border-red-500/80 text-amber-50 uppercase tracking-[0.2em] text-[10px] px-5 py-2.5 hover:bg-red-600 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {cancelMutation.isPending
+                            ? "Cancelando…"
+                            : "Confirmar cancelación"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={cancelMutation.isPending}
+                          onClick={() => {
+                            setConfirmingCancel(false);
+                            setCancelReason("");
+                            cancelMutation.reset();
+                          }}
+                          className="text-[10px] uppercase tracking-widest text-amber-100/40 hover:text-amber-100/70 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          Volver
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Footer */}
