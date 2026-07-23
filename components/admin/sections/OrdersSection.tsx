@@ -114,6 +114,14 @@ export default function OrdersSection() {
     refetch();
   };
 
+  // El propio admin disparó el cambio al cancelar/reembolsar (no el webhook de
+  // Skydropx) — mismo trato que el refresh manual: sincroniza el modal sin
+  // disparar el toast de "pedido actualizado por el polling".
+  const handleOrderCancelled = (updated: AdminOrder) => {
+    isManualRefreshRef.current = true;
+    setViewing(updated);
+  };
+
   const handleDayChange = (value: string) => {
     setSelectedDay(value);
     setPage(1);
@@ -228,7 +236,11 @@ export default function OrdersSection() {
       )}
 
       {viewing && (
-        <OrderDetailModal order={viewing} onClose={() => setViewing(null)} />
+        <OrderDetailModal
+          order={viewing}
+          onClose={() => setViewing(null)}
+          onCancelled={handleOrderCancelled}
+        />
       )}
     </div>
   );

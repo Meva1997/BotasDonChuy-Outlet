@@ -29,6 +29,10 @@ export const PAYMENT_META: Record<
   },
   paid: { label: "Pagado", classes: "border-emerald-400 text-emerald-400" },
   failed: { label: "Fallido", classes: "border-red-400 text-red-400" },
+  refunded: {
+    label: "Reembolsado",
+    classes: "border-violet-400 text-violet-400",
+  },
 };
 
 const PILL_BASE =
