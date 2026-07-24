@@ -33,8 +33,8 @@ migración.
 | `DELETE /api/admin/products/:id` | `ProductCategoryView.tsx` / `ProductForm.tsx` → `deleteProduct()` (`useMutation`; soft/hard lo decide el backend) | ✅ | — |
 | `POST /api/admin/products/:id/images` | `ProductForm.tsx` → `addProductImages()` de `lib/api/adminProducts.ts` (galería de hasta 3, subida al guardar) | ✅ | — |
 | `DELETE /api/admin/products/:id/images` | `ProductForm.tsx` → `deleteProductImage()` (quitar una imagen por `publicId` al guardar) | ✅ | — |
-| `POST /api/admin/brand/logo` | `MarcaSection.tsx` *(pendiente de cablear)* — subida real del logo a Cloudinary | 🔴 | Cablear: multipart `logo` |
-| `DELETE /api/admin/brand/logo` | `MarcaSection.tsx` *(pendiente de cablear)* — quitar el logo | 🔴 | Cablear |
+| `POST /api/admin/brand/logo` | `MarcaSection.tsx` *(no se va a cablear por ahora)* — subida real del logo a Cloudinary | ⚪ | Sin trabajo previsto — decisión del dueño, ver Fase 5 |
+| `DELETE /api/admin/brand/logo` | `MarcaSection.tsx` *(no se va a cablear por ahora)* — quitar el logo | ⚪ | Sin trabajo previsto |
 | `GET /api/admin/dashboard` | `components/admin/DataSection.tsx` → `getAdminDashboard()` de `lib/api/dashboard.ts` (`useQuery`) | ✅ | — |
 | `GET /api/admin/reports/monthly` | `components/admin/ReportesSection.tsx` → `getMonthlyReport()` de `lib/api/reports.ts` (`useQuery`); pasa `reports` a `SalesReport` | ✅ | — |
 | `GET /api/admin/reports/replenishment` | `components/admin/reportes/ReplenishmentReport.tsx` → `getReplenishmentReport()` (`useQuery`) | ✅ | — |
@@ -131,16 +131,12 @@ migración.
 - **Mapeo:** `BrandSettings` es un **subconjunto** de `BRAND`. `resolveBrand(settings)` mergea
   backend ← `BRAND`: mapea `tagline` (string `\n`) → `taglineLines[]` y conserva
   `namePrimary`/`nameAccent`/`email`/`instagram` (que el backend no modela).
-- **Logo (backend listo — falta cablear el front):** Cloudinary ya está cableado con endpoints
-  dedicados. El **PUT de marca ya no acepta `logoUrl`** (si el autosave lo manda, se ignora); el logo
-  se gestiona aparte:
-  - `POST /api/admin/brand/logo` — **multipart/form-data**, campo `logo` (1 archivo, `png/jpeg/webp`,
-    ≤ 5 MB). Sube a Cloudinary (`botasdonchuy/brand`), **reemplaza y destruye el logo anterior**, y
-    devuelve `BrandSettings` con el `logoUrl` nuevo.
-  - `DELETE /api/admin/brand/logo` — quita el logo y lo borra de Cloudinary (`logoUrl: null`).
-  - En `MarcaSection`, reemplazar la preview local (`blob:`) por esta subida real. La **metadata**
-    (título del navegador) sigue estática en `BRAND.name` para no volver dinámico el render de todas
-    las rutas.
+- **Logo (backend listo — no se va a cablear por decisión del dueño):** Cloudinary ya está cableado
+  con endpoints dedicados (`POST`/`DELETE /api/admin/brand/logo`) y siguen disponibles si algún día
+  se retoma, pero **la tienda va a usar el nombre como logo** (marca secundaria, sin identidad gráfica
+  propia por ahora) — no hay plan de subir un logo real, así que no hay trabajo de frontend pendiente
+  aquí. El **PUT de marca ya no acepta `logoUrl`** (si el autosave lo manda, se ignora), lo cual sigue
+  siendo correcto en este escenario.
 
 ### Fase 6 — Admin: usuarios y cuenta ✅
 - ✅ `GET`/`POST`/`DELETE /api/admin/users` — contrato centralizado en
