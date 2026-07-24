@@ -314,7 +314,7 @@ ahora.
 
 ### Fase 11 — Admin: envíos y guía Skydropx en pedidos ✅ *(depende de Fase 7)*
 
-> **Contexto.** El backend ya integra Skydropx de punta a punta (`../backend/roadmap-skydropx.md`
+> **Contexto.** El backend ya integra Skydropx de punta a punta (`../backend/roadmaps-completados/roadmap-skydropx.md`
 > Fases 8.1–8.6): al confirmarse el pago genera la guía automáticamente y el webhook
 > `POST /api/webhooks/skydropx` puebla, en cuanto la paquetería la procesa (asíncrono),
 > `trackingNumber` / `trackingUrl` / `labelUrl` (PDF de la guía) / `shipmentStatus` en la orden.
@@ -327,7 +327,7 @@ ahora.
   por el webhook de Skydropx: `labelUrl` (PDF de la guía para imprimir), `trackingNumber`,
   `trackingUrl` (rastreo del carrier), `shipmentStatus` (estado crudo: `in_transit`,
   `delivered`, etc.) y `skydropxShipmentId`. Nacen `null` y se llenan cuando el webhook los
-  reporta (la creación de la guía es asíncrona — ver `roadmap-skydropx.md` §Fase 8.5/8.6).
+  reporta (la creación de la guía es asíncrona — ver `roadmaps-completados/roadmap-skydropx.md` §Fase 8.5/8.6).
 - `Order.status` avanza solo hacia adelante (`paid` → `shipped` → `delivered`) desde el mismo
   webhook, así que el estado del pedido ya refleja el envío sin polling.
 - `shippingRequiresDropoff` (bandera operativa: la paquetería no recoge a domicilio, hay que
@@ -362,7 +362,7 @@ al dashboard de Skydropx.
 ### Fase 12 — Admin: cancelación/reembolso manual de pedidos ✅ *(depende de Fase 7)*
 
 > **Contexto.** El backend agregó `POST /api/admin/orders/:id/cancel` (Fase H.5 del
-> `../backend/roadmap-hardening.md`) para atender una cancelación pedida **fuera del flujo de
+> `../backend/roadmaps-completados/roadmap-hardening.md`) para atender una cancelación pedida **fuera del flujo de
 > Stripe** (WhatsApp, llamada): un pedido `pending` libera el stock reservado; un pedido `paid`
 > se **reembolsa en Stripe** (reembolso total) y luego se restockea. Hoy el panel de pedidos es
 > **solo lectura** (Fase 7) — no hay ninguna acción para cancelar. Esta fase cablea ese botón.
@@ -423,8 +423,8 @@ automáticamente y el reembolso reflejado en Stripe, sin tocar el dashboard de S
   autenticadas — nunca en el catálogo público.
 - **Envíos (Skydropx):** el backend **ya integra Skydropx de punta a punta** (cotización en
   vivo `POST /api/shipping/rates`, guía automática al pagar y webhook de estado —
-  `../backend/roadmap-skydropx.md` Fases 8.1–8.6). El checkout ya cotiza en vivo (ver "Shipping"
+  `../backend/roadmaps-completados/roadmap-skydropx.md` Fases 8.1–8.6). El checkout ya cotiza en vivo (ver "Shipping"
   en `CLAUDE.md`) y el panel de pedidos ya muestra guía/rastreo (**Fase 11** ✅).
 - Ya no quedan fases pendientes del roadmap de integración: la **Fase 12** (cancelación/reembolso
   manual de pedidos) cierra el mapa de endpoints — `POST /api/admin/orders/:id/cancel` (Fase H.5
-  del `../backend/roadmap-hardening.md`) ya está cableado en el panel de pedidos.
+  del `../backend/roadmaps-completados/roadmap-hardening.md`) ya está cableado en el panel de pedidos.
