@@ -16,7 +16,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **sileo** — toast notifications (admin panel only)
 - **pnpm** as package manager
 
-> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`) but no specs exist yet.
+> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). The only specs today cover the Excel import's pure modules (`components/admin/import/__tests__/`).
 
 ## Commands
 
@@ -63,12 +63,14 @@ components/
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
   nosotros/       # AboutUs — static "About Us" page
   auth/           # AuthShell, LoginForm, ForgotPasswordForm (+ CodeInput/ResetCodeForm/NewPasswordForm), AdminGuard
-  admin/          # Sidebar, types.ts + sections/ (Marca, Productos, Pedidos, Datos, Reportes, Configuración)
+  admin/          # Sidebar, types.ts + sections/ (Marca, Productos, Importar, Pedidos, Datos, Reportes, Configuración)
                   #   data/ — chart/table subcomponents (recharts)
                   #   reportes/ — SalesReport (historical) + ReplenishmentReport (forecast)
+                  #   import/ — Excel import review screen: pure modules (types, rowInput, importReducer,
+                  #   dependencies, labels — the only ones with Jest specs) + presentational components
 lib/
   api/            # axios client + per-domain contracts (Zod schemas + fetchers + query keys):
-                  #   auth, products, adminProducts, adminOrders, adminUsers, account,
+                  #   auth, products, adminProducts, adminProductImport, adminOrders, adminUsers, account,
                   #   dashboard, reports, brand, orders, shipping (live Skydropx rate quotes)
   domain/         # pure business logic: cart.ts (totals + shared item/signature helpers),
                   #   brand.ts (fallback identity), categories.ts
@@ -83,6 +85,10 @@ schemas/
 store/
   cartStore.ts    # Zustand cart store with localStorage persistence
   authStore.ts    # Zustand auth store (token + user) — admin session, persisted
+  importStore.ts  # Zustand store (no persist) — Excel import review state, kept outside the
+                  #   component tree so an in-progress review survives switching admin tabs
+scripts/
+  generate-plantilla-importacion.mjs  # one-off script that generated public/plantilla-importacion-productos.xlsx
 ```
 
 See `CLAUDE.md` for the full architecture reference (file-by-file responsibilities, auth/data-fetching patterns, checkout internals, reports/forecast pipeline, and the backend contract).
@@ -157,11 +163,12 @@ Shipping is quoted **live** against Skydropx from checkout step 3 (see above) �
 
 ## Admin panel
 
-`/admin` has six sections (`components/admin/sections/`), all connected to the real backend:
+`/admin` has seven sections (`components/admin/sections/`), all connected to the real backend:
 
 - **Marca** — brand identity/copy editor (autosaved).
 - **Productos** — catalog CRUD, including a Cloudinary-backed image gallery (up to 3 images per product).
-- **Pedidos** — read-only, paginated order listing with a detail modal (includes cost/margin, admin-only).
+- **Importar** — bulk Excel import/restock: upload → preview (no writes) → review/edit → commit. Restock only ever adds stock and can't be undone from the app, so the review screen enforces several invariants (rows that already wrote lock for the session, dependent rows across the same file get flagged, etc.) — see `CLAUDE.md`'s "Importación por Excel" for the full list.
+- **Pedidos** — read-only, paginated order listing with a detail modal (includes cost/margin, admin-only) plus manual cancel/refund.
 - **Datos** — KPIs, revenue chart, inventory and recent-sales tables (7/30/90-day windows).
 - **Reportes** — monthly sales history feeding an auto-scaling replenishment forecast (simple average → weighted+trend → Holt exponential smoothing, depending on history depth); both export to CSV.
 - **Configuración** — own account settings + admin user management, and logout.

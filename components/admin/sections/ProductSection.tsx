@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { FileSpreadsheet } from "lucide-react";
 import { adminProductKeys, getAdminProducts } from "@/lib/api/adminProducts";
 import { CATEGORIES, type CategoryInfo } from "@/lib/domain/categories";
 import ProductCategoryView from "../products/ProductCategoryView";
@@ -23,6 +24,14 @@ export default function ProductSection() {
     } else {
       params.delete("categoria");
     }
+    router.push(`?${params.toString()}`);
+  };
+
+  // Navega a otra sección del panel (misma mecánica que el Sidebar: la sección vive en ?seccion).
+  const selectSection = (section: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("seccion", section);
+    params.delete("categoria");
     router.push(`?${params.toString()}`);
   };
 
@@ -77,11 +86,24 @@ export default function ProductSection() {
   return (
     <>
       {/* Header */}
-      <div className="mb-8 flex flex-col items-start">
-        <h2 className="font-serif text-amber-50 text-3xl mb-2">Productos</h2>
-        <p className="text-amber-100/40 text-sm leading-relaxed">
-          Listado de productos disponibles al público
-        </p>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between max-w-6xl">
+        <div className="flex flex-col items-start">
+          <h2 className="font-serif text-amber-50 text-3xl mb-2">Productos</h2>
+          <p className="text-amber-100/40 text-sm leading-relaxed">
+            Listado de productos disponibles al público
+          </p>
+        </div>
+        {/* Acceso a la importación masiva desde donde el dueño gestiona el catálogo; la
+            sección tiene su propia entrada en el Sidebar (la pantalla de revisión necesita
+            todo el ancho). */}
+        <button
+          type="button"
+          onClick={() => selectSection("importar")}
+          className="shrink-0 flex items-center gap-2.5 border border-amber-400/60 text-amber-400 text-[10px] tracking-[0.25em] uppercase px-5 py-3 hover:bg-amber-400/10 transition-colors cursor-pointer"
+        >
+          <FileSpreadsheet className="size-4" strokeWidth={1.5} />
+          Importar Excel
+        </button>
       </div>
 
       {/* Category grid */}
