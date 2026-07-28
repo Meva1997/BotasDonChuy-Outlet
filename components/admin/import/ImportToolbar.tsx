@@ -255,8 +255,13 @@ export default function ImportToolbar({
         </p>
       )}
 
+      {/* `role="alert"` va en el contenedor, no en el <p>: el botón de reparación es parte del
+          aviso, y así se anuncia junto con el problema en vez de quedar fuera de la región. */}
       {dependencies.broken.length > 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 text-[12px] leading-relaxed text-red-400/90 border border-red-500/30 bg-red-500/5 rounded-md px-4 py-2.5">
+        <div
+          role="alert"
+          className="flex flex-col sm:flex-row sm:items-center gap-3 text-[12px] leading-relaxed text-red-400/90 border border-red-500/30 bg-red-500/5 rounded-md px-4 py-2.5"
+        >
           <AlertTriangle className="size-4 shrink-0" strokeWidth={1.5} />
           <p className="flex-1">
             {rowCount(dependencies.broken.length)}{" "}

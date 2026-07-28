@@ -1,72 +1,30 @@
-import type {
-  ImportPreviewResponse,
-  ImportRowPlan,
-  ImportCommitResponse,
-} from "@/lib/api/adminProductImport";
+import type { ImportCommitResponse } from "@/lib/api/adminProductImport";
 import {
   buildCommitRows,
   canReanalyze,
   countByAction,
+  duplicateCooldownSeconds,
   importReducer,
-  initialImportState,
   isSameBatchAsLast,
   localErrorsFor,
+  resultForIndex,
   selectableIndexes,
-  type ImportEvent,
-} from "../importReducer";
-import { analyzeDependencies } from "../dependencies";
-import type { ImportState } from "../types";
+  DUPLICATE_WINDOW_MS,
+} from "../../importReducer";
+import {
+  loadedState as loaded,
+  makePlan,
+  makePlanRow as planRow,
+  makeCommitResponse,
+  makeRowResult,
+  reduce,
+} from "../helpers/factories";
 
 // El invariante que más importa aquí: una fila aplicada con éxito NUNCA puede volver al
 // payload. El restock SUMA stock, así que reenviarla duplica piezas y no hay forma de
 // deshacerlo desde el panel.
-
-function planRow(overrides: Partial<ImportRowPlan> & Pick<ImportRowPlan, "row" | "action">): ImportRowPlan {
-  return {
-    code: null,
-    name: null,
-    productId: null,
-    before: null,
-    after: null,
-    changes: [],
-    sizeChanges: [],
-    reactivated: false,
-    warnings: [],
-    message: "",
-    input: {},
-    ...overrides,
-  };
-}
-
-function makePlan(rows: ImportRowPlan[]): ImportPreviewResponse {
-  return {
-    summary: {
-      total: rows.length,
-      created: rows.filter((r) => r.action === "create").length,
-      updated: rows.filter((r) => r.action === "update").length,
-      unchanged: rows.filter((r) => r.action === "unchanged").length,
-      failed: rows.filter((r) => r.action === "error").length,
-    },
-    warnings: [],
-    rows,
-  };
-}
-
-function reduce(state: ImportState, ...events: ImportEvent[]): ImportState {
-  return events.reduce(importReducer, state);
-}
-
-function loaded(plan: ImportPreviewResponse): ImportState {
-  const withFile = importReducer(initialImportState, {
-    type: "fileAccepted",
-    file: new File([""], "x.xlsx"),
-  });
-  return importReducer(withFile, {
-    type: "previewLoaded",
-    plan,
-    analysisId: withFile.analysisId,
-  });
-}
+//
+// Las dependencias entre filas del mismo archivo se prueban aparte, en dependencies.test.ts.
 
 describe("selección por defecto", () => {
   it("marca create y update, deja fuera error y unchanged", () => {
@@ -231,66 +189,125 @@ describe("ediciones", () => {
   });
 });
 
-describe("dependencias entre filas del mismo archivo", () => {
-  // La fila 2 crea BTA-9 y la fila 5 le suma stock: el preview resolvió la segunda contra la
-  // proyección de la primera, así que `productId` es null aunque sea un "update".
+describe("navegación de la revisión", () => {
   const plan = makePlan([
-    planRow({ row: 2, action: "create", code: "BTA-9", input: { code: "BTA-9" } }),
-    planRow({ row: 5, action: "update", code: "BTA-9", productId: null, input: { code: "BTA-9" } }),
+    planRow({ row: 2, action: "create" }),
+    planRow({ row: 3, action: "unchanged" }),
   ]);
 
-  it("no alarma mientras la fila que crea el producto siga seleccionada", () => {
-    const report = analyzeDependencies(loaded(plan));
-    expect(report.byIndex[1].providerIndex).toBe(0);
-    expect(report.byIndex[1].satisfied).toBe(true);
-    expect(report.broken).toHaveLength(0);
+  it("expande y colapsa una fila sin tocar a las demás", () => {
+    const state = reduce(loaded(plan), { type: "toggleExpanded", index: 0 });
+    expect(state.expanded).toEqual({ 0: true });
+    expect(reduce(state, { type: "toggleExpanded", index: 0 }).expanded[0]).toBe(false);
   });
 
-  it("detecta la dependencia rota al deseleccionar la fila que crea", () => {
-    const state = importReducer(loaded(plan), { type: "toggleRow", index: 0 });
-    const report = analyzeDependencies(state);
-    expect(report.broken.map((d) => d.index)).toEqual([1]);
-    expect(report.missingProviders).toEqual([0]);
-  });
-
-  it("editar el código de la fila que crea también rompe la dependencia", () => {
-    const state = importReducer(loaded(plan), {
-      type: "editCell",
-      index: 0,
-      field: "code",
-      text: "BTA-8",
-    });
-    expect(analyzeDependencies(state).broken.map((d) => d.index)).toEqual([1]);
-  });
-
-  it("no alarma si la fila dependiente tampoco se va a aplicar", () => {
+  it("cambia el filtro y alterna el grupo sin cambios", () => {
     const state = reduce(
       loaded(plan),
-      { type: "toggleRow", index: 0 },
-      { type: "toggleRow", index: 1 }
+      { type: "setFilter", filter: "update" },
+      { type: "toggleUnchangedGroup" }
     );
-    expect(analyzeDependencies(state).broken).toHaveLength(0);
+    expect(state.filter).toBe("update");
+    // El plan no es solo-unchanged, así que arrancó cerrado y este evento lo abre.
+    expect(state.showUnchanged).toBe(true);
   });
 
-  it("señala dos altas del mismo producto en el mismo archivo", () => {
-    const duped = makePlan([
-      planRow({ row: 2, action: "create", input: { code: "BTA-9" } }),
-      planRow({ row: 3, action: "create", input: { code: "bta-9" } }),
-    ]);
-    expect(analyzeDependencies(loaded(duped)).duplicateCreates).toEqual([[0, 1]]);
+  it("«selectOnly» reemplaza la selección entera, no la suma", () => {
+    const state = reduce(loaded(plan), { type: "selectOnly", indexes: [1] });
+    expect(state.selected).toEqual({ 0: false, 1: true });
+  });
+
+  it("«setRowsSelected» solo toca los índices que recibe", () => {
+    const state = reduce(loaded(plan), {
+      type: "setRowsSelected",
+      indexes: [1],
+      selected: true,
+    });
+    expect(state.selected).toEqual({ 0: true, 1: true });
+  });
+
+  it("empezar de nuevo vacía todo y sube el analysisId (descarta un preview en vuelo)", () => {
+    const before = reduce(loaded(plan), { type: "toggleExpanded", index: 0 });
+    const after = reduce(before, { type: "reset" });
+    expect(after.plan).toBeNull();
+    expect(after.file).toBeNull();
+    expect(after.phase).toBe("idle");
+    expect(after.analysisId).toBe(before.analysisId + 1);
   });
 });
 
 describe("protección contra el 409 de doble envío", () => {
+  const result = {
+    response: makeCommitResponse([]),
+    sentIndices: [0],
+    sentRows: [{ row: 2, code: "A", sizes: "26x2" }],
+    sentAt: 0,
+  };
+
   it("reconoce el mismo lote aunque cambie el orden de las claves o el folio", () => {
-    const result = {
-      response: { summary: { total: 1, created: 1, updated: 0, unchanged: 0, failed: 0 }, rows: [] },
-      sentIndices: [0],
-      sentRows: [{ row: 2, code: "A", sizes: "26x2" }],
-      sentAt: 0,
-    };
     expect(isSameBatchAsLast([{ sizes: "26x2", code: "A", row: 9 }], result)).toBe(true);
     expect(isSameBatchAsLast([{ code: "A", sizes: "26x3" }], result)).toBe(false);
+  });
+
+  it("un subconjunto (reintentar solo las fallidas) NO es el mismo lote", () => {
+    const twoRows = { ...result, sentRows: [{ row: 2, code: "A" }, { row: 3, code: "B" }] };
+    expect(isSameBatchAsLast([{ code: "B" }], twoRows)).toBe(false);
+  });
+
+  it("sin un envío previo nunca hay lote repetido", () => {
+    expect(isSameBatchAsLast([{ code: "A" }], null)).toBe(false);
+  });
+
+  it("la cuenta regresiva se agota al cerrarse la ventana del backend", () => {
+    expect(duplicateCooldownSeconds(result, 0)).toBe(DUPLICATE_WINDOW_MS / 1000);
+    expect(duplicateCooldownSeconds(result, DUPLICATE_WINDOW_MS + 1)).toBe(0);
+    expect(duplicateCooldownSeconds(null, 0)).toBe(0);
+  });
+});
+
+describe("emparejamiento del resultado con las filas del plan", () => {
+  const plan = makePlan([
+    planRow({ row: 2, action: "create" }),
+    planRow({ row: 7, action: "update" }),
+  ]);
+
+  it("empareja por POSICIÓN, no por folio (los folios pueden repetirse)", () => {
+    // Ambas filas del archivo traen el mismo folio: solo la posición desambigua.
+    const dupedFolios = makePlan([
+      planRow({ row: 2, action: "create" }),
+      planRow({ row: 2, action: "update" }),
+    ]);
+    const outcome = {
+      response: makeCommitResponse([
+        makeRowResult({ row: 2, status: "created", message: "creado" }),
+        makeRowResult({ row: 2, status: "error", message: "falló" }),
+      ]),
+      sentIndices: [0, 1],
+      sentRows: [{ row: 2 }, { row: 2 }],
+      sentAt: 0,
+    };
+    expect(resultForIndex(outcome, dupedFolios, 1)?.status).toBe("error");
+  });
+
+  it("cae al folio si los largos no cuadran, y no inventa nada si tampoco existe", () => {
+    const outcome = {
+      response: makeCommitResponse([makeRowResult({ row: 7, status: "updated" })]),
+      sentIndices: [0, 1],
+      sentRows: [{ row: 2 }, { row: 7 }],
+      sentAt: 0,
+    };
+    expect(resultForIndex(outcome, plan, 1)?.status).toBe("updated");
+    expect(resultForIndex(outcome, plan, 0)).toBeUndefined();
+  });
+
+  it("una fila que no se envió no tiene resultado", () => {
+    const outcome = {
+      response: makeCommitResponse([makeRowResult({ row: 2, status: "created" })]),
+      sentIndices: [0],
+      sentRows: [{ row: 2 }],
+      sentAt: 0,
+    };
+    expect(resultForIndex(outcome, plan, 1)).toBeUndefined();
   });
 });
 

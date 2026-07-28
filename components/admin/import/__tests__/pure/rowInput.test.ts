@@ -9,8 +9,8 @@ import {
   serializeRowEdit,
   stalenessOf,
   validateRowEdit,
-} from "../rowInput";
-import { EDITABLE_FIELDS } from "../types";
+} from "../../rowInput";
+import { EDITABLE_FIELDS } from "../../types";
 
 // Los primeros tests del repo. Cubren el módulo donde vive el riesgo real de la importación:
 // si `serializeRowEdit` emite una clave de más, el backend responde 400 y muere el LOTE ENTERO;
