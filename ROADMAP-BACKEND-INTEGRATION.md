@@ -48,6 +48,8 @@ migración.
 | `POST /api/admin/orders/:id/cancel` | `components/admin/orders/OrderDetailModal.tsx` → `cancelAdminOrder()` de `lib/api/adminOrders.ts` (`useMutation`, botón "Cancelar / reembolsar pedido") | ✅ | Fase 12 |
 | `POST /api/orders` → `clientSecret` | `components/checkout/usePlaceOrder.ts` confirma el pago con Stripe.js (`confirmCardPayment` + `pm_card_visa`) usando el `clientSecret` que devuelve `createOrder()`; `PaymentSection.tsx` es el panel de tarjeta de prueba | ✅ | Fase 8 (Stripe, **test/sandbox**) |
 | `POST /api/webhooks/stripe` | *(lo invoca Stripe, no el front)* — el pago se confirma en el cliente; el webhook marca la orden `paid` | ✅ | Fase 8: backend activo (firma verificada); no requiere código de front |
+| `POST /api/admin/products/import/preview` | `components/admin/sections/ImportSection.tsx` → `previewProductImport()` de `lib/api/adminProductImport.ts` (`useMutation`, multipart) | ✅ | Fase 13 |
+| `POST /api/admin/products/import` | `ImportSection.tsx` → `commitProductImport()` (`useMutation` + invalidación de `adminProductKeys`/`productKeys`) | ✅ | Fase 13 |
 
 ## Fases (orden sugerido)
 
@@ -412,6 +414,143 @@ al dashboard de Skydropx.
 **Salida:** el dueño cancela y reembolsa un pedido desde el panel, con el stock restablecido
 automáticamente y el reembolso reflejado en Stripe, sin tocar el dashboard de Stripe.
 
+### Fase 13 — Admin: importación/restock masivo de productos vía Excel ✅
+
+> **Contexto.** El backend agregó la importación masiva por Excel para que el dueño pueda subir un
+> `.xlsx` cuando llega mercancía nueva (productos nuevos + restock de los existentes) en vez de
+> editar producto por producto. Son **dos endpoints**: uno previsualiza y otro aplica. Hoy no hay
+> ninguna UI que los consuma — es puramente backend hasta esta fase.
+>
+> **Por qué el flujo es de dos pasos y la pantalla de revisión no es opcional:** el restock **suma**
+> stock y **no hay forma de deshacerlo** desde la app. Si el dueño aplica un archivo a ciegas y
+> traía una fórmula que no se pudo leer, una columna mal escrita o un nombre que empareja con el
+> producto equivocado, la corrección es manual producto por producto. Por eso el paso 1 nunca
+> escribe nada y el paso 2 recibe lo que el dueño **vio y corrigió en pantalla**, no el archivo.
+
+**Lo que el backend ya hace (referencia — no tocar):**
+
+- **Paso 1 · `POST /api/admin/products/import/preview` `[auth]`** — multipart/form-data, campo
+  `file` (máx. 2 MB, solo `.xlsx`, máx. **500 filas**). **No escribe nada.** Encabezado canónico en
+  español: `Código | Nombre | Categoría | Descripción | Precio original | Precio oferta | Costo
+  unitario | Tallas | Peso (kg) | Largo (cm) | Ancho (cm) | Alto (cm) | Visible` (insensible a
+  acentos/mayúsculas, con alias comunes tipo `SKU`/`Tipo`). Responde `200` con
+  `{ summary, warnings, rows }`:
+  - `summary`: `{ total, created, updated, unchanged, failed }`.
+  - `warnings` (nivel archivo): `string[]`, p. ej. columnas que **no se reconocieron y no se van a
+    importar** — hay que mostrarlas, es el aviso que evita una importación fantasma.
+  - `rows[]`: por fila, `{ row, action, code, name, productId, before, after, changes, sizeChanges,
+    reactivated, warnings, message, input }`.
+    - `action`: `"create"` · `"update"` · `"unchanged"` (empareja pero no cambia nada) · `"error"`.
+    - `before`: el producto tal como está hoy (`null` si se va a crear) · `after`: cómo quedaría.
+      Ambos con la forma `{ id, code, name, type, description, originalPrice, salePrice, unitCost,
+      weightKg, lengthCm, widthCm, heightCm, visible, discontinued, sizes: [{size, stock}], stock }`.
+    - `changes`: solo los campos escalares que cambian → `{ field, label, before, after }` (`label`
+      ya viene en español, listo para la tabla).
+    - `sizeChanges`: `{ size, before, added, after }` — **`added` se SUMA a `before`**, no lo
+      reemplaza. Es el dato que más conviene resaltar en la UI.
+    - `warnings` (por fila): interpretaciones a confirmar (coma decimal, celda con formato de
+      fecha, código que solo difiere en mayúsculas) o el aviso de que la fila no cambia nada.
+    - `input`: **la fila que hay que devolver al backend** en el paso 2 (editada si hace falta).
+- **Paso 2 · `POST /api/admin/products/import` `[auth]`** — **JSON**, `{ rows: [...] }` con los
+  `input` del preview. Responde `200` con `{ summary, rows: [{ row, status: "created" | "updated" |
+  "unchanged" | "error", code, name, productId?, message }] }`.
+  - En cada `input`, una clave **ausente** significa "no toques esa columna del producto"; `null`
+    equivale a omitirla. **No se aceptan claves desconocidas** (400) — no manden el objeto de
+    preview completo, solo `input`.
+  - `sizes` acepta `"25, 26, 26"` (una ocurrencia = una unidad) **o `"26x20"`** (20 piezas de la
+    26), mezclables. La notación `x` es la que hace usable el restock en una hoja de cálculo.
+  - Enviar el **mismo lote dos veces en menos de 60 s** responde **`409`** (protección de doble
+    clic). El `message` explica que el stock se duplicaría; mostrarlo tal cual.
+- Emparejamiento por `Código` (insensible a mayúsculas) o, si la fila no lo trae, por `Nombre`
+  exacto insensible a mayúsculas. Un valor que empareja con **más de un producto** es ambiguo y esa
+  fila sale como `error` pidiendo un código. Sin match crea un producto nuevo; con match actualiza
+  **sin borrar** ningún campo que la fila no mencione. Un producto descontinuado que hace match se
+  reactiva (`reactivated: true`).
+- Éxito parcial: una fila inválida no bloquea las demás, ni en el preview ni al confirmar. Todo
+  `message` ya es una oración en español lista para mostrar tal cual (mismo criterio que el resto
+  del backend, ver `../backend/CLAUDE.md` sección "Error messages are the frontend's UI copy").
+- Ver `../backend/CLAUDE.md`, sección **"Importación/restock masivo de productos"**, para el
+  detalle completo (upsert aditivo, índice único parcial en `code`, lectura de celdas, etc.).
+
+**Trabajo del frontend (esta fase — hecho):**
+1. ✅ **Sección propia `importar`** en el Sidebar (la pantalla de revisión necesita todo el ancho)
+   **más** un botón "Importar Excel" en la cabecera de `ProductSection.tsx` que navega a
+   `?seccion=importar`, para que se descubra desde donde el dueño gestiona el catálogo.
+2. ✅ `lib/api/adminProductImport.ts` expone `previewProductImport(file)` (`FormData`, campo
+   `file`, `Content-Type: multipart/form-data`) y `commitProductImport(rows)` (JSON), con Zod:
+   **preview con `.parse()` estricto** (es de solo lectura y un parse fallido es reintentable sin
+   riesgo) y **commit con `safeParse` + `console.warn` + dato crudo** (razonamiento de
+   `acceptWrite`: un 2xx ya escribió, y convertirlo en error invitaría a un reintento que
+   **duplica el stock**). `importPreviewErrorMessage()`/`importCommitErrorMessage()` mapean los
+   status prefiriendo el `message` del backend.
+3. ✅ **Pantalla de revisión** (`components/admin/import/`): `warnings` de archivo fijos arriba
+   (`ImportWarnings`, colapsable pero con el conteo siempre visible), una fila por `rows[]`
+   filtrable por acción con badge propio, diff campo por campo (`ImportDiff`) y la aritmética de
+   stock por talla como ecuación explícita `antes + suma = queda` (`ImportSizeDiff`, el bloque
+   con más peso visual de la pantalla porque es la operación irreversible). `create` muestra los
+   valores de `after`; `error` muestra el `message` tal cual y deja corregir la fila ahí mismo.
+   Los `warnings` por fila se muestran junto a la fila, y su conteo aparece en la cabecera
+   colapsada para que una fila cerrada nunca esconda un aviso.
+4. ✅ **Edición inline** (`ImportRowEditor`/`EditableCell`) con un **modelo de presencia
+   explícita**: cada celda lleva `presence: "absent" | "present"` aparte del texto, porque en el
+   contrato una clave ausente significa "no toques esa columna" pero `description: ""` **sí**
+   borra la descripción — y el valor de un `<input>` siempre es un string. Teclear y borrar
+   significa `""`; a "ausente" solo se llega por el control "No tocar". `visible` es un
+   tri-estado (`No tocar`/`Sí`/`No`) por el mismo motivo.
+   > ⚠️ **Re-previsualizar tras editar es imposible con este contrato**: `/import/preview` solo
+   > acepta un archivo, así que re-subirlo devuelve el mismo plan e ignora las ediciones. En vez
+   > de fingirlo, la UI **suprime el diff que dejó de ser cierto**: editar `code`/`name` invalida
+   > todo (la fila puede emparejar con otro producto), editar otro campo suprime solo lo afectado,
+   > y en su lugar se muestra un **diff local de la instrucción** ("Cambios que hiciste a la
+   > fila"), que es lo único que sí se puede afirmar con certeza.
+5. ✅ Checkbox por fila (por defecto todas menos `error` y `unchanged`; las `unchanged` van en un
+   grupo colapsado tras un contador para no enterrar lo relevante) + botón **"Aplicar N filas"**
+   en una **barra fija** con el doble conteo (lo que trae el archivo vs. lo que se va a aplicar),
+   para que en un archivo de 500 filas el compromiso nunca quede fuera de pantalla.
+6. ✅ Todo se deshabilita mientras la petición está en vuelo, pero **la tabla no se desmonta**:
+   si el commit falla, no se pierden las ediciones ni la selección.
+7. ✅ `ImportResults` muestra el resumen (contadores animados) + el detalle por fila, con
+   "Corregir las filas con error" que reselecciona **solo** las fallidas.
+8. ✅ `onSuccess` invalida `adminProductKeys.all` + `productKeys.all` — también con
+   `summary.failed > 0` (un éxito parcial sí escribió) y también si el Zod del cuerpo falló.
+9. ✅ Plantilla `public/plantilla-importacion-productos.xlsx` (descargable desde el dropzone),
+   generada por `scripts/generate-plantilla-importacion.mjs` con el `exceljs` **del backend**
+   (cero dependencias nuevas en el frontend). Trae el encabezado canónico, tres filas de ejemplo
+   —una de ellas demuestra `26x20`— y una hoja "Instrucciones". Además, panel plegable
+   "Formato del archivo" en la UI.
+
+**Decisiones de diseño que conviene no revertir sin leer esto:**
+- **El estado vive en `store/importStore.ts` (Zustand, SIN `persist`)**, no en el componente: el
+  panel desmonta la sección activa al cambiar de pestaña del Sidebar, y perder una revisión a
+  medias obligaría a rehacerlo todo. Sin `persist` a propósito: un plan restaurado tras recargar
+  se calculó contra un catálogo que pudo cambiar, y presentarlo como fresco es la misma mentira
+  que un diff desactualizado pero más difícil de notar.
+- **Todo se clavea por el ÍNDICE de `plan.rows`, nunca por el folio `row`** (dato externo,
+  opcional en el contrato y potencialmente repetido). El merge del resultado del commit es
+  **posicional** (`response.rows[k]` ↔ `sentIndices[k]`), con fallback por folio.
+- **Una fila aplicada con éxito nunca vuelve al payload** (`applied` en el reducer). El restock
+  suma; el candado es estructural, no una convención de quien arme el siguiente lote.
+- **Dependencias entre filas del mismo archivo**: el preview resuelve contra un catálogo virtual,
+  así que deseleccionar la fila que crea `BTA-9` cambia el resultado de la que lo restockea.
+  `dependencies.ts` lo detecta con una señal exacta (`action === "update" && productId === null`),
+  lo avisa y ofrece "Seleccionar las filas faltantes" — sin bloquear (confirmación inline).
+- **Los conteos se derivan de `rows`, no del `summary`** (que solo se usa como verificación
+  cruzada con `console.warn`): la tabla es lo que el dueño puede auditar.
+- **`serializeRowEdit` usa una whitelist** (`EDITABLE_FIELDS ... satisfies keyof ImportRowInput`),
+  también para las filas no editadas: el body del commit es `.strict()`, así que una clave que el
+  preview devuelva y el commit no acepte mataría el **lote entero** con un 400.
+- El **409 de doble envío** se pre-detecta en cliente comparando contra el último lote enviado
+  (reintentar solo las fallidas es un subconjunto y no se bloquea, pero reintentar *todas* cuando
+  todas fallaron sí daría 409 sin haber escrito nada).
+
+**Tests** (`components/admin/import/__tests__/`, los primeros del repo): 38 casos sobre los
+módulos puros — round-trip ausente ↔ `""`, coerción de `"1,250.50"`/`"1,5"`/basura, la whitelist
+de serialización, el candado de filas aplicadas, y el detector de dependencias.
+
+**Salida:** el dueño sube un Excel con mercancía nueva/restock, **revisa en pantalla lo viejo vs.
+lo nuevo antes de que se escriba nada**, corrige lo que haga falta, y recién entonces aplica —
+sin salir del panel y sin riesgo de duplicar stock.
+
 ## Notas de implementación
 
 - **Base URL:** `NEXT_PUBLIC_API_URL` debe apuntar al backend (`http://localhost:4000`);
@@ -425,6 +564,8 @@ automáticamente y el reembolso reflejado en Stripe, sin tocar el dashboard de S
   vivo `POST /api/shipping/rates`, guía automática al pagar y webhook de estado —
   `../backend/roadmaps-completados/roadmap-skydropx.md` Fases 8.1–8.6). El checkout ya cotiza en vivo (ver "Shipping"
   en `CLAUDE.md`) y el panel de pedidos ya muestra guía/rastreo (**Fase 11** ✅).
-- Ya no quedan fases pendientes del roadmap de integración: la **Fase 12** (cancelación/reembolso
-  manual de pedidos) cierra el mapa de endpoints — `POST /api/admin/orders/:id/cancel` (Fase H.5
-  del `../backend/roadmaps-completados/roadmap-hardening.md`) ya está cableado en el panel de pedidos.
+- La **Fase 12** (cancelación/reembolso manual de pedidos) ya está cableada en el panel de pedidos
+  — `POST /api/admin/orders/:id/cancel` (Fase H.5 del
+  `../backend/roadmaps-completados/roadmap-hardening.md`).
+- La **Fase 13** (importación/restock masivo por Excel) ya está cableada en la sección **Importar**
+  del panel. **No quedan fases pendientes en este roadmap.**

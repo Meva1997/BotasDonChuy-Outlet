@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { EASE_LUXE } from "@/lib/ui/motion";
+import { usePendingImportCount } from "@/store/importStore";
 import type { AdminSection } from "@/components/admin/types";
 
-const NAV_ITEMS: { id: AdminSection; label: string; badge?: number }[] = [
+const NAV_ITEMS: { id: AdminSection; label: string }[] = [
   { id: "datos", label: "Datos" },
   { id: "pedidos", label: "Pedidos" },
   { id: "reportes", label: "Reportes" },
   { id: "productos", label: "Productos" },
+  { id: "importar", label: "Importar" },
   { id: "marca", label: "Marca" },
   { id: "configuracion", label: "Configuración" },
 ];
@@ -34,6 +36,10 @@ function SidebarBody({
   onClose: () => void;
   showClose: boolean;
 }) {
+  // Una revisión de importación viva sobrevive a cambiar de sección (vive en el store, no en
+  // el componente). El badge es lo que hace visible que sigue ahí esperando confirmación.
+  const pendingImport = usePendingImportCount();
+
   return (
     <>
       {/* Brand header */}
@@ -75,8 +81,9 @@ function SidebarBody({
         <p className="px-7 text-[9px] tracking-[0.35em] uppercase text-amber-400/30 mb-3">
           Secciones
         </p>
-        {NAV_ITEMS.map(({ id, label, badge }) => {
+        {NAV_ITEMS.map(({ id, label }) => {
           const isActive = active === id;
+          const badge = id === "importar" ? pendingImport : undefined;
           return (
             <button
               key={id}

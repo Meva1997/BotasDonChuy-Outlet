@@ -22,7 +22,7 @@ Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependenci
 - **Next.js 16** with App Router (all pages in `app/`)
 - **React 19**, **TypeScript**
 - **Tailwind CSS v4** — configured via `@import "tailwindcss"` in `globals.css`, not a `tailwind.config.*` file. Custom theme tokens (fonts, `tobacco-*` color scale) live in a `@theme {}` block in `globals.css`.
-- **Testing** — **Jest + React Testing Library** instalados (`jest.config.ts` usa `next/jest`; `jest.setup.ts` carga `@testing-library/jest-dom`). `pnpm test` corre con `--passWithNoTests` (aún no hay specs — solo el runner). Playwright se eliminó (nunca tuvo config ni specs); no reintroducir e2e sin pedirlo.
+- **Testing** — **Jest + React Testing Library** instalados (`jest.config.ts` usa `next/jest`; `jest.setup.ts` carga `@testing-library/jest-dom`). `pnpm test` corre con `--passWithNoTests`. Las únicas specs hoy son las de la importación por Excel (`components/admin/import/__tests__/`), sobre los módulos **puros** (`rowInput.ts`, `importReducer.ts`, `dependencies.ts`) — que es donde vive el riesgo real de esa pantalla. Playwright se eliminó (nunca tuvo config ni specs); no reintroducir e2e sin pedirlo.
 - **Sileo** — librería de toasts (physics-based). Solo se usa en `/admin` (`<Toaster />` montado en `app/admin/layout.tsx`, no en el root layout, para no cargarla en el storefront público). Hoy su único consumidor es el polling de `OrdersSection` (ver abajo). `theme="light"` + `position="top-center"` + `options={{ fill: "#000000" }}` (píldora negra; `theme="light"` es lo que hace que Sileo pinte el texto claro — su CSS interno asume pill oscura en ese theme) + `styles: { description: "text-white/75!" }` (sube la opacidad del texto de descripción sobre el default blanco/50%). Tamaño de píldora y tipografía agrandados, y acento "info" ajustado al ámbar de marca — en `globals.css` con `!important` (necesario: `sileo/styles.css` se importa después y empata en especificidad con nuestros overrides).
 
 ## Architecture
@@ -102,6 +102,12 @@ components/
                   #     lib/api/brand (useQuery carga + useMutation autosave con debounce). El logo es
                   #     preview local (blob:), no se persiste — subida real = trabajo futuro
                   #   sections/ProductSection — gestión de catálogo. YA conectado al backend vía lib/api/adminProducts (useQuery lista + useMutation CRUD). Subcomponentes en components/admin/products/: ProductForm, ProductCategoryView, ProductDetailModal, notices.ts. ProductForm gestiona una galería de hasta 3 imágenes (preview + quitar por imagen): al guardar corre createProduct/updateProduct (JSON, sin imágenes) y luego, con el id, deleteProductImage() por cada quitada + addProductImages() con los nuevos File (Cloudinary). Confirmaciones: ProductForm no navega en silencio — su prop `onBack(notice?)` devuelve a ProductCategoryView el aviso de lo que pasó (guardar/eliminar), que la lista pinta en su banner `role="status"`; salir sin aviso (cancelar) lo limpia. La copy vive en notices.ts (deleteNotice/saveNotice) porque el borrado se dispara desde dos lugares (la tabla y el form) y ambos deben decir lo mismo
+                  #   sections/ImportSection — importación/restock masivo por Excel (Fase 13).
+                  #     YA conectado vía lib/api/adminProductImport (dos useMutation: preview + commit).
+                  #     Es una SECCIÓN propia del Sidebar ("Importar") porque la tabla de revisión
+                  #     necesita todo el ancho; ProductSection tiene además un botón "Importar Excel"
+                  #     que navega a ?seccion=importar. Ver "Importación por Excel" abajo — tiene
+                  #     invariantes que no se pueden romper sin duplicar stock del catálogo real
                   #   sections/OrdersSection — listado de pedidos (Fase 7). YA conectado vía lib/api/adminOrders
                   #     (useQuery paginado, GET /api/admin/orders). Lectura + una acción (Fase 12,
                   #     cancelación/reembolso — ver OrderDetailModal abajo): tabla (desktop) / cards
@@ -161,6 +167,14 @@ components/
                   #     lib/api/adminUsers. Gestión de usuarios visible a todos los admins. Logout
                   #     desde el botón "Cerrar Sesión". ConfigSection es solo el shell; las tarjetas
                   #     viven en components/admin/config/ (AccountCard, AdminsCard, formUi = estilos/FieldError compartidos)
+                  #   import/ — subcomponentes de ImportSection. Módulos PUROS (sin React, testeados):
+                  #     types.ts (Cell/RowEdit/ImportState + EDITABLE_FIELDS con el `satisfies` que
+                  #     protege del .strict() del backend), rowInput.ts (ingest/serialize/coerce/
+                  #     validate + parseSizesSpec espejo del backend), importReducer.ts (reducer +
+                  #     selectores), dependencies.ts (dependencias entre filas), labels.ts (copy es-MX).
+                  #     Componentes: ImportDropzone, ImportFormatHelp, ImportWarnings, ImportToolbar,
+                  #     ImportRowList, ImportRow, ImportRowDetail, ImportDiff, ImportSizeDiff,
+                  #     ImportRowEditor, EditableCell, ImportActionBadge, ImportConfirmBar, ImportResults
                   #   data/ — subcomponentes de gráficas y tablas (recharts) + types.ts (contratos de datos del admin, también consumidos por lib/api/dashboard.ts, lib/api/reports.ts y reportes/)
                   #   reportes/ — SalesReport (histórico por mes) y ReplenishmentReport (forecast + pedido sugerido). YA conectados vía lib/api/reports (GET /api/admin/reports/*)
 lib/
@@ -170,6 +184,14 @@ lib/
     orders.ts     # contrato del checkout (patrón getProducts): OrderResponseSchema + CreateOrderResponseSchema ({ order, clientSecret }) (Zod, items SIN unitCost) + buildOrderPayload(items, customer, selectedRate?) + createOrder() + orderKeys. YA conectado (POST /api/orders): envía { items, customer, quotationId?, rateId? } sin montos; el backend recalcula totales (re-consultando Skydropx por esa cotización si vino) y devuelve el clientSecret del PaymentIntent de Stripe (Fase 8). quotationId/rateId van juntos o ninguno (both-or-neither, igual que createOrderSchema en el backend) — vienen de la tarifa elegida en ShippingOptions (lib/api/shipping.ts, Fase 8.4)
     shipping.ts   # contrato de cotización de envío en vivo (patrón getProducts): ShippingRateSchema/ShippingRatesResponseSchema (Zod) + SelectedShippingRate (= ShippingRate + quotationId, la forma que viaja por CheckoutContext/usePlaceOrder) + shippingKeys + getShippingRates(items, customer). YA conectado (POST /api/shipping/rates, pública). SIEMPRE responde 200 (el backend cae a su propia tarifa plana si Skydropx falla); usa `.parse` simple (no hay OrderResponseParseError aquí — es de solo lectura, un parse fallido es reintentable sin riesgo de duplicar nada)
     adminProducts.ts # contrato del catálogo admin (patrón getProducts): AdminProductSchema (SÍ trae unitCost + images: { url, publicId }[]) + adminProductKeys + getAdminProducts()/createProduct()/updateProduct()/deleteProduct() + addProductImages()/deleteProductImage(). YA conectado (GET/POST/PUT/DELETE /api/admin/products + POST/DELETE /api/admin/products/:id/images). AdminProductInput manda sizes como CSV donde repetir talla = unidades de stock (el backend agrupa en filas ProductSize) y YA NO incluye imageSrc (las imágenes se gestionan solo por los endpoints dedicados: addProductImages sube multipart `images` 1-3 File, tope 3 total; deleteProductImage borra por publicId)
+    adminProductImport.ts # contrato de la importación masiva por Excel (Fase 13): schemas Zod
+                  #   (ImportRowPlan/ProductSnapshot/FieldChange/SizeChange/ImportRowInput) +
+                  #   previewProductImport(file) (multipart, campo `file`) y commitProductImport(rows)
+                  #   (JSON) + importPreviewErrorMessage/importCommitErrorMessage. Preview con
+                  #   `.parse()` estricto (es de solo lectura, un parse fallido es reintentable);
+                  #   commit con safeParse + console.warn + dato crudo (razonamiento de acceptWrite,
+                  #   pero más fuerte: reintentar un commit DUPLICA stock). ImportRowInputSchema usa
+                  #   z.looseObject para que una clave extra sobreviva al parse y se pueda avisar
     adminOrders.ts # contrato de pedidos admin (patrón getProducts): AdminOrderSchema/AdminOrderItemSchema (Zod, item SÍ trae unitCost) + adminOrderKeys + getAdminOrders(page, perPage, date?). YA conectado (GET /api/admin/orders?page=&perPage=&date=, PAGINADO en servidor → { orders, total, page, perPage, totalPages }). `date` (YYYY-MM-DD, opcional) acota a los pedidos creados ese día UTC — filtro real de servidor, no de cliente (ver OrdersSection). status y paymentStatus son campos INDEPENDIENTES; paymentStatus incluye "refunded" (Fase 12). AdminOrderSchema también trae los campos de guía/rastreo Skydropx (Fase 11): skydropxShipmentId/trackingNumber/trackingUrl/labelUrl/shipmentStatus, todos nullable — el backend ya los manda en la misma respuesta, pero Zod los descartaba por no estar declarados. Fase 12 agrega refundId/refundedAt (nullable) + cancelAdminOrder(id, reason?) (POST /:id/cancel, valida `{ order }` con AdminOrderSchema) — cancela un pedido pending (libera stock) o paid (reembolso total en Stripe + restock); el backend rechaza shipped/delivered/cancelled con 409
     dashboard.ts  # contrato de métricas admin (patrón getProducts): DashboardSchema (Zod, valida la forma de components/admin/data/types.ts) + dashboardKeys + getAdminDashboard(). YA conectado (GET /api/admin/dashboard). kpisByPeriod/profitKpisByPeriod llegan igual que revenueByPeriod — las tres ventanas (7/30/90) precalculadas en un solo response, sin query params; DataSection alterna en cliente. recentSales[].day es una clave ISO UTC ("2026-07-13") junto al display date ("3 jul · 14:30"), para que SalesTable filtre por día de forma fiable
     reports.ts    # contrato de reportes admin (patrón getProducts): MonthlyReportSchema/ReplenishmentRowSchema (Zod, reflejan components/admin/data/types.ts) + reportKeys + getMonthlyReport()/getReplenishmentReport(). YA conectado (GET /api/admin/reports/monthly, GET /api/admin/reports/replenishment). Ambos endpoints devuelven un array plano ya derivado/ordenado por el backend
@@ -208,6 +230,11 @@ schemas/
   users.ts        # zod createUserSchema + updateAccountSchema (+ passwordComplexity reutilizable, refleja las reglas del backend) — validación de los forms de ConfigSection
 store/
   cartStore.ts    # Zustand store (persist) — cart items, open/close, totals, stock-aware addItem
+  importStore.ts  # Zustand store (SIN persist) — estado de la importación por Excel sobre el
+                  #   reducer puro de components/admin/import. Fuera del árbol de componentes
+                  #   porque app/admin/page.tsx desmonta la sección al cambiar de pestaña del
+                  #   Sidebar y una revisión a medias se perdería. Sin persist a propósito (ver
+                  #   "Importación por Excel"). usePendingImportCount() alimenta el badge del Sidebar
   authStore.ts    # Zustand store (persist, key botas-don-chuy-auth) — token + user ({ id, name, email, role }) de sesión admin, login()/setUser()/logout()/isAuthenticated(). Fuente única del token (axios client + AdminGuard). El tipo AuthUser vive en lib/api/auth.ts
 ```
 
@@ -293,6 +320,52 @@ SHIPPING_BY_TYPE = { bota: 160, sombrero: 130, ropa: 100 }  // MXN — el más c
 
 **Monto mostrado = monto cobrado**: la tarifa que el comprador elige en `ShippingOptions` (`quotationId`+`rateId`, o `null`+`null` en el fallback) se manda en `POST /api/orders`. El backend **re-consulta Skydropx** por esa cotización exacta y usa su `total` como `order.shipping` — nunca confía en un monto del cliente. Si la cotización expiró (duran 24 h), el backend responde 409 y el frontend limpia la tarifa elegida para forzar una nueva cotización (ver "Checkout flow", paso 3). Esto es lo que cierra la brecha que existía antes de la Fase 8.4: el frontend ya no calcula el envío por su cuenta para mostrarlo — lo cotiza y lo cobra con el mismo número.
 
+## Importación por Excel (Fase 13)
+
+La sección **Importar** (`components/admin/sections/ImportSection.tsx` + `components/admin/import/`) sube un `.xlsx` con mercancía nueva y restock. Son **dos pasos** contra el backend: `POST /api/admin/products/import/preview` (multipart, **no escribe nada**) y `POST /api/admin/products/import` (JSON, aplica las filas ya revisadas).
+
+**El principio que ordena todo el diseño:** el restock **SUMA** stock y **no hay forma de deshacerlo desde la app**. Una fila mal leída no se corrige con un botón: se corrige a mano, producto por producto. Por eso la pantalla de revisión no es cosmética y por eso las reglas de abajo son invariantes, no preferencias.
+
+### Invariantes (no romper sin leer el porqué)
+
+- **Una fila aplicada con éxito NUNCA vuelve al payload.** Tras cada commit, los índices que **escribieron** (`created`/`updated`) entran en `applied` y quedan con candado el resto de la sesión, aunque se editen. Es estructural (en el reducer), no una convención de quien arme el siguiente lote — es lo que hace segura la iteración "corrige los errores y reintenta". Un `unchanged` del commit **no** lleva candado (no tocó nada, y bloquearlo impediría corregirlo y reenviarlo) pero **sí** se deselecciona, para que no viaje sin que el dueño lo vuelva a elegir.
+- **Con filas ya aplicadas, "Volver a analizar" desaparece** (`canReanalyze`). El preview recalcula contra el catálogo YA actualizado mientras el archivo sigue diciendo lo mismo ("suma 3 piezas"), así que el restock recién aplicado reaparecería como `update`; y `previewLoaded` no puede conservar el candado, porque el `.xlsx` pudo editarse entre un análisis y otro y los índices del plan nuevo no tienen por qué ser los mismos. El candado se protege en la **entrada**, no intentando migrarlo. La salida en ese estado es "Empezar de nuevo".
+- **Todo se clavea por el ÍNDICE de `plan.rows`, nunca por el folio `row`.** `row` es el número de fila del Excel: dato externo, opcional en el contrato y potencialmente repetido. El índice es único por construcción y estable (nunca se reordena ni se empalma el array; el filtrado ocurre al pintar), así que el caso borde de folios duplicados desaparece en vez de tener que cubrirse. El merge del resultado del commit es **posicional** (`response.rows[k]` ↔ `sentIndices[k]`, que viajan como variable de la mutation), con fallback por folio y, si tampoco cuadra, lista sin merge.
+- **`serializeRowEdit` emite solo una whitelist** (`EDITABLE_FIELDS ... as const satisfies readonly (keyof ImportRowInput)[]`), **también para las filas no editadas**. El body del commit es `.strict()` en el backend: una clave que el preview devuelva y el commit no acepte mataría el **lote entero** con un 400. El `satisfies` hace que eso falle en el build, no en producción.
+- **Los conteos se derivan de `rows`, no del `summary`** del backend (que solo se usa como verificación cruzada con `console.warn`). Un toolbar que dice "5 actualizaciones" sobre una tabla que muestra 4 destruye la confianza en toda la pantalla, y es la tabla lo que el dueño puede auditar.
+- **Preview → `.parse()` estricto; commit → `safeParse` + `console.warn` + dato crudo.** El preview es de solo lectura (un parse fallido es reintentable sin riesgo, y una forma inesperada significa que no podemos pintar el diff con honestidad); el commit ya escribió, y convertir un cuerpo raro en error invitaría a un reintento que **duplica el stock**.
+- **La invalidación tras el commit corre también** con `summary.failed > 0` (un éxito parcial sí escribió) y también si el Zod del cuerpo falló. Toca `adminProductKeys.all` **y** `productKeys.all` (el import crea productos y cambia stock: lo ve el catálogo admin y el outlet público).
+
+### "Ausente" vs. "vacío" — el modelo de presencia
+
+En el contrato, una **clave ausente** significa "no toques esa columna del producto", `null` equivale a ausente, pero **`description: ""` SÍ borra la descripción**. Como el valor de un `<input>` siempre es un string, inferir "ausente" de un string vacío haría imposible expresar el segundo caso. Por eso cada celda (`Cell` en `import/types.ts`) lleva `presence: "absent" | "present"` **aparte** del texto:
+
+```
+teclear y borrar   →  ""        (en `description` limpia; en el resto es error de captura)
+botón "No tocar"   →  ausente   (la clave no viaja)
+```
+
+El `text` se conserva al pasar a `absent`, para que alternar no pierda lo tecleado. `visible` es un tri-estado (`No tocar` / `Sí` / `No`) por el mismo motivo: para un booleano, "ausente" ≠ "No" — y es su **único** control de presencia (no lleva el botón "Establecer / ✕ No tocar" del resto de las celdas: dos mandos sobre lo mismo desincronizaban el valor sembrado, texto de presentación, con el que compara el tri-estado).
+
+"Establecer" siembra el valor guardado del producto para que el dueño lo haga explícito de un clic, pero **`sizes` está excluido del sembrado** (`NOT_SEEDED`, junto a `description`): las tallas se **suman**, así que sembrar lo que el producto tiene hoy no lo hace explícito — lo duplica al aplicar, y encima la celda queda "editada", lo que suprime el `ImportSizeDiff` que habría hecho visible la suma. La celda de tallas se deja vacía a propósito: lo que se escribe ahí son las piezas que **entran**.
+
+Los números se capturan con `type="text" inputMode="decimal"`, **no** `type="number"` (éste devuelve `""` ante basura —ni siquiera se puede leer lo que se tecleó—, se traga la coma decimal y cambia el valor al hacer scroll). `parseNumberText` espeja `readCellNumber` del backend (miles, símbolo de moneda, coma decimal). **Nunca degrada a 0**: la fila se marca inválida y se deselecciona, pero el resto del lote sigue aplicable.
+
+### Dos límites del contrato que la UI no puede tapar
+
+1. **No se puede re-previsualizar una fila editada.** `/import/preview` solo acepta un archivo, así que re-subirlo devuelve el mismo plan e ignora las ediciones. En vez de fingirlo, la UI **suprime el diff que dejó de ser cierto** (`stalenessOf`): editar `code`/`name` invalida **todo** (la fila puede emparejar ahora con otro producto), editar otro campo suprime solo lo afectado, y en su lugar se muestra un **diff local de la instrucción** ("Cambios que hiciste a la fila" — un diff de lo que se va a mandar, no del producto), que es lo único que sí se puede afirmar. Regla: nunca pintar una línea de diff cuyos insumos el usuario cambió.
+2. **El preview resuelve contra un catálogo virtual** (la BD más lo que las filas anteriores del archivo ya proyectaron), así que la fila 2 puede crear `BTA-9` y la fila 5 restockearlo. Deseleccionar la fila 2 cambia el resultado de la 5, y el preview no puede saberlo porque se calculó antes. `dependencies.ts` lo detecta con una señal exacta y barata —`action === "update" && productId === null` significa que empareja con algo que aún no existe en la BD—, lo avisa por fila y en el toolbar, y ofrece "Seleccionar las filas faltantes". **No bloquea**: pide una confirmación inline extra. Cuando el `before` es una proyección, el panel se etiqueta "Estado proyectado", no "Actual en el catálogo".
+
+### Otros detalles
+
+- **Estado en `store/importStore.ts` (Zustand, sin `persist`)** — ver el porqué en la sección de `store/`.
+- **409 de doble envío**: el backend rechaza el mismo lote dos veces en menos de 60 s (hash del payload **sin** `row`). Reintentar solo las filas fallidas es un subconjunto → otro hash → no se bloquea; pero reintentar *todas* cuando *todas* fallaron da un 409 sin haberse escrito nada. `isSameBatchAsLast` lo pre-detecta en cliente y lo explica antes de gastar la petición, más una cuenta regresiva.
+- **La tabla no se desmonta durante el commit**, solo se deshabilita: si falla, no se pierden ediciones ni selección.
+- **`reactivated: true`** (un producto descontinuado vuelve al catálogo **público**) no aparece en `changes`, así que lleva badge propio, línea en el detalle y conteo en el resumen previo — es justo la clase de efecto que sorprende al dueño en silencio.
+- **Accesibilidad**: `<table>` real con `<caption class="sr-only">`/`<th scope>`; el grupo "N filas sin cambios" usa `<button aria-expanded>` + filas condicionales dentro de su propio `<tbody>` (`<details>` **no** puede envolver un `<tbody>`). Con el filtro "Todas", las `unchanged` viven **siempre** en ese grupo y nunca en el `<tbody>` principal: así el botón sigue montado abierto y cerrado — derivarlo de "las que están ocultas" lo desmontaba al expandir y el grupo ya no se podía volver a colapsar; el select-all pone `indeterminate` por ref (no es prop de React) y se acota al filtro activo; los filtros anuncian el conteo en un `aria-live`.
+- **Rendimiento**: las filas nacen colapsadas y el editor se monta solo al expandir (500 filas × 13 campos serían 6 500 inputs). **Sin `staggerContainer` en la lista** — 0.07 s × 500 filas = 35 s.
+- **Plantilla**: `public/plantilla-importacion-productos.xlsx`, generada por `scripts/generate-plantilla-importacion.mjs` con el `exceljs` **del backend** (`NODE_PATH=../backend/node_modules node scripts/generate-plantilla-importacion.mjs`) para no meter ~1 MB de dependencia en el frontend por una descarga estática. Es un script **one-off** y su salida está versionada: al cambiar el encabezado canónico hay que regenerarla y volver a commitearla.
+
 ## Reportes, forecast y reposición
 
 La sección **Reportes** (`components/admin/ReportesSection.tsx`) tiene dos pestañas encadenadas: el reporte de ventas (histórico) alimenta al de reposición (forecast). **Ambas consumen el backend real** vía `lib/api/reports.ts` (Fase 4); el frontend ya no deriva nada — el backend hace todo el cálculo y devuelve las filas listas.
@@ -336,7 +409,7 @@ Ambos reportes exportan CSV con un helper `csvField()` (escapado RFC 4180: envue
 
 ## Backend (Express.js) — contrato base
 
-El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/api/products.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Marca (Fase 5), usuarios/cuenta (Fase 6), pedidos del admin (Fase 7, `GET /api/admin/orders` → `OrdersSection`), pagos (Fase 8, Stripe en **test/sandbox**: `usePlaceOrder` + `confirmCardPayment` con `pm_card_visa`), cotización de envío en vivo (Fase 8.4, Skydropx: `lib/api/shipping.ts` + `ShippingOptions`, ver "Shipping") y cancelación/reembolso manual de pedidos (Fase 12, `POST /api/admin/orders/:id/cancel` → `OrderDetailModal`) YA están conectados. Ya no quedan fases pendientes del roadmap de integración.
+El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/api/products.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Marca (Fase 5), usuarios/cuenta (Fase 6), pedidos del admin (Fase 7, `GET /api/admin/orders` → `OrdersSection`), pagos (Fase 8, Stripe en **test/sandbox**: `usePlaceOrder` + `confirmCardPayment` con `pm_card_visa`), cotización de envío en vivo (Fase 8.4, Skydropx: `lib/api/shipping.ts` + `ShippingOptions`, ver "Shipping") cancelación/reembolso manual de pedidos (Fase 12, `POST /api/admin/orders/:id/cancel` → `OrderDetailModal`) e importación/restock masivo por Excel (Fase 13, `POST /api/admin/products/import/preview` + `/import` → `ImportSection`, ver "Importación por Excel") YA están conectados. Ya no quedan fases pendientes del roadmap de integración.
 
 > **Principio:** la lógica de negocio (forecast, reposición, totales de carrito, envío) es de funciones puras que reciben números. Forecast y reposición ya viven en el backend (`backend/src/services/`); el frontend solo pinta las filas ya calculadas. La única matriz "fuente de verdad" es ventas-por-mes-por-producto (las órdenes pagadas).
 
@@ -356,6 +429,8 @@ GET  /api/products                 → Product[]            (público: outlet, d
 GET  /api/products/:id             → Product
 POST /api/admin/products           → crea (ProductForm)
 PUT  /api/admin/products/:id        → actualiza stock/precio/etc.
+POST /api/admin/products/import/preview → plan del .xlsx sin escribir nada (ImportSection)
+POST /api/admin/products/import    → aplica las filas revisadas (JSON, ver "Importación por Excel")
 
 GET  /api/admin/dashboard          → DashboardData        (KpiData[], RevenuePoint[] por periodo, SaleRow[], InventoryRow[])
 GET  /api/admin/reports/monthly    → MonthlyReport[]      (agrupa ventas por mes → byProduct, byCategory)
