@@ -16,7 +16,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **sileo** — toast notifications (admin panel only)
 - **pnpm** as package manager
 
-> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). The only specs today cover the Excel import's pure modules (`components/admin/import/__tests__/`).
+> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). The only specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen. See that folder's `README.md` for the layout.
 
 ## Commands
 
@@ -24,7 +24,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 pnpm dev        # Dev server (localhost:3000)
 pnpm build      # Production build
 pnpm lint       # ESLint
-pnpm test       # Jest (--passWithNoTests; no specs yet)
+pnpm test       # Jest + React Testing Library
 ```
 
 ## Structure
@@ -67,7 +67,8 @@ components/
                   #   data/ — chart/table subcomponents (recharts)
                   #   reportes/ — SalesReport (historical) + ReplenishmentReport (forecast)
                   #   import/ — Excel import review screen: pure modules (types, rowInput, importReducer,
-                  #   dependencies, labels — the only ones with Jest specs) + presentational components
+                  #   dependencies, labels) + components. The only part of the app with Jest specs;
+                  #   they live in import/__tests__/ (see its README.md)
 lib/
   api/            # axios client + per-domain contracts (Zod schemas + fetchers + query keys):
                   #   auth, products, adminProducts, adminProductImport, adminOrders, adminUsers, account,
