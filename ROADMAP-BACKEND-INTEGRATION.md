@@ -25,6 +25,7 @@ migración.
 | `POST /api/auth/reset-password` | `components/auth/NewPasswordForm.tsx` → `resetPassword()` (`useMutation` → redirect `/login`) | ✅ | Fase 10 |
 | `GET /api/auth/me` | `components/auth/AdminGuard.tsx` → `getMe()` (valida token + rehidrata `user`) | ✅ | — |
 | `GET /api/products` | `lib/api/products.ts` → `getProducts()` | ✅ | — |
+| `GET /api/products` → `q` / `orden` / `precioMin` / `precioMax` | *(sin consumidor todavía)* — `components/outlet/OutletFilters.tsx` necesita buscador, selector de orden y rango de precio; hoy `ProductFilters` solo manda `categoria`/`talla`/`page` | 🔴 | **Fase 18** |
 | `GET /api/products/:id` | `lib/api/products.ts` → `getProductById()` | ✅ | — |
 | `POST /api/orders` | `components/checkout/UserDetails.tsx` → `createOrder()` de `lib/api/orders.ts` (`useMutation`); `completeOrder()` congela la respuesta `201` | ✅ | — |
 | `GET /api/admin/products` | `components/admin/ProductSection.tsx` → `getAdminProducts()` de `lib/api/adminProducts.ts` (`useQuery`) | ✅ | — |
@@ -48,8 +49,27 @@ migración.
 | `POST /api/admin/orders/:id/cancel` | `components/admin/orders/OrderDetailModal.tsx` → `cancelAdminOrder()` de `lib/api/adminOrders.ts` (`useMutation`, botón "Cancelar / reembolsar pedido") | ✅ | Fase 12 |
 | `POST /api/orders` → `clientSecret` | `components/checkout/usePlaceOrder.ts` confirma el pago con Stripe.js (`confirmCardPayment` + `pm_card_visa`) usando el `clientSecret` que devuelve `createOrder()`; `PaymentSection.tsx` es el panel de tarjeta de prueba | ✅ | Fase 8 (Stripe, **test/sandbox**) |
 | `POST /api/webhooks/stripe` | *(lo invoca Stripe, no el front)* — el pago se confirma en el cliente; el webhook marca la orden `paid` | ✅ | Fase 8: backend activo (firma verificada); no requiere código de front |
+| `PATCH /api/admin/orders/:id/status` | *(sin consumidor todavía)* — `components/admin/orders/OrderDetailModal.tsx` necesita el botón "Marcar como enviado / entregado" + captura manual de guía | 🔴 | **Fase 14** |
+| `POST /api/orders` → header `Idempotency-Key` | `components/checkout/usePlaceOrder.ts` / `lib/api/orders.ts` — el backend ya deduplica solo por huella del carrito; el header lo hace explícito | 🔴 | **Fase 15** (mejora, no bloquea) |
+| `POST /api/admin/orders/:id/shipment/retry` | *(sin consumidor todavía)* — `components/admin/orders/OrderDetailModal.tsx` necesita el botón "Reintentar guía" para un pedido pagado sin `skydropxShipmentId` | 🔴 | **Fase 16** |
+| `GET /api/orders/lookup/:token` | *(sin consumidor todavía)* — falta la página pública de seguimiento `/pedido/[token]`, a la que apunta el link del correo de confirmación | 🔴 | **Fase 17** |
+| `POST /api/orders` → `order.publicToken` | `components/checkout/usePlaceOrder.ts` — el `201` del checkout ya trae el token; sirve para mandar al comprador a `/pedido/<token>` sin esperar el correo | 🔴 | **Fase 17** |
 | `POST /api/admin/products/import/preview` | `components/admin/sections/ImportSection.tsx` → `previewProductImport()` de `lib/api/adminProductImport.ts` (`useMutation`, multipart) | ✅ | Fase 13 |
 | `POST /api/admin/products/import` | `ImportSection.tsx` → `commitProductImport()` (`useMutation` + invalidación de `adminProductKeys`/`productKeys`) | ✅ | Fase 13 |
+| `POST /api/coupons/validate` | *(sin consumidor todavía)* — `components/checkout/OrderSummary.tsx` necesita el campo de cupón (y revalidar con el correo en `ShippingOptions.tsx`) | 🔴 | **Fase 19** |
+| `POST /api/orders` → `couponCode` | `lib/api/orders.ts` (`CreateOrderPayload`) + `components/checkout/usePlaceOrder.ts` (el cupón entra en `orderSignature`) | 🔴 | **Fase 19** |
+| `POST /api/orders` → `order.couponCode`/`couponDiscount` | `components/checkout/OrderTotals.tsx` (fila de descuento) y `Success.tsx` — el total ya viene neto de cupón | 🔴 | **Fase 19** |
+| `GET /api/admin/coupons` | *(sin consumidor todavía)* — falta la sección **Cupones** del panel | 🔴 | **Fase 19** |
+| `POST /api/admin/coupons` | *(sin consumidor todavía)* — formulario de alta en la sección **Cupones** | 🔴 | **Fase 19** |
+| `PUT /api/admin/coupons/:id` | *(sin consumidor todavía)* — edición y cancelación (`active: false`) en la sección **Cupones** | 🔴 | **Fase 19** |
+| `DELETE /api/admin/coupons/:id` | *(sin consumidor todavía)* — borrado con confirmación inline, igual que `AdminsCard.tsx` | 🔴 | **Fase 19** |
+| `GET /api/admin/expenses` | *(sin consumidor todavía)* — falta la sección **Gastos** del panel | 🔴 | **Fase 20** |
+| `GET /api/admin/expenses/summary` | *(sin consumidor todavía)* — tarjeta "cuánto retirar este mes" + lista de próximos cargos | 🔴 | **Fase 20** |
+| `GET /api/admin/expenses/history` | *(sin consumidor todavía)* — historial mes con mes + los cambios de precio de cada mes | 🔴 | **Fase 20** |
+| `POST /api/admin/expenses` | *(sin consumidor todavía)* — formulario de alta en la sección **Gastos** | 🔴 | **Fase 20** |
+| `PUT /api/admin/expenses/:id` | *(sin consumidor todavía)* — edición; mandar `amount` **agrega una versión**, no sobrescribe | 🔴 | **Fase 20** |
+| `DELETE /api/admin/expenses/:id` | *(sin consumidor todavía)* — borrado con confirmación inline, igual que `AdminsCard.tsx` | 🔴 | **Fase 20** |
+| `GET /api/admin/dashboard` → KPI `GASTOS` | `components/admin/sections/DataSection.tsx` → `KpiGrid` (ya lo pinta genérico) | ✅ | El label cambió de `GASTOS FIJOS` a `GASTOS` y ahora sale de gastos reales; el front no requiere cambios |
 
 ## Fases (orden sugerido)
 
@@ -551,6 +571,416 @@ de serialización, el candado de filas aplicadas, y el detector de dependencias.
 lo nuevo antes de que se escriba nada**, corrige lo que haga falta, y recién entonces aplica —
 sin salir del panel y sin riesgo de duplicar stock.
 
+### Fase 14 — Admin: marcar pedido como enviado/entregado a mano 🔴 *(depende de Fase 7)*
+
+> **Contexto.** El backend agregó `PATCH /api/admin/orders/:id/status` (Fase O.1 del
+> `../backend/roadmap-operacion-y-negocio.md`) porque hoy un pedido solo llega a `shipped`/`delivered`
+> cuando **Skydropx** reporta un envío que **Skydropx** creó. Si en el checkout la cotización en vivo
+> falló y se cayó al fallback de tarifa plana, el pedido nace sin `skydropxRateId` → no se genera guía
+> → nunca llega el webhook → **se queda en `paid` para siempre**: el cliente jamás recibe el correo de
+> "tu pedido va en camino" y el panel cuenta como pendiente algo ya entregado. Hoy el panel de pedidos
+> puede **cancelar** (Fase 12) pero no puede **avanzar** el estado. Esta fase cablea ese botón.
+
+**Lo que el backend ya hace (referencia — no tocar):**
+- `PATCH /api/admin/orders/:id/status` `[auth]` — body
+  `{ status: "shipped" | "delivered", trackingNumber?, trackingUrl?, shippingCarrier? }`.
+  Devuelve `{ order }` con el pedido actualizado y sus `items` (mismo shape que
+  `GET /api/admin/orders`, así que `AdminOrderSchema` ya lo valida sin cambios).
+- **Solo hacia adelante**, con el mismo rango que aplica el webhook de Skydropx
+  (`pending < paid < shipped < delivered`). **Repetir el estado actual sí se permite** — es como se
+  agrega una guía a un pedido ya marcado enviado sin ella; retroceder responde **409**.
+- **Guards:** pedido `cancelled` → **409**; pedido todavía `pending` (sin pago confirmado) → **409**;
+  `status: "cancelled"` en el body → **400** (cancelar es exclusivo de
+  `POST /api/admin/orders/:id/cancel`, el único camino que reembolsa y restockea); id inexistente →
+  **404**; id no numérico → **400**.
+- **El correo "tu pedido va en camino" sale exactamente una vez por pedido**, lo dispare el panel o
+  el webhook de Skydropx: los dos comparten el mismo guard atómico
+  (`WHERE trackingNumber IS NULL`) y el mismo `idempotencyKey` de Resend. Marcar `delivered` **sin**
+  guía es válido (entrega en mano o local) y no manda correo.
+- Ninguna columna nueva: `trackingNumber`/`trackingUrl`/`shippingCarrier` ya existen en el contrato
+  del pedido desde la Fase 11.
+
+**Trabajo del frontend:**
+1. [ ] **Contrato:** `lib/api/adminOrders.ts` expone
+   `updateAdminOrderStatus(id, { status, trackingNumber?, trackingUrl?, shippingCarrier? })`
+   (`PATCH /:id/status`, respuesta `{ order }` validada con `AdminOrderSchema`).
+2. [ ] **Acción en la UI:** en `OrderDetailModal.tsx`, botón "Marcar como enviado" (visible cuando
+   `status === "paid"`) y "Marcar como entregado" (visible en `paid`/`shipped`), ocultos en
+   `pending`/`cancelled`/`delivered` — los estados que el backend rechaza con 409. El de "enviado"
+   abre un formulario inline con guía / URL de rastreo / paquetería, **los tres opcionales**, y avisa
+   que capturar la guía manda el correo al cliente (es visible para él y no se puede deshacer).
+3. [ ] **Guía tardía:** en un pedido ya `shipped` **sin** `trackingNumber`, ofrecer "Agregar guía"
+   con el mismo formulario (el backend acepta repetir `status: "shipped"` justo para esto).
+4. [ ] **Mutation + invalidación:** `useMutation` que al `onSuccess` invalide `adminOrderKeys.all` y
+   notifique al padre vía callback (igual que `onCancelled` en la Fase 12), marcando el refresh como
+   manual (`isManualRefreshRef`) para no disparar el toast de polling del webhook de Skydropx.
+5. [ ] **Errores mapeados:** `409` (retroceso / cancelado / aún no pagado) y `400` se muestran inline
+   con el `message` del backend —copia UI accionable— sin cerrar el modal.
+
+**Salida:** ningún pedido se queda atorado en `paid` por no haber pasado por Skydropx; el dueño lo
+mueve a enviado/entregado desde el panel y el cliente recibe su correo de rastreo igual que en el
+flujo automático.
+
+---
+
+### Fase 15 — `Idempotency-Key` en el checkout 🔴 **Pendiente** *(mejora, no bloquea)*
+
+**Lo que el backend ya hace (referencia — no tocar):**
+- `POST /api/orders` es **idempotente desde la Fase O.2**. Un reenvío del mismo checkout dentro de
+  una **ventana de 60 s** no crea un segundo pedido: devuelve la **misma respuesta del original**
+  (mismo `order`, mismo `clientSecret`, mismo `201`). Antes, un doble clic creaba otra orden, otro
+  PaymentIntent real y **descontaba el stock otra vez**, y ese stock no se liberaba hasta 30–40 min
+  después.
+- **Ya funciona sin tocar el frontend**: cuando no llega el header, el servidor deduplica por una
+  huella del carrito + los datos del cliente. Por eso esta fase es una mejora, no un requisito.
+- El header `Idempotency-Key` (opcional, máx. 200 caracteres) **tiene prioridad** sobre esa huella.
+  Es lo correcto a largo plazo: distingue "el mismo pedido reenviado" de "otro pedido que casualmente
+  se ve igual", sin depender de que el carrito sea idéntico byte a byte.
+- **Contrato del header:** un valor **nuevo por cada intento de compra**. Reenviarlo con el mismo
+  carrito devuelve el pedido original; reusarlo con un carrito **distinto** responde **409**
+  ("Esa clave de idempotencia ya se usó para otro pedido…"); uno de más de 200 caracteres, **400**.
+- Un intento fallido que **no alcanzó a crear el pedido** (`409` sin stock, `503` de cotización,
+  `400` de validación) **libera la clave**: el cliente puede corregir y reintentar de inmediato, con
+  la misma clave o con otra. Si el pedido sí llegó a crearse y lo que falló fue el cobro (un `500`),
+  la clave **no** se libera y un reenvío dentro de la ventana devuelve ese mismo error en vez de
+  duplicar el pedido — ahí el camino es recargar el checkout, no reintentar.
+- El **cuerpo** del reenvío es idéntico al del original, así que el front no necesita ramificar la
+  lógica. Lo que sí lo distingue es el header **`Idempotency-Replayed: true`**, presente solo en la
+  respuesta repetida (ausente en el pedido original) y expuesto por CORS para que el navegador lo
+  deje leer. Es opcional consumirlo: sirve para no decir "¡pedido creado!" cuando en realidad se
+  devolvió uno que ya existía, o para telemetría de cuántos dobles clics están llegando.
+
+**Trabajo del frontend:**
+1. [ ] **Generar la clave** al entrar al checkout (`crypto.randomUUID()`), guardada en un `ref`/estado
+   del flujo de compra — **no** una por render, o cada reintento sería una clave nueva y el header
+   dejaría de servir.
+2. [ ] **Regenerarla** cuando cambie el carrito o se vuelva a cotizar el envío: a partir de ahí es un
+   pedido distinto, y reusar la clave anterior daría `409`.
+3. [ ] **Mandarla** como header `Idempotency-Key` en `createOrder()` de `lib/api/orders.ts`.
+4. [ ] **Deshabilitar el botón de pagar mientras la mutación está en vuelo** (`isPending`). El header
+   es la red de seguridad, no el reemplazo de lo obvio.
+5. [ ] **Error mapeado:** el `409` de clave reusada se muestra con el `message` del backend (copia UI
+   accionable) y se regenera la clave antes de permitir el siguiente intento.
+6. [ ] *(Opcional)* **Leer `Idempotency-Replayed`** en la respuesta de `createOrder()` para no anunciar
+   "pedido creado" cuando el backend devolvió uno que ya existía.
+
+**Salida:** un doble clic, un reintento del navegador o una conexión inestable en el momento de pagar
+no pueden generar dos pedidos ni dos cobros — ni siquiera cuando el carrito cambió lo suficiente como
+para que la huella automática no los reconozca como el mismo.
+
+### Fase 16 — Admin: reintentar la guía de Skydropx 🔴 *(depende de Fase 11)*
+
+> **Contexto.** La guía se genera sola al confirmarse el pago. Si esa única llamada falla (Skydropx
+> caído, saldo agotado, o el proceso se reinicia a media creación), el pedido queda **pagado y sin
+> guía**: no hay webhook que llegue por una guía que nunca se creó. El backend agregó
+> `POST /api/admin/orders/:id/shipment/retry` (Fase O.3 del
+> `../backend/roadmap-operacion-y-negocio.md`) más un barrido automático que reintenta solo cada
+> pocos minutos. El botón sirve para no esperar al barrido y, sobre todo, para ver **por qué** no se
+> pudo.
+
+**Lo que el backend ya hace (referencia — no tocar):**
+- `POST /api/admin/orders/:id/shipment/retry` `[auth]`, **body opcional** `{ force?: boolean }` (el
+  reintento normal no manda nada — ver el punto de `force` abajo). Devuelve `{ order }` con el
+  pedido actualizado y sus `items` (mismo shape que `GET /api/admin/orders`, así que
+  `AdminOrderSchema` lo valida sin cambios).
+- **Espera el resultado** (a diferencia del camino automático): un `200` significa que la guía ya
+  existe y `order.skydropxShipmentId` trae su id; un **502** que Skydropx volvió a fallar y el pedido
+  sigue sin guía (se puede reintentar de inmediato).
+- **Cada guía se cobra**, así que responde **409** ante cualquier duda: el pedido ya tiene guía, otra
+  solicitud la está generando en este momento, el pedido no está pagado, está cancelado o **ya se
+  marcó como enviado/entregado** (ese pedido ya salió: si le falta guía es porque se generó a mano),
+  o se cobró con la **tarifa plana de respaldo** (no hay tarifa de Skydropx que convertir en guía —
+  esa se genera en el panel de Skydropx y se captura con el `PATCH .../status` de la Fase 14).
+- `skydropxShipmentId` puede traer **valores especiales** en vez de un id, y la UI no debería
+  mostrarlos como si fueran una guía: `"creating"` (creación en curso), `"unreconciled:<id>"`
+  (Skydropx la cobró pero no se pudo guardar — ese pedido necesita revisarse a mano en el panel de
+  Skydropx; el `409` del reintento incluye el id real en su `message`) y
+  **`"unreconciled:desconocido"`** (Skydropx no respondió al crear la guía, así que pudo haberla
+  creado y cobrado sin que quedara registrada).
+- **`force: true` es solo para `"unreconciled:desconocido"`.** Ese es el único estado que el backend
+  no puede resolver solo: hay que abrir el panel de Skydropx y confirmar si la guía existe. Si
+  existe, se captura su número con el `PATCH .../status`; si no existe, se reintenta con
+  `{ force: true }`, que significa "ya verifiqué, genérala de todos modos". Un `unreconciled:<id>`
+  con id conocido **no** se fuerza (esa guía existe y está cobrada) y el backend responde `409`
+  aunque se mande `force`.
+- El barrido automático corre en paralelo, así que un pedido puede aparecer con guía sin que nadie
+  haya tocado el botón — la vista ya refresca con el polling de la Fase 11.
+
+**Trabajo del frontend:**
+1. [ ] **Contrato:** `lib/api/adminOrders.ts` expone `retryAdminOrderShipment(id, { force? })`
+   (`POST /:id/shipment/retry`, body opcional, respuesta `{ order }` validada con
+   `AdminOrderSchema`).
+2. [ ] **Acción en la UI:** en `OrderDetailModal.tsx`, botón "Reintentar guía" visible solo cuando
+   `status === "paid"`, hay `skydropxRateId` y **no** hay guía real (`skydropxShipmentId` nulo o con
+   valor `"creating"`), con una nota de que cada guía se cobra.
+3. [ ] **Estado "necesita revisión":** si `skydropxShipmentId` empieza con `unreconciled:`, mostrar
+   un aviso (no un botón): la guía ya se pagó y hay que localizarla en el panel de Skydropx.
+4. [ ] **Estado "sin confirmar" (`unreconciled:desconocido`):** aviso con dos salidas explícitas —
+   "ya la encontré en Skydropx" (lleva al flujo de capturar la guía de la Fase 14) y "no existe,
+   generar de todos modos", que es el único lugar donde se manda `force: true`. Conviene una
+   confirmación explícita antes de mandarlo: si la guía sí existía, se paga otra.
+5. [ ] **Mutation + invalidación:** `useMutation` que al `onSuccess` invalide `adminOrderKeys.all` y
+   marque el refresh como manual (`isManualRefreshRef`), igual que las Fases 12/14.
+6. [ ] **Errores mapeados:** `409` y `502` se muestran inline con el `message` del backend sin cerrar
+   el modal — el `502` es reintentable, el `409` no (salvo el de `unreconciled:desconocido`, que se
+   resuelve con el punto 4).
+
+**Salida:** un pedido pagado deja de quedarse sin guía por una falla puntual de Skydropx, y cuando
+requiere intervención humana el panel lo dice en vez de callarlo.
+
+---
+
+### Fase 17 — Página pública de seguimiento del pedido 🔴 *(cara al cliente, no al admin)*
+
+> **Contexto.** No hay cuentas de cliente ni ninguna otra lectura pública de órdenes: después de
+> pagar, lo único que tenía el comprador era el correo de confirmación. Si lo borraba o le caía en
+> spam, cada "¿ya salió mi pedido?" acababa siendo un WhatsApp que el dueño contestaba a mano. El
+> backend agregó `GET /api/orders/lookup/:token` (Fase O.4 del
+> `../backend/roadmap-operacion-y-negocio.md`) y **el correo ya manda el link a
+> `/pedido/<token>`** — o sea que esa ruta hoy es un 404 del front. Es la única fase de este
+> documento que no toca el panel: el consumidor es el comprador.
+
+**Lo que el backend ya hace (referencia — no tocar):**
+- `GET /api/orders/lookup/:token` `[público, sin auth]`. El `publicToken` (UUID opaco de la orden)
+  **es** la credencial; por eso no se pide correo ni ningún otro dato.
+- Devuelve `{ order }` con una **proyección propia**, distinta de `AdminOrderSchema` — hay que
+  escribirle su schema de zod:
+  `{ id, status, paymentStatus, createdAt, subtotal, savings, shipping, total, customerName,
+  shippingAddress: { street, neighborhood, city, state, postalCode, references }, shippingCarrier,
+  trackingNumber, trackingUrl, shipmentStatus, refundedAt,
+  items: [{ nameSnapshot, size, quantity, unitOriginalPrice, unitSalePrice }] }`.
+- **No** incluye `unitCost`, `paymentIntentId`, `refundId`, `labelUrl`, los ids de Skydropx,
+  `shippingRequiresDropoff`, el propio token ni el correo/teléfono del cliente. Es deliberado: el
+  link se comparte por WhatsApp con facilidad.
+- Un token **inexistente, alterado o mal formado** responde siempre el **mismo `404`** con el mismo
+  `message`, a propósito (no revela si el pedido existe). Ese `message` es la copia de UI: píntalo
+  tal cual.
+- Rate limit propio de **30 req/min por IP** (`429` con su `message`). Es holgado, pero descarta un
+  polling agresivo: si se quiere refresco automático, que sea de un minuto para arriba.
+- El token también viene en el `201` de `POST /api/orders` (`order.publicToken`), así que el
+  checkout puede llevar al comprador a la página sin esperar el correo.
+
+**Trabajo del frontend:**
+1. [ ] **Contrato:** `lib/api/orders.ts` expone `lookupOrder(token)` (`GET /api/orders/lookup/:token`,
+   sin `Authorization`) + `PublicOrderSchema` de zod con la forma de arriba. **No reutilizar**
+   `AdminOrderSchema`: la proyección es distinta y más chica a propósito.
+2. [ ] **Ruta:** `app/(public)/pedido/[token]/page.tsx`. El path tiene que ser exactamente ese —
+   es el que el backend construye en el correo (`publicOrderUrl` en `payment.service.ts`).
+3. [ ] **Vista de estado:** línea de tiempo legible a partir de `status`
+   (`pending` "esperando el pago" · `paid` "preparando tu envío" · `shipped` "va en camino" ·
+   `delivered` "entregado" · `cancelled`), con `shipmentStatus` como detalle secundario (es el
+   texto crudo de la paquetería, no copia nuestra) y el botón "Rastrear" cuando haya `trackingUrl`.
+4. [ ] **Resumen de la compra:** renglones con los precios **congelados** que manda la API
+   (`unitSalePrice`/`unitOriginalPrice`, tachado cuando hubo descuento), totales y dirección de
+   envío — reusando el formato de moneda del checkout.
+5. [ ] **Pedido cancelado:** cuando `paymentStatus === "refunded"`, decir que el dinero se devolvió
+   y **cuándo** (`refundedAt`); el reembolso tarda días hábiles en aparecer en el estado de cuenta
+   y esa es justo la siguiente pregunta del cliente.
+6. [ ] **404 y 429:** estado vacío con el `message` del backend y una salida clara (volver a la
+   tienda / buscar el correo de confirmación). Nada de "token inválido" inventado por el front.
+7. [ ] **Enganche desde el checkout:** guardar `order.publicToken` del `201` y ofrecer el link
+   "Ver el estado de mi pedido" en la pantalla de compra completada.
+8. [ ] **SEO:** `noindex` en esta ruta — el token es una credencial y no debe acabar en un buscador.
+
+**Salida:** el comprador consulta su pedido solo, a cualquier hora, y el dueño deja de contestar
+estados por WhatsApp.
+
+---
+
+### Fase 18 — Outlet: buscador, orden y rango de precio 🔴 *(cara al cliente, no al admin)*
+
+> **Contexto.** El outlet solo sabe filtrar por categoría y talla, y siempre lista en el mismo
+> orden. Con la importación masiva por Excel el catálogo crece en lotes de **hasta 500 filas por
+> archivo**, así que un listado de 9 productos por página sin buscador deja de ser navegable
+> rápido: el comprador no encuentra lo que ya está en la tienda. El backend agregó `q`, `orden`,
+> `precioMin` y `precioMax` (Fase N.1 del `../backend/roadmap-operacion-y-negocio.md`) y **los
+> resuelve todos en SQL**; el front todavía manda solo `categoria`/`talla`/`page`.
+
+**Lo que el backend ya hace (referencia — no tocar):**
+- Cuatro query params nuevos en `GET /api/products`: **`q`** (busca en nombre y código, parcial y
+  sin distinguir mayúsculas, máx. 100 caracteres), **`orden`**
+  (`precio_asc` · `precio_desc` · `novedad`; sin valor, ordena por id ascendente),
+  **`precioMin`/`precioMax`** (sobre el precio de venta, inclusive en ambos extremos).
+- **La forma de la respuesta NO cambia.** `ProductListResponseSchema` se queda igual; lo único que
+  crece es `ProductFilters`.
+- **Un parámetro inválido se ignora en silencio: nunca responde `400`.** Un `orden` desconocido, un
+  precio no numérico o negativo y una talla vacía se descartan y devuelven el catálogo normal. **No
+  inventes mensajes de validación en el front** para estos campos.
+- `%` y `_` se buscan como **texto literal**, así que el valor del input se manda tal cual, sin
+  sanitizar ni escapar del lado del cliente.
+- **`precioMin > precioMax` devuelve cero resultados a propósito** (no se invierte el rango). Si el
+  front quiere evitarlo, que sea en la UI; el backend no lo va a corregir.
+- **`availableSizes` ya viene acotado por `q` y por el rango de precio** (pero no por la `talla` ya
+  elegida), así que el selector de tallas nunca ofrece opciones que darían cero resultados — **no
+  hay que filtrarlo del lado del cliente**.
+
+**Trabajo del frontend:**
+1. [ ] **Contrato:** extender `ProductFilters` en `lib/api/products.ts` con
+   `q?`/`orden?`/`precioMin?`/`precioMax?`. `productKeys.filtered` ya serializa el objeto completo,
+   así que la cache de TanStack Query se separa sola sin tocar las keys.
+2. [ ] **Buscador:** input de texto con **debounce (~300 ms)** en `OutletFilters.tsx`, sincronizado
+   a la URL con el helper `updateParam()` que ya existe en `OutletView.tsx`.
+3. [ ] **Selector de orden:** `<select>` con las tres opciones + el default, reusando el
+   `SELECT_CLASS` y el `ARROW_STYLE` que ya comparten los dos selects actuales.
+4. [ ] **Rango de precio:** dos campos (o un slider) que manden `precioMin`/`precioMax`.
+5. [ ] **Resetear `pagina` a 1 al cambiar cualquiera de los filtros nuevos** — `updateParam()` ya lo
+   hace para los existentes; hay que incluir los nuevos o se cae en la página clampeada.
+6. [ ] **Estado vacío:** "no encontramos nada para «…»" con una salida clara a limpiar filtros. Hoy
+   no existe: sin búsqueda, el catálogo nunca daba cero resultados.
+7. [ ] **Nada de filtrado en cliente.** Todo lo resuelve el backend en SQL y `total`/`totalPages` ya
+   reflejan los filtros; duplicarlo en el front rompería la paginación.
+
+**Salida:** el comprador encuentra por nombre o código y ordena por precio, con el catálogo
+creciendo por importación masiva.
+
+---
+
+### Fase 19 — Cupones: campo en el checkout + sección en el panel 🔴 *(las dos caras a la vez)*
+
+> **Contexto.** No existe ninguna forma de lanzar una promoción sin repreciar producto por producto,
+> que es permanente y toca el catálogo. El backend cerró la Fase N.2 del
+> `../backend/roadmap-operacion-y-negocio.md`: hay modelo, validación pública, canje atómico y CRUD
+> admin. Falta las dos mitades visibles — el campo donde el comprador teclea el código (paso 0 del
+> checkout, `components/checkout/OrderSummary.tsx`) y la pantalla donde el dueño crea y cancela
+> cupones.
+
+**Lo que el backend ya hace (referencia — no tocar):**
+- **El invariante de totales cambió** y hay que revisar todo lo que asuma la versión de cuatro
+  términos: ahora es **`total = subtotal − savings − couponDiscount + shipping`**. Afecta a
+  `components/checkout/OrderTotals.tsx` (compartido por `OrderSummary`, `Success` y
+  `ShippingOptions`) y al objeto de totales que `ShippingOptions.tsx` arma a mano con la tarifa
+  viva.
+- **`savings` y `couponDiscount` son cosas distintas y NO se suman.** `savings` es el ahorro outlet
+  (`originalPrice` vs `salePrice`); el cupón va en su propia columna. Mezclarlos en la UI le miente
+  al comprador sobre de dónde viene cada descuento (y en el panel rompería el margen).
+- **El descuento nunca toca el envío.** Se aplica sobre la mercancía neta (`subtotal − savings`), así
+  que la fila del cupón va **arriba** de la de Envío — igual que en el correo de confirmación.
+- **`POST /api/coupons/validate` valida SIN canjear** y devuelve el mismo monto que se va a cobrar
+  (comparte la función de descuento con el checkout). Consultarlo las veces que sea **no** gasta la
+  promoción.
+- **El resultado de `/validate` NO es una reserva.** `remainingRedemptions` es informativo y el
+  cupón puede agotarse entre la consulta y el pago: `POST /api/orders` re-decide todo de forma
+  atómica. **Hay que pintar ese `409`**, no asumir que el visto bueno era garantía.
+- **El `email` de `/validate` es opcional** porque el campo vive antes de los datos de envío. Sin él
+  la respuesta trae `perCustomerChecked: false`: el "un uso por cliente" no se verificó todavía.
+- **Un cupón inválido en `POST /api/orders` responde 400/409 y no crea el pedido** — al contrario de
+  los filtros del catálogo, aquí nada se ignora en silencio. Los `message` ya son copia de UI
+  accionable en español (incluyen cuánto falta para el mínimo, cuándo venció, etc.): **pintarlos tal
+  cual, no inventar textos**.
+- **El código se normaliza en el servidor** (se recorta y se sube a mayúsculas): mandar
+  `" verano25 "` funciona. Solo acepta letras y números, 3–32 caracteres.
+- En el panel, el listado devuelve `redeemedCount` **y** `activeRedemptions`. Normalmente coinciden;
+  si difieren hubo una intervención manual en la BD. `code` y `redeemedCount` **no** se pueden
+  editar (el `PUT` los ignora), y `active: false` es la forma de **cancelar** un cupón. `DELETE`
+  responde `{ ok, deactivated }`: `deactivated: true` significa que se desactivó en vez de borrarse
+  porque ya hay pedidos que lo usaron.
+- `startsAt`/`expiresAt` aceptan una fecha sin hora (`2026-08-31`) y la interpretan en la zona de la
+  tienda (fin de día para el vencimiento), así que un `<input type="date">` sirve tal cual.
+
+**Trabajo del frontend:**
+1. [ ] **Contratos:** `lib/api/coupons.ts` (público: `validateCoupon`) y `lib/api/adminCoupons.ts`
+   (CRUD + `adminCouponKeys`), con el patrón de siempre — axios vía `lib/api/client.ts`, Zod en
+   runtime, `.parse` en lecturas y `acceptWrite()` en escrituras.
+2. [ ] **`CreateOrderPayload`** gana `couponCode?`; `OrderResponseSchema` gana
+   `couponCode`/`couponDiscount`.
+3. [ ] **Campo de cupón en `OrderSummary.tsx`**, entre `<OrderItems />` y el bloque de totales:
+   input + botón "Aplicar", estado aplicado con opción de quitarlo, y el `message` del error pintado
+   verbatim.
+4. [ ] **Guardar el cupón aplicado en `CheckoutContext`** con el patrón de caché por firma que ya
+   usan `getSelectedRate`/`getPendingOrder`, para que sobreviva al avance entre pasos.
+5. [ ] **Revalidar en el paso de envío** (`ShippingOptions.tsx`) mandando ya el correo confirmado:
+   es el único momento en que `/validate` puede verificar el "un uso por cliente", y avisar ahí es
+   mejor que fallar al cobrar.
+6. [ ] **`orderSignature` en `usePlaceOrder.ts` tiene que incluir el cupón**, o aplicar/quitar uno
+   reconfirmaría el pedido cacheado con el precio anterior.
+7. [ ] **Fila "Cupón" en `OrderTotals.tsx`** (arriba de Envío) y en `Success.tsx`, solo cuando
+   `couponDiscount > 0`.
+8. [ ] **Sección "Cupones" del panel:** `components/admin/types.ts` (`AdminSection`), `NAV_ITEMS` de
+   `Sidebar.tsx`, y `VALID_SECTIONS` + el switch de `app/admin/page.tsx`. Tabla con estado/vigencia/
+   usos, formulario de alta y edición, y borrado con confirmación inline como en `AdminsCard.tsx`.
+9. [ ] **Nada de calcular el descuento en el cliente.** El monto que se muestra siempre sale de
+   `/validate` o del pedido; duplicar la fórmula garantiza que un día diverja del cobro.
+
+**Salida:** el dueño lanza una promoción desde el panel y el comprador la aplica en el checkout, con
+el descuento calculado y canjeado por el backend.
+
+---
+
+### Fase 20 — Admin: gastos y suscripciones 🔴 *(solo panel, no toca la tienda)*
+
+> **Contexto.** Hasta ahora el KPI **GANANCIA NETA** del panel restaba una constante de `$2,000`
+> hardcodeada en el backend, con el comentario "no existe un modelo de gastos". La Fase N.3 del
+> `../backend/roadmap-operacion-y-negocio.md` la sustituyó por gastos capturados: hay modelo, CRUD,
+> resumen de "cuánto retirar" e historial mes con mes. Falta la pantalla donde el dueño da de alta
+> Render, Vercel, la base de datos, la renta y lo que sea.
+>
+> **El KPI del dashboard ya funciona sin tocar el frontend** (`KpiGrid` pinta los labels tal como
+> vienen), así que esta fase no desbloquea nada roto: agrega la pantalla que llena esos datos.
+
+**Lo que el backend ya hace (referencia — no tocar):**
+- **El monto no es un campo del gasto: está versionado por fecha de vigencia.** Mandar `amount` en el
+  `PUT` **agrega una versión** con vigencia `amountEffectiveFrom` (o hoy) en vez de sobrescribir. Eso
+  es lo que hace que subir Render de $290 a $340 no reescriba lo que costaba en julio. Dos
+  excepciones que el backend resuelve solo: si ya existe una versión con esa misma fecha la
+  **corrige en su lugar**, y si el monto no cambió no escribe nada. **La UI tiene que decir "esto es
+  un cambio de precio", no "editar monto"** — y ofrecer la fecha desde la que aplica.
+- **Cada gasto trae su historial de precios** en `amounts` (del más viejo al más nuevo), más
+  `currentAmount`, `monthlyRunRate` y `nextChargeDate` ya calculados. **No recalcular nada de eso en
+  el cliente.**
+- **`/history` responde el "¿algo cambió?"**: cada mes trae `total`, `byCategory`, `byExpense` (con
+  `occurrences`) y **`changes`** — los cambios de precio vigentes ese mes con `previousAmount` y
+  `amount`. El delta y el % **los calcula el front** (misma regla que el resto de métricas
+  derivadas). Los meses van sin huecos (los vacíos en `$0`) y el mes en curso trae `partial: true`,
+  igual que el reporte mensual de ventas.
+- **`/summary` responde "cuánto tengo que retirar"**: `monthlyRunRate` (la suma de los recurrentes
+  llevados a su equivalente mensual — anual ÷ 12, semanal × 52/12), `annualRunRate`, `byCategory`,
+  `byFrequency` y `upcomingCharges` (qué se cobra, de cuánto y en qué fecha, próximos 60 días).
+- **Los gastos de única vez (`frequency: "once"`) no entran en la carga mensual**: cuentan completos
+  en su mes. Si la UI los mezcla en el "cuánto retirar", miente.
+- **Todo en pesos.** No hay divisas: si Render cobra en USD, se captura lo que cobró la tarjeta. Un
+  movimiento del dólar se registra como un cambio de monto (y por eso `amountNote` existe: "subió el
+  dólar").
+- **Las fechas son días de calendario** (`"2026-08-01"`), así que un `<input type="date">` sirve tal
+  cual — no hay que convertir a ISO ni preocuparse por la zona horaria.
+- **`active` y `endsAt` se mantienen coherentes solos**: apagar un gasto le fija `endsAt` en hoy y
+  reactivarlo lo limpia. La UI solo manda `active`.
+- **`DELETE` responde `{ ok, deactivated }`**: `deactivated: true` significa que se desactivó en vez
+  de borrarse porque ya generó cargos y borrarlo dejaría el historial mintiendo sobre meses cerrados.
+  Mismo contrato que el `DELETE` de cupones.
+- **Los filtros inválidos son `400`, no se ignoran** (al revés que los del catálogo público): aquí
+  quien consulta es el dueño y un filtro que no aplicó le haría leer mal sus propios números. Los
+  `message` ya son copia de UI accionable en español — **pintarlos verbatim**.
+- El filtro `from`/`to` del listado es por **fecha de cargo**, no de alta: un gasto dado de alta en
+  enero y vigente desde entonces sí sale al consultar agosto.
+
+**Trabajo del frontend:**
+1. [ ] **Contrato:** `lib/api/adminExpenses.ts` (CRUD + `summary` + `history` + `adminExpenseKeys`),
+   con el patrón de siempre — axios vía `lib/api/client.ts`, Zod en runtime, `.parse` en lecturas y
+   `acceptWrite()` en escrituras.
+2. [ ] **Sección "Gastos" del panel:** `components/admin/types.ts` (`AdminSection`), `NAV_ITEMS` de
+   `Sidebar.tsx`, y `VALID_SECTIONS` + el switch de `app/admin/page.tsx`.
+3. [ ] **Tarjeta de encabezado con `/summary`:** "hay que retirar $X al mes" bien grande, el anual
+   como secundario, y la lista de próximos cargos con fecha y monto.
+4. [ ] **Tabla de gastos** con concepto, proveedor, categoría, frecuencia, monto vigente, carga
+   mensual y próximo cargo; formulario de alta/edición y borrado con confirmación inline como en
+   `AdminsCard.tsx`.
+5. [ ] **Formulario de cambio de precio separado del de edición.** Cambiar el monto pide fecha de
+   vigencia y una nota opcional; que se sienta distinto de corregir un typo en el concepto, porque
+   en el backend lo es.
+6. [ ] **Vista de historial** con el total por mes, el desglose por categoría y —lo importante— los
+   `changes` del mes resaltados ("Render: $290 → $340 desde el 1 de agosto"), con el delta calculado
+   en el cliente.
+7. [ ] **Etiquetas en español de `category` y `frequency`** en un mapa local (como
+   `lib/categories.ts` hace con los tipos de producto). El backend manda las claves crudas.
+8. [ ] **Nada de recalcular montos en el cliente.** `currentAmount`, `monthlyRunRate` y los totales
+   del historial vienen listos; duplicar las fórmulas (sobre todo `weekly × 52/12`) garantiza que un
+   día diverjan del KPI del dashboard.
+
+**Salida:** el dueño ve cuánto tiene que apartar de sus ventas cada mes, con qué se le va, cuándo se
+le cobra y qué subió de precio — y la GANANCIA NETA del panel deja de restar un número inventado.
+
+---
+
 ## Notas de implementación
 
 - **Base URL:** `NEXT_PUBLIC_API_URL` debe apuntar al backend (`http://localhost:4000`);
@@ -568,4 +998,22 @@ sin salir del panel y sin riesgo de duplicar stock.
   — `POST /api/admin/orders/:id/cancel` (Fase H.5 del
   `../backend/roadmaps-completados/roadmap-hardening.md`).
 - La **Fase 13** (importación/restock masivo por Excel) ya está cableada en la sección **Importar**
-  del panel. **No quedan fases pendientes en este roadmap.**
+  del panel.
+- La **Fase 14** (marcar pedido como enviado/entregado a mano) es la única pendiente **que habilita
+  algo que hoy no se puede hacer** — `PATCH /api/admin/orders/:id/status`, Fase O.1 del
+  `../backend/roadmap-operacion-y-negocio.md`.
+- La **Fase 15** (`Idempotency-Key` en el checkout) es una mejora opcional: el backend **ya**
+  deduplica los pedidos duplicados sin ayuda del front (Fase O.2 del mismo roadmap). El header solo
+  hace la protección explícita en vez de inferida.
+- La **Fase 16** (reintentar la guía de Skydropx) también es opcional en el sentido de que el backend
+  ya se recupera solo con un barrido periódico (Fase O.3 del mismo roadmap); el botón adelanta ese
+  reintento y, sobre todo, muestra el motivo del fallo cuando hace falta decidir a mano.
+- La **Fase 18** (buscador y orden en el outlet) es puramente aditiva: los params nuevos son
+  opcionales y el catálogo sigue funcionando igual sin mandarlos, así que se puede cablear por
+  partes (primero el buscador, después el orden y el rango) sin romper nada.
+- La **Fase 19** (cupones) es la única pendiente que **no** es aditiva: aunque nadie mande un
+  `couponCode`, el invariante de totales ya cambió a `subtotal − savings − couponDiscount + shipping`
+  y `couponDiscount` llega en `0`. Mientras no se cablee, la aritmética actual sigue dando el mismo
+  resultado; el riesgo aparece el día que se cree el primer cupón y algún componente siga sumando con
+  cuatro términos. Conviene hacer primero los puntos 1, 2 y 7 (contratos + fila de descuento) aunque
+  el campo del checkout llegue después.
