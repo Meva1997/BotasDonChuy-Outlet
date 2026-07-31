@@ -1,12 +1,10 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import axios from "axios";
 import { getStripe } from "@/lib/stripe/client";
 import {
   createOrder,
   buildOrderPayload,
-  OrderResponseParseError,
   type OrderResponse,
 } from "@/lib/api/orders";
 import { shippingKeys, type SelectedShippingRate } from "@/lib/api/shipping";
@@ -15,6 +13,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { CartItem } from "@/store/cartStore";
 import type { ShippingData } from "@/schemas/checkout";
 import { useCheckout } from "./CheckoutContext";
+import {
+  isIdempotencyKeyConflict,
+  isRateExpiredError,
+  placeOrderErrorMessage,
+} from "./checkoutErrors";
 
 // PaymentMethod de PRUEBA de Stripe (equivale a la tarjeta 4242 4242 4242 4242).
 // Todo corre en sandbox: no se capturan datos de tarjeta, se confirma el
@@ -41,47 +44,6 @@ function orderSignature(
   return `${cartLineSignature(items)}#${JSON.stringify(customer)}#${rateKey}`;
 }
 
-// El backend re-consulta la cotización de Skydropx al crear la orden; si
-// expiró (duran 24 h) responde 409 con un mensaje que contiene esta frase.
-// A diferencia del 409 genérico de "sin stock", aquí la tarifa elegida ya no
-// sirve: hay que limpiarla para que el usuario no reintente contra la misma
-// quotationId/rateId caducada.
-const RATE_EXPIRED_HINT = "cotizaciones expiran";
-
-function isRateExpiredError(error: unknown): boolean {
-  return (
-    axios.isAxiosError(error) &&
-    error.response?.status === 409 &&
-    typeof error.response.data?.message === "string" &&
-    error.response.data.message.includes(RATE_EXPIRED_HINT)
-  );
-}
-
-// Traduce un error del flujo de pedido/pago en un mensaje para el usuario.
-function placeOrderErrorMessage(error: unknown): string {
-  // El pedido SÍ se creó (2xx) pero la respuesta no validó: reintentar lo
-  // duplicaría. Se le indica explícitamente que no lo reenvíe.
-  if (error instanceof OrderResponseParseError)
-    return "Tu pedido se registró correctamente, pero no pudimos mostrar la confirmación. No vuelvas a enviarlo; te contactaremos para confirmar los detalles.";
-  if (axios.isAxiosError(error)) {
-    // Sin `response`: la petición nunca llegó a buen puerto (backend caído,
-    // red del usuario, timeout) — no es un error de los datos que capturó.
-    if (!error.response)
-      return "No pudimos conectar con el servidor. Inténtalo de nuevo en unos minutos.";
-    const message = error.response.data?.message as string | undefined;
-    if (error.response.status === 409)
-      return (
-        message ??
-        "Uno o más artículos se quedaron sin stock. Revisa tu carrito."
-      );
-    if (error.response.status === 400)
-      return "Revisa los datos del pedido e inténtalo de nuevo.";
-    if (error.response.status >= 500)
-      return "Tuvimos un problema en el servidor. Inténtalo de nuevo en unos minutos.";
-  }
-  return "No pudimos completar tu pedido. Inténtalo de nuevo.";
-}
-
 /**
  * Orquesta el checkout en dos fases:
  *   1. POST /api/orders → crea la orden y devuelve el `clientSecret` del PaymentIntent.
@@ -95,11 +57,23 @@ function placeOrderErrorMessage(error: unknown): string {
  * orden nueva y correcta. Solo
  * tras un `succeeded` se llama `onSuccess` (que congela el snapshot y avanza de
  * paso). El estado `paid` real lo concilia el webhook del backend de forma asíncrona.
+ *
+ * Ese caché protege del reintento que pasa por aquí. La `Idempotency-Key`
+ * (Fase 15) protege del que NO pasa: un doble clic que dispara dos peticiones
+ * antes de que la primera responda, o el reintento automático del navegador.
+ * Se pide con la misma firma, así que rota exactamente cuando el intento de
+ * compra deja de ser el mismo.
  */
 export function usePlaceOrder() {
   const [status, setStatus] = useState<PlaceOrderStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-  const { getPendingOrder, setPendingOrder, setSelectedRate } = useCheckout();
+  const {
+    getPendingOrder,
+    setPendingOrder,
+    setSelectedRate,
+    getIdempotencyKey,
+    resetIdempotencyKey,
+  } = useCheckout();
   const queryClient = useQueryClient();
 
   const placeOrder = useCallback(
@@ -117,10 +91,18 @@ export function usePlaceOrder() {
         //    pago, siempre que ni el carrito, los datos, ni la tarifa elegida
         //    hayan cambiado).
         let pending = getPendingOrder(signature);
+        // Solo puede ser true si la orden se creó en ESTA pasada: una orden
+        // servida del caché no trajo respuesta HTTP de la que leer el header.
+        let replayed = false;
         if (!pending) {
           const res = await createOrder(
-            buildOrderPayload(items, customer, selectedRate)
+            buildOrderPayload(items, customer, selectedRate),
+            // Misma clave mientras el intento de compra sea el mismo (la firma
+            // no cambió): es lo que convierte un doble clic o un reintento del
+            // navegador en un solo pedido con un solo cobro.
+            getIdempotencyKey(signature)
           );
+          replayed = res.replayed;
           if (!res.clientSecret) {
             setError(
               "Los pagos no están disponibles en este momento. Inténtalo más tarde."
@@ -148,6 +130,23 @@ export function usePlaceOrder() {
           );
           setStatus("idle");
           return;
+        }
+
+        // 2.b El backend nos devolvió un pedido que YA existía (header
+        //     `Idempotency-Replayed`), no uno nuevo: su PaymentIntent puede
+        //     estar cobrado desde el intento anterior. Confirmarlo otra vez
+        //     devuelve un error de Stripe que le diría al comprador que su pago
+        //     falló cuando en realidad ya se hizo — y lo empujaría a reintentar.
+        //     Se consulta el estado real antes de tocarlo.
+        if (replayed) {
+          const { paymentIntent } = await stripe.retrievePaymentIntent(
+            pending.clientSecret
+          );
+          if (paymentIntent?.status === "succeeded") {
+            setPendingOrder(signature, null);
+            onSuccess(pending.order);
+            return;
+          }
         }
 
         const result = await stripe.confirmCardPayment(pending.clientSecret, {
@@ -191,11 +190,25 @@ export function usePlaceOrder() {
             queryKey: shippingKeys.rates(items, customer),
           });
         }
+        if (isIdempotencyKeyConflict(err)) {
+          // La clave que mandamos quedó asociada a otro carrito en el backend:
+          // reintentar con la misma da este mismo 409 para siempre. Se descarta
+          // para que el siguiente clic genere una nueva. Nada se persistió (el
+          // backend rechaza antes de crear), así que no hay pedido que limpiar.
+          resetIdempotencyKey();
+        }
         setError(placeOrderErrorMessage(err));
         setStatus("idle");
       }
     },
-    [getPendingOrder, setPendingOrder, setSelectedRate, queryClient]
+    [
+      getPendingOrder,
+      setPendingOrder,
+      setSelectedRate,
+      getIdempotencyKey,
+      resetIdempotencyKey,
+      queryClient,
+    ]
   );
 
   return { status, error, placeOrder };

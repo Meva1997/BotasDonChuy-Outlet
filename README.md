@@ -16,7 +16,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **sileo** — toast notifications (admin panel only)
 - **pnpm** as package manager
 
-> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). The only specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen. See that folder's `README.md` for the layout.
+> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). Specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen; see that folder's `README.md` for the layout — plus two pure checkout modules (`lib/domain/__tests__/idempotency.test.ts`, `components/checkout/__tests__/checkoutErrors.test.ts`).
 
 ## Commands
 
@@ -60,6 +60,7 @@ components/
   ui/             # Global primitives: Cart, CartProvider, FormControls, ImageCarousel
   providers/      # QueryProvider (TanStack Query), BrandProvider (brand identity)
   checkout/       # 4-step checkout wizard, incl. ShippingOptions (live Skydropx rate quoting)
+                  #   and checkoutErrors.ts (pure order/payment error mapping, with specs)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
   nosotros/       # AboutUs — static "About Us" page
   auth/           # AuthShell, LoginForm, ForgotPasswordForm (+ CodeInput/ResetCodeForm/NewPasswordForm), AdminGuard
@@ -67,8 +68,8 @@ components/
                   #   data/ — chart/table subcomponents (recharts)
                   #   reportes/ — SalesReport (historical) + ReplenishmentReport (forecast)
                   #   import/ — Excel import review screen: pure modules (types, rowInput, importReducer,
-                  #   dependencies, labels) + components. The only part of the app with Jest specs;
-                  #   they live in import/__tests__/ (see its README.md)
+                  #   dependencies, labels) + components. The only screen fully covered by Jest
+                  #   specs; they live in import/__tests__/ (see its README.md)
 lib/
   api/            # axios client + per-domain contracts (Zod schemas + fetchers + query keys):
                   #   auth, products, adminProducts, adminProductImport, adminOrders, adminUsers, account,
@@ -149,14 +150,14 @@ All storefront routes carry title/description/canonical/Open Graph metadata; `/a
 
 ## Checkout flow
 
-`/checkout` is a 4-step wizard (state held in React context, resets on refresh). Steps render conditionally, so navigating away unmounts them — anything that must survive back-and-forth lives in the context instead: a shipping draft (restored when `UserDetails` remounts), the validated address (`confirmedCustomer`, what step 3 quotes against), the selected shipping rate (cached by cart+customer signature), the pending Stripe order, and `acceptedTerms`. The `Stepper` distinguishes three states per step (done / visited-but-not-current / pending), letting users jump back to any step they've already seen.
+`/checkout` is a 4-step wizard (state held in React context, resets on refresh). Steps render conditionally, so navigating away unmounts them — anything that must survive back-and-forth lives in the context instead: a shipping draft (restored when `UserDetails` remounts), the validated address (`confirmedCustomer`, what step 3 quotes against), the selected shipping rate (cached by cart+customer signature), the pending Stripe order, the checkout's idempotency key, and `acceptedTerms`. The `Stepper` distinguishes three states per step (done / visited-but-not-current / pending), letting users jump back to any step they've already seen.
 
 1. **Resumen** — read-only cart review; requires accepting terms & privacy before continuing. Shows a flat-rate shipping estimate (no address yet, never charged).
 2. **Dirección** — shipping address form validated with react-hook-form + zod (Mexico only). Submitting just saves the validated address to context and advances — no order, no payment yet.
-3. **Envío** — **live shipping-rate quoting** against Skydropx (`POST /api/shipping/rates` via `lib/api/shipping.ts`; always resolves 200, falling back to the same flat rate as step 1 if Skydropx is unavailable). One option auto-selects; two or more require an explicit pick. The total shown here is exactly what gets charged. On "Pagar y confirmar", `usePlaceOrder` runs a two-phase flow: (1) **posts the order** (`POST /api/orders` via `createOrder` in `lib/api/orders.ts`) — `{ items, customer, quotationId?, rateId? }`, no amounts; the backend re-queries Skydropx for that exact quote (or falls back to its own flat rate) and returns a Stripe `clientSecret`; a `409` (out of stock, or an expired quote — which also clears the selected rate so the user re-quotes) or `400` keeps the user on the form. (2) **confirms payment** with Stripe.js (`confirmCardPayment`). Running in **test/sandbox**, so the test card is hardcoded (`pm_card_visa` = `4242 4242 4242 4242`) and `PaymentSection` is a read-only test-card panel. Only after `succeeded` does it freeze the order snapshot and advance; the `paid` status is reconciled by the backend webhook. The created order is cached (keyed by cart contents, customer data, **and** the selected rate) so retrying doesn't duplicate it.
+3. **Envío** — **live shipping-rate quoting** against Skydropx (`POST /api/shipping/rates` via `lib/api/shipping.ts`; always resolves 200, falling back to the same flat rate as step 1 if Skydropx is unavailable). One option auto-selects; two or more require an explicit pick. The total shown here is exactly what gets charged. On "Pagar y confirmar", `usePlaceOrder` runs a two-phase flow: (1) **posts the order** (`POST /api/orders` via `createOrder` in `lib/api/orders.ts`) — `{ items, customer, quotationId?, rateId? }`, no amounts; the backend re-queries Skydropx for that exact quote (or falls back to its own flat rate) and returns a Stripe `clientSecret`; a `409` (out of stock, or an expired quote — which also clears the selected rate so the user re-quotes) or `400` keeps the user on the form. (2) **confirms payment** with Stripe.js (`confirmCardPayment`). Running in **test/sandbox**, so the test card is hardcoded (`pm_card_visa` = `4242 4242 4242 4242`) and `PaymentSection` is a read-only test-card panel. Only after `succeeded` does it freeze the order snapshot and advance; the `paid` status is reconciled by the backend webhook. The created order is cached (keyed by cart contents, customer data, **and** the selected rate) so retrying doesn't duplicate it. That cache only covers retries that go through the hook; an **`Idempotency-Key` header** covers the ones that don't (a double-click firing two requests before the first responds, or the browser's own retry). The key is derived from the same signature, so it rotates exactly when the purchase attempt stops being the same one, and a replayed response (`Idempotency-Replayed`) makes the hook check the PaymentIntent before re-confirming a payment that already went through.
 4. **Confirmación** — frozen order snapshot (with `Pedido #<id>` and the server's authoritative totals) plus shipping address.
 
-Key files: `app/(public)/checkout/`, `components/checkout/` (incl. `ShippingOptions.tsx`), `schemas/checkout.ts`, `lib/domain/cart.ts`, `lib/api/orders.ts`, `lib/api/shipping.ts`.
+Key files: `app/(public)/checkout/`, `components/checkout/` (incl. `ShippingOptions.tsx` and `checkoutErrors.ts`), `schemas/checkout.ts`, `lib/domain/cart.ts`, `lib/domain/idempotency.ts`, `lib/api/orders.ts`, `lib/api/shipping.ts`.
 
 ## Shipping
 
