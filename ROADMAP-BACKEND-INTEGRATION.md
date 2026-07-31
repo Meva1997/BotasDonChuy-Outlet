@@ -9,6 +9,12 @@ Todas las llamadas deben pasar por la instancia axios única `lib/api/client.ts`
 query-key factory listo para TanStack Query**. Replicar ese patrón en cada
 migración.
 
+**Cómo está organizado este documento:** primero el mapa de endpoints ↔ consumidor
+(la vista por API), después las fases en **orden numérico estricto**, separadas en
+[completadas](#fases-completadas-) (1–13) y [pendientes](#fases-pendientes-) (14–20).
+Las fases están numeradas por el orden en que se hicieron/se van a hacer, no por
+dependencia: esa se lee en la columna "Depende de" del índice.
+
 ## Leyenda
 
 - ✅ **Conectado** — ya consume el endpoint real.
@@ -17,63 +23,91 @@ migración.
 
 ## Mapa de endpoints ↔ consumidor en el frontend
 
-| Endpoint backend | Consumidor en el frontend | Estado | Acción |
+| Endpoint backend | Consumidor en el frontend | Estado | Fase |
 |---|---|---|---|
-| `POST /api/auth/login` | `components/auth/LoginForm.tsx` → `login()` de `lib/api/auth.ts` | ✅ | — |
-| `POST /api/auth/forgot-password` | `components/auth/ForgotPasswordForm.tsx` → `forgotPassword()` (`useMutation`) | ✅ | Backend ahora envía un **código de 5 dígitos** por correo (antes era solo el stub); el front sigue igual (siempre `{ ok: true }`) |
-| `POST /api/auth/verify-reset-code` | `components/auth/ResetCodeForm.tsx` → `verifyResetCode()` de `lib/api/auth.ts` (`useMutation`, `CodeInput` OTP) | ✅ | Fase 10 |
-| `POST /api/auth/reset-password` | `components/auth/NewPasswordForm.tsx` → `resetPassword()` (`useMutation` → redirect `/login`) | ✅ | Fase 10 |
-| `GET /api/auth/me` | `components/auth/AdminGuard.tsx` → `getMe()` (valida token + rehidrata `user`) | ✅ | — |
+| `POST /api/auth/login` | `components/auth/LoginForm.tsx` → `login()` de `lib/api/auth.ts` | ✅ | 1 |
+| `POST /api/auth/forgot-password` | `components/auth/ForgotPasswordForm.tsx` → `forgotPassword()` (`useMutation`) | ✅ | 1 · 10 |
+| `POST /api/auth/verify-reset-code` | `components/auth/ResetCodeForm.tsx` → `verifyResetCode()` de `lib/api/auth.ts` (`useMutation`, `CodeInput` OTP) | ✅ | 10 |
+| `POST /api/auth/reset-password` | `components/auth/NewPasswordForm.tsx` → `resetPassword()` (`useMutation` → redirect `/login`) | ✅ | 10 |
+| `GET /api/auth/me` | `components/auth/AdminGuard.tsx` → `getMe()` (valida token + rehidrata `user`) | ✅ | 1 |
 | `GET /api/products` | `lib/api/products.ts` → `getProducts()` | ✅ | — |
-| `GET /api/products` → `q` / `orden` / `precioMin` / `precioMax` | *(sin consumidor todavía)* — `components/outlet/OutletFilters.tsx` necesita buscador, selector de orden y rango de precio; hoy `ProductFilters` solo manda `categoria`/`talla`/`page` | 🔴 | **Fase 18** |
+| `GET /api/products` → `q` / `orden` / `precioMin` / `precioMax` | *(sin consumidor todavía)* — `components/outlet/OutletFilters.tsx` necesita buscador, selector de orden y rango de precio; hoy `ProductFilters` solo manda `categoria`/`talla`/`page` | 🔴 | **18** |
 | `GET /api/products/:id` | `lib/api/products.ts` → `getProductById()` | ✅ | — |
-| `POST /api/orders` | `components/checkout/UserDetails.tsx` → `createOrder()` de `lib/api/orders.ts` (`useMutation`); `completeOrder()` congela la respuesta `201` | ✅ | — |
-| `GET /api/admin/products` | `components/admin/ProductSection.tsx` → `getAdminProducts()` de `lib/api/adminProducts.ts` (`useQuery`) | ✅ | — |
-| `POST /api/admin/products` | `components/admin/ProductForm.tsx` → `createProduct()` (`useMutation` + invalidación) | ✅ | — |
-| `PUT /api/admin/products/:id` | `components/admin/ProductForm.tsx` → `updateProduct()` (`useMutation`) | ✅ | — |
-| `DELETE /api/admin/products/:id` | `ProductCategoryView.tsx` / `ProductForm.tsx` → `deleteProduct()` (`useMutation`; soft/hard lo decide el backend) | ✅ | — |
-| `POST /api/admin/products/:id/images` | `ProductForm.tsx` → `addProductImages()` de `lib/api/adminProducts.ts` (galería de hasta 3, subida al guardar) | ✅ | — |
-| `DELETE /api/admin/products/:id/images` | `ProductForm.tsx` → `deleteProductImage()` (quitar una imagen por `publicId` al guardar) | ✅ | — |
+| `POST /api/orders` | `components/checkout/UserDetails.tsx` → `createOrder()` de `lib/api/orders.ts` (`useMutation`); `completeOrder()` congela la respuesta `201` | ✅ | 2 |
+| `POST /api/orders` → `clientSecret` | `components/checkout/usePlaceOrder.ts` confirma el pago con Stripe.js (`confirmCardPayment` + `pm_card_visa`) usando el `clientSecret` que devuelve `createOrder()`; `PaymentSection.tsx` es el panel de tarjeta de prueba | ✅ | 8 (**test/sandbox**) |
+| `POST /api/webhooks/stripe` | *(lo invoca Stripe, no el front)* — el pago se confirma en el cliente; el webhook marca la orden `paid` | ✅ | 8 — backend activo (firma verificada); no requiere código de front |
+| `POST /api/orders` → header `Idempotency-Key` | `components/checkout/usePlaceOrder.ts` / `lib/api/orders.ts` — el backend ya deduplica solo por huella del carrito; el header lo hace explícito | 🔴 | **15** (mejora, no bloquea) |
+| `POST /api/orders` → `order.publicToken` | `components/checkout/usePlaceOrder.ts` — el `201` del checkout ya trae el token; sirve para mandar al comprador a `/pedido/<token>` sin esperar el correo | 🔴 | **17** |
+| `GET /api/orders/lookup/:token` | *(sin consumidor todavía)* — falta la página pública de seguimiento `/pedido/[token]`, a la que apunta el link del correo de confirmación | 🔴 | **17** |
+| `GET /api/admin/products` | `components/admin/ProductSection.tsx` → `getAdminProducts()` de `lib/api/adminProducts.ts` (`useQuery`) | ✅ | 3 |
+| `POST /api/admin/products` | `components/admin/ProductForm.tsx` → `createProduct()` (`useMutation` + invalidación) | ✅ | 3 |
+| `PUT /api/admin/products/:id` | `components/admin/ProductForm.tsx` → `updateProduct()` (`useMutation`) | ✅ | 3 |
+| `DELETE /api/admin/products/:id` | `ProductCategoryView.tsx` / `ProductForm.tsx` → `deleteProduct()` (`useMutation`; soft/hard lo decide el backend) | ✅ | 3 |
+| `POST /api/admin/products/:id/images` | `ProductForm.tsx` → `addProductImages()` de `lib/api/adminProducts.ts` (galería de hasta 3, subida al guardar) | ✅ | 3 |
+| `DELETE /api/admin/products/:id/images` | `ProductForm.tsx` → `deleteProductImage()` (quitar una imagen por `publicId` al guardar) | ✅ | 3 |
+| `POST /api/admin/products/import/preview` | `components/admin/sections/ImportSection.tsx` → `previewProductImport()` de `lib/api/adminProductImport.ts` (`useMutation`, multipart) | ✅ | 13 |
+| `POST /api/admin/products/import` | `ImportSection.tsx` → `commitProductImport()` (`useMutation` + invalidación de `adminProductKeys`/`productKeys`) | ✅ | 13 |
+| `GET /api/admin/dashboard` | `components/admin/DataSection.tsx` → `getAdminDashboard()` de `lib/api/dashboard.ts` (`useQuery`) | ✅ | 3 |
+| `GET /api/admin/dashboard` → KPI `GASTOS` | `components/admin/sections/DataSection.tsx` → `KpiGrid` (ya lo pinta genérico) | ✅ | El label cambió de `GASTOS FIJOS` a `GASTOS` y ahora sale de gastos reales; el front no requiere cambios |
+| `GET /api/admin/reports/monthly` | `components/admin/ReportesSection.tsx` → `getMonthlyReport()` de `lib/api/reports.ts` (`useQuery`); pasa `reports` a `SalesReport` | ✅ | 4 |
+| `GET /api/admin/reports/replenishment` | `components/admin/reportes/ReplenishmentReport.tsx` → `getReplenishmentReport()` (`useQuery`) | ✅ | 4 |
+| `GET /api/admin/brand` | `components/providers/BrandProvider.tsx` → `getBrandSettings()` de `lib/api/brand.ts` (`useQuery`); `useBrand()` alimenta `Hero`/`Footer`/`NavHeader`/`Cart`. `BRAND` = fallback SSR | ✅ | 5 |
+| `PUT /api/admin/brand` | `components/admin/MarcaSection.tsx` → `updateBrandSettings()` (`useMutation`, autosave con debounce) | ✅ | 5 |
 | `POST /api/admin/brand/logo` | `MarcaSection.tsx` *(no se va a cablear por ahora)* — subida real del logo a Cloudinary | ⚪ | Sin trabajo previsto — decisión del dueño, ver Fase 5 |
 | `DELETE /api/admin/brand/logo` | `MarcaSection.tsx` *(no se va a cablear por ahora)* — quitar el logo | ⚪ | Sin trabajo previsto |
-| `GET /api/admin/dashboard` | `components/admin/DataSection.tsx` → `getAdminDashboard()` de `lib/api/dashboard.ts` (`useQuery`) | ✅ | — |
-| `GET /api/admin/reports/monthly` | `components/admin/ReportesSection.tsx` → `getMonthlyReport()` de `lib/api/reports.ts` (`useQuery`); pasa `reports` a `SalesReport` | ✅ | — |
-| `GET /api/admin/reports/replenishment` | `components/admin/reportes/ReplenishmentReport.tsx` → `getReplenishmentReport()` (`useQuery`) | ✅ | — |
-| `GET /api/admin/brand` | `components/providers/BrandProvider.tsx` → `getBrandSettings()` de `lib/api/brand.ts` (`useQuery`); `useBrand()` alimenta `Hero`/`Footer`/`NavHeader`/`Cart`. `BRAND` = fallback SSR | ✅ | — |
-| `PUT /api/admin/brand` | `components/admin/MarcaSection.tsx` → `updateBrandSettings()` (`useMutation`, autosave con debounce) | ✅ | — |
-| `GET /api/admin/users` | `components/admin/ConfigSection.tsx` → `getAdminUsers()` de `lib/api/adminUsers.ts` (`useQuery`) | ✅ | — |
-| `POST /api/admin/users` | `components/admin/ConfigSection.tsx` → `createAdminUser()` (`useMutation` + invalidación) | ✅ | — |
-| `DELETE /api/admin/users/:id` | `components/admin/ConfigSection.tsx` → `deleteAdminUser()` (`useMutation`, confirmación inline) | ✅ | — |
-| `PUT /api/admin/account` | `components/admin/ConfigSection.tsx` → `updateOwnAccount()` de `lib/api/account.ts` (`useMutation`) | ✅ | — |
-| `GET /api/admin/orders` | `components/admin/sections/OrdersSection.tsx` → `getAdminOrders()` de `lib/api/adminOrders.ts` (`useQuery` paginado + filtro de fecha) | ✅ | Vista base (**Fase 7**) + guía/rastreo Skydropx (**Fase 11**) |
-| `POST /api/admin/orders/:id/cancel` | `components/admin/orders/OrderDetailModal.tsx` → `cancelAdminOrder()` de `lib/api/adminOrders.ts` (`useMutation`, botón "Cancelar / reembolsar pedido") | ✅ | Fase 12 |
-| `POST /api/orders` → `clientSecret` | `components/checkout/usePlaceOrder.ts` confirma el pago con Stripe.js (`confirmCardPayment` + `pm_card_visa`) usando el `clientSecret` que devuelve `createOrder()`; `PaymentSection.tsx` es el panel de tarjeta de prueba | ✅ | Fase 8 (Stripe, **test/sandbox**) |
-| `POST /api/webhooks/stripe` | *(lo invoca Stripe, no el front)* — el pago se confirma en el cliente; el webhook marca la orden `paid` | ✅ | Fase 8: backend activo (firma verificada); no requiere código de front |
-| `PATCH /api/admin/orders/:id/status` | *(sin consumidor todavía)* — `components/admin/orders/OrderDetailModal.tsx` necesita el botón "Marcar como enviado / entregado" + captura manual de guía | 🔴 | **Fase 14** |
-| `POST /api/orders` → header `Idempotency-Key` | `components/checkout/usePlaceOrder.ts` / `lib/api/orders.ts` — el backend ya deduplica solo por huella del carrito; el header lo hace explícito | 🔴 | **Fase 15** (mejora, no bloquea) |
-| `POST /api/admin/orders/:id/shipment/retry` | *(sin consumidor todavía)* — `components/admin/orders/OrderDetailModal.tsx` necesita el botón "Reintentar guía" para un pedido pagado sin `skydropxShipmentId` | 🔴 | **Fase 16** |
-| `GET /api/orders/lookup/:token` | *(sin consumidor todavía)* — falta la página pública de seguimiento `/pedido/[token]`, a la que apunta el link del correo de confirmación | 🔴 | **Fase 17** |
-| `POST /api/orders` → `order.publicToken` | `components/checkout/usePlaceOrder.ts` — el `201` del checkout ya trae el token; sirve para mandar al comprador a `/pedido/<token>` sin esperar el correo | 🔴 | **Fase 17** |
-| `POST /api/admin/products/import/preview` | `components/admin/sections/ImportSection.tsx` → `previewProductImport()` de `lib/api/adminProductImport.ts` (`useMutation`, multipart) | ✅ | Fase 13 |
-| `POST /api/admin/products/import` | `ImportSection.tsx` → `commitProductImport()` (`useMutation` + invalidación de `adminProductKeys`/`productKeys`) | ✅ | Fase 13 |
-| `POST /api/coupons/validate` | *(sin consumidor todavía)* — `components/checkout/OrderSummary.tsx` necesita el campo de cupón (y revalidar con el correo en `ShippingOptions.tsx`) | 🔴 | **Fase 19** |
-| `POST /api/orders` → `couponCode` | `lib/api/orders.ts` (`CreateOrderPayload`) + `components/checkout/usePlaceOrder.ts` (el cupón entra en `orderSignature`) | 🔴 | **Fase 19** |
-| `POST /api/orders` → `order.couponCode`/`couponDiscount` | `components/checkout/OrderTotals.tsx` (fila de descuento) y `Success.tsx` — el total ya viene neto de cupón | 🔴 | **Fase 19** |
-| `GET /api/admin/coupons` | *(sin consumidor todavía)* — falta la sección **Cupones** del panel | 🔴 | **Fase 19** |
-| `POST /api/admin/coupons` | *(sin consumidor todavía)* — formulario de alta en la sección **Cupones** | 🔴 | **Fase 19** |
-| `PUT /api/admin/coupons/:id` | *(sin consumidor todavía)* — edición y cancelación (`active: false`) en la sección **Cupones** | 🔴 | **Fase 19** |
-| `DELETE /api/admin/coupons/:id` | *(sin consumidor todavía)* — borrado con confirmación inline, igual que `AdminsCard.tsx` | 🔴 | **Fase 19** |
-| `GET /api/admin/expenses` | *(sin consumidor todavía)* — falta la sección **Gastos** del panel | 🔴 | **Fase 20** |
-| `GET /api/admin/expenses/summary` | *(sin consumidor todavía)* — tarjeta "cuánto retirar este mes" + lista de próximos cargos | 🔴 | **Fase 20** |
-| `GET /api/admin/expenses/history` | *(sin consumidor todavía)* — historial mes con mes + los cambios de precio de cada mes | 🔴 | **Fase 20** |
-| `POST /api/admin/expenses` | *(sin consumidor todavía)* — formulario de alta en la sección **Gastos** | 🔴 | **Fase 20** |
-| `PUT /api/admin/expenses/:id` | *(sin consumidor todavía)* — edición; mandar `amount` **agrega una versión**, no sobrescribe | 🔴 | **Fase 20** |
-| `DELETE /api/admin/expenses/:id` | *(sin consumidor todavía)* — borrado con confirmación inline, igual que `AdminsCard.tsx` | 🔴 | **Fase 20** |
-| `GET /api/admin/dashboard` → KPI `GASTOS` | `components/admin/sections/DataSection.tsx` → `KpiGrid` (ya lo pinta genérico) | ✅ | El label cambió de `GASTOS FIJOS` a `GASTOS` y ahora sale de gastos reales; el front no requiere cambios |
+| `GET /api/admin/users` | `components/admin/ConfigSection.tsx` → `getAdminUsers()` de `lib/api/adminUsers.ts` (`useQuery`) | ✅ | 6 |
+| `POST /api/admin/users` | `components/admin/ConfigSection.tsx` → `createAdminUser()` (`useMutation` + invalidación) | ✅ | 6 |
+| `DELETE /api/admin/users/:id` | `components/admin/ConfigSection.tsx` → `deleteAdminUser()` (`useMutation`, confirmación inline) | ✅ | 6 |
+| `PUT /api/admin/account` | `components/admin/ConfigSection.tsx` → `updateOwnAccount()` de `lib/api/account.ts` (`useMutation`) | ✅ | 6 |
+| `GET /api/admin/orders` | `components/admin/sections/OrdersSection.tsx` → `getAdminOrders()` de `lib/api/adminOrders.ts` (`useQuery` paginado + filtro de fecha) | ✅ | 7 (vista base) + 11 (guía/rastreo Skydropx) |
+| `POST /api/admin/orders/:id/cancel` | `components/admin/orders/OrderDetailModal.tsx` → `cancelAdminOrder()` de `lib/api/adminOrders.ts` (`useMutation`, botón "Cancelar / reembolsar pedido") | ✅ | 12 |
+| `PATCH /api/admin/orders/:id/status` | *(sin consumidor todavía)* — `components/admin/orders/OrderDetailModal.tsx` necesita el botón "Marcar como enviado / entregado" + captura manual de guía | 🔴 | **14** |
+| `POST /api/admin/orders/:id/shipment/retry` | *(sin consumidor todavía)* — `components/admin/orders/OrderDetailModal.tsx` necesita el botón "Reintentar guía" para un pedido pagado sin `skydropxShipmentId` | 🔴 | **16** |
+| `POST /api/coupons/validate` | *(sin consumidor todavía)* — `components/checkout/OrderSummary.tsx` necesita el campo de cupón (y revalidar con el correo en `ShippingOptions.tsx`) | 🔴 | **19** |
+| `POST /api/orders` → `couponCode` | `lib/api/orders.ts` (`CreateOrderPayload`) + `components/checkout/usePlaceOrder.ts` (el cupón entra en `orderSignature`) | 🔴 | **19** |
+| `POST /api/orders` → `order.couponCode`/`couponDiscount` | `components/checkout/OrderTotals.tsx` (fila de descuento) y `Success.tsx` — el total ya viene neto de cupón | 🔴 | **19** |
+| `GET /api/admin/coupons` | *(sin consumidor todavía)* — falta la sección **Cupones** del panel | 🔴 | **19** |
+| `POST /api/admin/coupons` | *(sin consumidor todavía)* — formulario de alta en la sección **Cupones** | 🔴 | **19** |
+| `PUT /api/admin/coupons/:id` | *(sin consumidor todavía)* — edición y cancelación (`active: false`) en la sección **Cupones** | 🔴 | **19** |
+| `DELETE /api/admin/coupons/:id` | *(sin consumidor todavía)* — borrado con confirmación inline, igual que `AdminsCard.tsx` | 🔴 | **19** |
+| `GET /api/admin/expenses` | *(sin consumidor todavía)* — falta la sección **Gastos** del panel | 🔴 | **20** |
+| `GET /api/admin/expenses/summary` | *(sin consumidor todavía)* — tarjeta "cuánto retirar este mes" + lista de próximos cargos | 🔴 | **20** |
+| `GET /api/admin/expenses/history` | *(sin consumidor todavía)* — historial mes con mes + los cambios de precio de cada mes | 🔴 | **20** |
+| `POST /api/admin/expenses` | *(sin consumidor todavía)* — formulario de alta en la sección **Gastos** | 🔴 | **20** |
+| `PUT /api/admin/expenses/:id` | *(sin consumidor todavía)* — edición; mandar `amount` **agrega una versión**, no sobrescribe | 🔴 | **20** |
+| `DELETE /api/admin/expenses/:id` | *(sin consumidor todavía)* — borrado con confirmación inline, igual que `AdminsCard.tsx` | 🔴 | **20** |
 
-## Fases (orden sugerido)
+## Índice de fases
 
-### Fase 1 — Autenticación ✅ *(desbloquea todo el admin)*
+| # | Fase | Estado | Depende de |
+|---|---|---|---|
+| 1 | Autenticación *(desbloquea todo el admin)* | ✅ | — |
+| 2 | Checkout público *(ruta de ingresos)* | ✅ | — |
+| 3 | Admin: catálogo y dashboard | ✅ | 1 |
+| 4 | Admin: reportes | ✅ | 1 |
+| 5 | Marca (identidad de tienda) | ✅ | 1 |
+| 6 | Admin: usuarios y cuenta | ✅ | 1 |
+| 7 | Admin: pedidos | ✅ | 1 |
+| 8 | Pagos con Stripe *(modo prueba / sandbox)* | ✅ | 2 |
+| 9 | Outlet: sincronización en vivo con el admin | ✅ | 3 |
+| 10 | Recuperación de contraseña con código + emails (Resend) | ✅ | 1 |
+| 11 | Admin: envíos y guía Skydropx en pedidos | ✅ | 7 |
+| 12 | Admin: cancelación/reembolso manual de pedidos | ✅ | 7 |
+| 13 | Admin: importación/restock masivo vía Excel | ✅ | 3 |
+| 14 | Admin: marcar pedido como enviado/entregado a mano | 🔴 | 7 |
+| 15 | `Idempotency-Key` en el checkout *(mejora, no bloquea)* | 🔴 | 2 |
+| 16 | Admin: reintentar la guía de Skydropx | 🔴 | 11 |
+| 17 | Página pública de seguimiento del pedido *(cara al cliente)* | 🔴 | 2 |
+| 18 | Outlet: buscador, orden y rango de precio *(cara al cliente)* | 🔴 | — |
+| 19 | Cupones: campo en el checkout + sección en el panel | 🔴 | 2 |
+| 20 | Admin: gastos y suscripciones | 🔴 | — |
+
+---
+
+# Fases completadas ✅
+
+## Fase 1 — Autenticación ✅ *(desbloquea todo el admin)*
+
 - ✅ `POST /api/auth/login` — `LoginForm` usa `login()` de `lib/api/auth.ts` (sin mock).
 - ✅ `POST /api/auth/forgot-password` — `ForgotPasswordForm` con `useMutation` → `forgotPassword()`.
 - ✅ `GET /api/auth/me` — `AdminGuard` valida el token real (`getMe()`) y rehidrata `user`;
@@ -81,7 +115,13 @@ migración.
 - **Salida:** sesión real de admin; el interceptor `401` cierra sesión y redirige.
 - Contratos y validación Zod centralizados en `lib/api/auth.ts` (patrón `getProducts.ts`).
 
-### Fase 2 — Checkout público ✅ *(ruta de ingresos)*
+> El flujo completo de recuperación de contraseña (código de 5 dígitos + correo) se cerró
+> después, en la **Fase 10**.
+
+---
+
+## Fase 2 — Checkout público ✅ *(ruta de ingresos)*
+
 - ✅ `POST /api/orders` — `UserDetails` usa `useMutation({ mutationFn: createOrder })`
   (`lib/api/orders.ts`). `buildOrderPayload()` envía `{ items: [{ productId, size, quantity }],
   customer }` **sin montos** (el backend recalcula totales y descuenta stock por talla
@@ -94,7 +134,10 @@ migración.
 - Contrato validado con Zod en `lib/api/orders.ts` (patrón `getProducts.ts` / `auth.ts`):
   `OrderResponseSchema` refleja la orden pública (items **sin `unitCost`**).
 
-### Fase 3 — Admin: catálogo y dashboard ✅
+---
+
+## Fase 3 — Admin: catálogo y dashboard ✅
+
 - ✅ `GET /api/admin/products` + CRUD (`POST`/`PUT`/`DELETE`) — contratos centralizados en
   `lib/api/adminProducts.ts` (patrón `getProducts.ts`): `AdminProductSchema` (incluye `unitCost`),
   `adminProductKeys`, `getAdminProducts()`/`createProduct()`/`updateProduct()`/`deleteProduct()`.
@@ -129,7 +172,10 @@ migración.
   - Al **hard-delete** de un producto (sin pedidos) el backend borra también sus imágenes de
     Cloudinary; en **soft-delete** (con pedidos) las conserva.
 
-### Fase 4 — Admin: reportes ✅
+---
+
+## Fase 4 — Admin: reportes ✅
+
 - ✅ `GET /api/admin/reports/monthly` + `GET /api/admin/reports/replenishment` — contratos
   centralizados en `lib/api/reports.ts` (patrón `getProducts.ts`): `MonthlyReportSchema` /
   `ReplenishmentRowSchema` (Zod, reflejan `components/admin/data/types.ts`), `reportKeys`,
@@ -142,7 +188,10 @@ migración.
   frontend solo pinta filas. Se eliminaron `db/mockData.ts`, `db/mockProducts.ts` y `lib/forecast.ts`
   (**el frontend ya no tiene mocks**).
 
-### Fase 5 — Marca (identidad de tienda) ✅
+---
+
+## Fase 5 — Marca (identidad de tienda) ✅
+
 - ✅ `GET /api/admin/brand` (público) — contrato centralizado en `lib/api/brand.ts`
   (patrón `getProducts.ts`): `BrandSettingsSchema` (Zod), `brandKeys`, `getBrandSettings()`.
   `BrandProvider` (root layout) hidrata con `useQuery` y expone `useBrand()`; `Hero`/`Footer`/
@@ -160,7 +209,10 @@ migración.
   aquí. El **PUT de marca ya no acepta `logoUrl`** (si el autosave lo manda, se ignora), lo cual sigue
   siendo correcto en este escenario.
 
-### Fase 6 — Admin: usuarios y cuenta ✅
+---
+
+## Fase 6 — Admin: usuarios y cuenta ✅
+
 - ✅ `GET`/`POST`/`DELETE /api/admin/users` — contrato centralizado en
   `lib/api/adminUsers.ts` (patrón `getProducts.ts`): `AdminUserSchema` (Zod),
   `adminUserKeys`, `getAdminUsers()`/`createAdminUser()`/`deleteAdminUser()`.
@@ -179,7 +231,10 @@ migración.
   (refleja el backend, que solo exige `requireAuth`). El backend igual protege
   borrar la propia cuenta y al único propietario.
 
-### Fase 7 — Admin: pedidos ✅
+---
+
+## Fase 7 — Admin: pedidos ✅
+
 - ✅ `GET /api/admin/orders` — contrato centralizado en `lib/api/adminOrders.ts` (patrón
   `getProducts.ts`): `AdminOrderSchema`/`AdminOrderItemSchema` (Zod, item **sí** trae
   `unitCost`), `adminOrderKeys`, `getAdminOrders(page, perPage, date?)`. Paginado en
@@ -193,37 +248,12 @@ migración.
   foco; muestra `unitCost` + margen), `StatusBadges` (color de `status`/`paymentStatus`
   — campos independientes — más `DropoffBadge`, que ya pinta el aviso "Sin recolección"
   cuando `shippingRequiresDropoff === true`, tanto en la tabla como en el modal).
-- **Pendiente:** el resto de la data de envío que el endpoint ya manda pero el schema
-  descarta (`trackingNumber`/`trackingUrl`/`labelUrl`/`shipmentStatus`) — ver **Fase 11**.
+- ✅ **Cerrado en la Fase 11:** el resto de la data de envío que el endpoint ya mandaba pero
+  el schema descartaba (`trackingNumber`/`trackingUrl`/`labelUrl`/`shipmentStatus`).
 
-### Fase 9 — Outlet: sincronización en vivo con el admin ✅
-- **Problema 1 — altas no aparecen:** `components/outlet/OutletView.tsx` (`useQuery` sobre
-  `productKeys.filtered(filters)`) no se invalidaba cuando `ProductForm` creaba/editaba un
-  producto desde el admin.
-- **Problema 2 — bajas seguían visibles:** al borrar un producto (`deleteProduct()` en
-  `ProductCategoryView.tsx` / `ProductForm.tsx`), el outlet público no se enteraba — seguía
-  pintando la card hasta que el usuario refrescaba.
-- **Problema 3 — faltaba imagen en la card:** `OutletCard` solo pintaba `imageSrc` si venía
-  definido, sin fallback visual cuando el producto no tenía imágenes.
-- **Causa raíz real (afinada respecto a la hipótesis original):** `QueryProvider` se monta una
-  sola vez en `app/layout.tsx`, así que **dentro de una misma pestaña** admin y storefront
-  comparten el mismo `QueryClient`. El bug de altas/bajas no era por `QueryClient`s separados
-  sino porque los `onSuccess` de las mutaciones de `ProductForm.tsx`/`ProductCategoryView.tsx`
-  solo invalidaban `adminProductKeys.all`, nunca `productKeys` (el key que consume
-  `OutletView`). Para el caso de **pestañas de navegador distintas** (cada una con su propio
-  `QueryClient` en memoria) sí aplica la necesidad de un mecanismo cross-tab.
-- **Fix aplicado:**
-  1. `ProductForm.tsx` (create/update y delete) y `ProductCategoryView.tsx` (delete) ahora
-     también invalidan `productKeys.all` (match por prefijo → cubre `productKeys.filtered(...)`)
-     junto con `adminProductKeys.all`. Resuelve el caso misma-pestaña.
-  2. `OutletView.tsx` agrega `staleTime: 30_000` + `refetchOnWindowFocus: true` **local a esa
-     query** (el default global en `QueryProvider.tsx` sigue en `refetchOnWindowFocus: false`
-     para no afectar el resto de la app). Resuelve el caso pestañas-distintas: al volver el
-     foco a `/outlet` tras crear/borrar algo en `/admin`, se refetch sola.
-  3. `OutletCard.tsx` ahora muestra el icono `ImageOff` (mismo patrón que
-     `components/ui/ImageCarousel.tsx`) cuando `imageSrc` falta, en vez de un hueco vacío.
+---
 
-### Fase 8 — Pagos con Stripe ✅ *(modo prueba / sandbox)*
+## Fase 8 — Pagos con Stripe ✅ *(modo prueba / sandbox)*
 
 > **Conectado.** Backend y frontend activos en **modo test/sandbox** (`pk_test_…` /
 > `sk_test_…` / `whsec_…`) — **no** hay dinero real. El frontend confirma el pago con
@@ -288,7 +318,39 @@ futura y CVC. Sin el `stripe listen` corriendo, el pago se cobra en Stripe pero 
 endpoint de webhook de producción en el dashboard de Stripe — se hacen al pasar a real, no
 ahora.
 
-### Fase 10 — Recuperación de contraseña con código + emails (Resend) ✅
+---
+
+## Fase 9 — Outlet: sincronización en vivo con el admin ✅ *(depende de Fase 3)*
+
+- **Problema 1 — altas no aparecen:** `components/outlet/OutletView.tsx` (`useQuery` sobre
+  `productKeys.filtered(filters)`) no se invalidaba cuando `ProductForm` creaba/editaba un
+  producto desde el admin.
+- **Problema 2 — bajas seguían visibles:** al borrar un producto (`deleteProduct()` en
+  `ProductCategoryView.tsx` / `ProductForm.tsx`), el outlet público no se enteraba — seguía
+  pintando la card hasta que el usuario refrescaba.
+- **Problema 3 — faltaba imagen en la card:** `OutletCard` solo pintaba `imageSrc` si venía
+  definido, sin fallback visual cuando el producto no tenía imágenes.
+- **Causa raíz real (afinada respecto a la hipótesis original):** `QueryProvider` se monta una
+  sola vez en `app/layout.tsx`, así que **dentro de una misma pestaña** admin y storefront
+  comparten el mismo `QueryClient`. El bug de altas/bajas no era por `QueryClient`s separados
+  sino porque los `onSuccess` de las mutaciones de `ProductForm.tsx`/`ProductCategoryView.tsx`
+  solo invalidaban `adminProductKeys.all`, nunca `productKeys` (el key que consume
+  `OutletView`). Para el caso de **pestañas de navegador distintas** (cada una con su propio
+  `QueryClient` en memoria) sí aplica la necesidad de un mecanismo cross-tab.
+- **Fix aplicado:**
+  1. `ProductForm.tsx` (create/update y delete) y `ProductCategoryView.tsx` (delete) ahora
+     también invalidan `productKeys.all` (match por prefijo → cubre `productKeys.filtered(...)`)
+     junto con `adminProductKeys.all`. Resuelve el caso misma-pestaña.
+  2. `OutletView.tsx` agrega `staleTime: 30_000` + `refetchOnWindowFocus: true` **local a esa
+     query** (el default global en `QueryProvider.tsx` sigue en `refetchOnWindowFocus: false`
+     para no afectar el resto de la app). Resuelve el caso pestañas-distintas: al volver el
+     foco a `/outlet` tras crear/borrar algo en `/admin`, se refetch sola.
+  3. `OutletCard.tsx` ahora muestra el icono `ImageOff` (mismo patrón que
+     `components/ui/ImageCarousel.tsx`) cuando `imageSrc` falta, en vez de un hueco vacío.
+
+---
+
+## Fase 10 — Recuperación de contraseña con código + emails (Resend) ✅ *(depende de Fase 1)*
 
 > El backend migró `forgot-password` de un stub a un flujo real de **código de 5
 > dígitos** enviado por correo vía **Resend**, más dos endpoints nuevos para verificarlo y
@@ -334,7 +396,9 @@ ahora.
 5. ✅ **Reenviar código:** enlace "Reenviar código" en `ResetCodeForm` que rellama
    `forgotPassword()` (el backend regenera el código y resetea los intentos a 0).
 
-### Fase 11 — Admin: envíos y guía Skydropx en pedidos ✅ *(depende de Fase 7)*
+---
+
+## Fase 11 — Admin: envíos y guía Skydropx en pedidos ✅ *(depende de Fase 7)*
 
 > **Contexto.** El backend ya integra Skydropx de punta a punta (`../backend/roadmaps-completados/roadmap-skydropx.md`
 > Fases 8.1–8.6): al confirmarse el pago genera la guía automáticamente y el webhook
@@ -381,7 +445,9 @@ ahora.
 **Salida:** el dueño imprime la guía y sigue el rastreo de cada pedido desde el panel, sin entrar
 al dashboard de Skydropx.
 
-### Fase 12 — Admin: cancelación/reembolso manual de pedidos ✅ *(depende de Fase 7)*
+---
+
+## Fase 12 — Admin: cancelación/reembolso manual de pedidos ✅ *(depende de Fase 7)*
 
 > **Contexto.** El backend agregó `POST /api/admin/orders/:id/cancel` (Fase H.5 del
 > `../backend/roadmaps-completados/roadmap-hardening.md`) para atender una cancelación pedida **fuera del flujo de
@@ -434,7 +500,9 @@ al dashboard de Skydropx.
 **Salida:** el dueño cancela y reembolsa un pedido desde el panel, con el stock restablecido
 automáticamente y el reembolso reflejado en Stripe, sin tocar el dashboard de Stripe.
 
-### Fase 13 — Admin: importación/restock masivo de productos vía Excel ✅
+---
+
+## Fase 13 — Admin: importación/restock masivo de productos vía Excel ✅ *(depende de Fase 3)*
 
 > **Contexto.** El backend agregó la importación masiva por Excel para que el dueño pueda subir un
 > `.xlsx` cuando llega mercancía nueva (productos nuevos + restock de los existentes) en vez de
@@ -571,7 +639,34 @@ de serialización, el candado de filas aplicadas, y el detector de dependencias.
 lo nuevo antes de que se escriba nada**, corrige lo que haga falta, y recién entonces aplica —
 sin salir del panel y sin riesgo de duplicar stock.
 
-### Fase 14 — Admin: marcar pedido como enviado/entregado a mano 🔴 *(depende de Fase 7)*
+---
+
+# Fases pendientes 🔴
+
+Van en orden numérico, pero **no hay que hacerlas en ese orden**: son independientes entre sí.
+Cómo priorizarlas:
+
+- **Fase 14** es la única pendiente **que habilita algo que hoy no se puede hacer**
+  (`PATCH /api/admin/orders/:id/status`, Fase O.1 del `../backend/roadmap-operacion-y-negocio.md`):
+  sin ella, un pedido que no pasó por Skydropx se queda en `paid` para siempre.
+- **Fase 15** es una mejora opcional: el backend **ya** deduplica los pedidos duplicados sin ayuda
+  del front (Fase O.2). El header solo hace la protección explícita en vez de inferida.
+- **Fase 16** también es opcional en el sentido de que el backend ya se recupera solo con un
+  barrido periódico (Fase O.3); el botón adelanta ese reintento y, sobre todo, muestra el motivo
+  del fallo cuando hace falta decidir a mano.
+- **Fase 18** es puramente aditiva: los params nuevos son opcionales y el catálogo sigue
+  funcionando igual sin mandarlos, así que se puede cablear por partes (primero el buscador,
+  después el orden y el rango) sin romper nada.
+- **Fase 19** es la única pendiente que **no** es aditiva: aunque nadie mande un `couponCode`, el
+  invariante de totales ya cambió a `subtotal − savings − couponDiscount + shipping` y
+  `couponDiscount` llega en `0`. Mientras no se cablee, la aritmética actual sigue dando el mismo
+  resultado; el riesgo aparece el día que se cree el primer cupón y algún componente siga sumando
+  con cuatro términos. Conviene hacer primero los puntos 1, 2 y 7 (contratos + fila de descuento)
+  aunque el campo del checkout llegue después.
+
+---
+
+## Fase 14 — Admin: marcar pedido como enviado/entregado a mano 🔴 *(depende de Fase 7)*
 
 > **Contexto.** El backend agregó `PATCH /api/admin/orders/:id/status` (Fase O.1 del
 > `../backend/roadmap-operacion-y-negocio.md`) porque hoy un pedido solo llega a `shipped`/`delivered`
@@ -623,7 +718,7 @@ flujo automático.
 
 ---
 
-### Fase 15 — `Idempotency-Key` en el checkout 🔴 **Pendiente** *(mejora, no bloquea)*
+## Fase 15 — `Idempotency-Key` en el checkout 🔴 *(mejora, no bloquea — depende de Fase 2)*
 
 **Lo que el backend ya hace (referencia — no tocar):**
 - `POST /api/orders` es **idempotente desde la Fase O.2**. Un reenvío del mismo checkout dentro de
@@ -668,7 +763,9 @@ flujo automático.
 no pueden generar dos pedidos ni dos cobros — ni siquiera cuando el carrito cambió lo suficiente como
 para que la huella automática no los reconozca como el mismo.
 
-### Fase 16 — Admin: reintentar la guía de Skydropx 🔴 *(depende de Fase 11)*
+---
+
+## Fase 16 — Admin: reintentar la guía de Skydropx 🔴 *(depende de Fase 11)*
 
 > **Contexto.** La guía se genera sola al confirmarse el pago. Si esa única llamada falla (Skydropx
 > caído, saldo agotado, o el proceso se reinicia a media creación), el pedido queda **pagado y sin
@@ -730,7 +827,7 @@ requiere intervención humana el panel lo dice en vez de callarlo.
 
 ---
 
-### Fase 17 — Página pública de seguimiento del pedido 🔴 *(cara al cliente, no al admin)*
+## Fase 17 — Página pública de seguimiento del pedido 🔴 *(cara al cliente, no al admin)*
 
 > **Contexto.** No hay cuentas de cliente ni ninguna otra lectura pública de órdenes: después de
 > pagar, lo único que tenía el comprador era el correo de confirmación. Si lo borraba o le caía en
@@ -787,7 +884,7 @@ estados por WhatsApp.
 
 ---
 
-### Fase 18 — Outlet: buscador, orden y rango de precio 🔴 *(cara al cliente, no al admin)*
+## Fase 18 — Outlet: buscador, orden y rango de precio 🔴 *(cara al cliente, no al admin)*
 
 > **Contexto.** El outlet solo sabe filtrar por categoría y talla, y siempre lista en el mismo
 > orden. Con la importación masiva por Excel el catálogo crece en lotes de **hasta 500 filas por
@@ -835,7 +932,7 @@ creciendo por importación masiva.
 
 ---
 
-### Fase 19 — Cupones: campo en el checkout + sección en el panel 🔴 *(las dos caras a la vez)*
+## Fase 19 — Cupones: campo en el checkout + sección en el panel 🔴 *(las dos caras a la vez)*
 
 > **Contexto.** No existe ninguna forma de lanzar una promoción sin repreciar producto por producto,
 > que es permanente y toca el catálogo. El backend cerró la Fase N.2 del
@@ -906,7 +1003,7 @@ el descuento calculado y canjeado por el backend.
 
 ---
 
-### Fase 20 — Admin: gastos y suscripciones 🔴 *(solo panel, no toca la tienda)*
+## Fase 20 — Admin: gastos y suscripciones 🔴 *(solo panel, no toca la tienda)*
 
 > **Contexto.** Hasta ahora el KPI **GANANCIA NETA** del panel restaba una constante de `$2,000`
 > hardcodeada en el backend, con el comentario "no existe un modelo de gastos". La Fase N.3 del
@@ -981,7 +1078,7 @@ le cobra y qué subió de precio — y la GANANCIA NETA del panel deja de restar
 
 ---
 
-## Notas de implementación
+# Notas de implementación
 
 - **Base URL:** `NEXT_PUBLIC_API_URL` debe apuntar al backend (`http://localhost:4000`);
   sin definir cae a `/api`. No commitear secretos.
@@ -994,26 +1091,6 @@ le cobra y qué subió de precio — y la GANANCIA NETA del panel deja de restar
   vivo `POST /api/shipping/rates`, guía automática al pagar y webhook de estado —
   `../backend/roadmaps-completados/roadmap-skydropx.md` Fases 8.1–8.6). El checkout ya cotiza en vivo (ver "Shipping"
   en `CLAUDE.md`) y el panel de pedidos ya muestra guía/rastreo (**Fase 11** ✅).
-- La **Fase 12** (cancelación/reembolso manual de pedidos) ya está cableada en el panel de pedidos
-  — `POST /api/admin/orders/:id/cancel` (Fase H.5 del
-  `../backend/roadmaps-completados/roadmap-hardening.md`).
-- La **Fase 13** (importación/restock masivo por Excel) ya está cableada en la sección **Importar**
-  del panel.
-- La **Fase 14** (marcar pedido como enviado/entregado a mano) es la única pendiente **que habilita
-  algo que hoy no se puede hacer** — `PATCH /api/admin/orders/:id/status`, Fase O.1 del
-  `../backend/roadmap-operacion-y-negocio.md`.
-- La **Fase 15** (`Idempotency-Key` en el checkout) es una mejora opcional: el backend **ya**
-  deduplica los pedidos duplicados sin ayuda del front (Fase O.2 del mismo roadmap). El header solo
-  hace la protección explícita en vez de inferida.
-- La **Fase 16** (reintentar la guía de Skydropx) también es opcional en el sentido de que el backend
-  ya se recupera solo con un barrido periódico (Fase O.3 del mismo roadmap); el botón adelanta ese
-  reintento y, sobre todo, muestra el motivo del fallo cuando hace falta decidir a mano.
-- La **Fase 18** (buscador y orden en el outlet) es puramente aditiva: los params nuevos son
-  opcionales y el catálogo sigue funcionando igual sin mandarlos, así que se puede cablear por
-  partes (primero el buscador, después el orden y el rango) sin romper nada.
-- La **Fase 19** (cupones) es la única pendiente que **no** es aditiva: aunque nadie mande un
-  `couponCode`, el invariante de totales ya cambió a `subtotal − savings − couponDiscount + shipping`
-  y `couponDiscount` llega en `0`. Mientras no se cablee, la aritmética actual sigue dando el mismo
-  resultado; el riesgo aparece el día que se cree el primer cupón y algún componente siga sumando con
-  cuatro términos. Conviene hacer primero los puntos 1, 2 y 7 (contratos + fila de descuento) aunque
-  el campo del checkout llegue después.
+- **Prioridad de lo pendiente:** ver la introducción de [Fases pendientes](#fases-pendientes-)
+  — ahí está qué habilita algo nuevo (14), qué es mejora opcional (15, 16), qué es aditivo (18)
+  y qué ya cambió un invariante aunque no se cablee (19).
