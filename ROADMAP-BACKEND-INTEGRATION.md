@@ -11,7 +11,7 @@ migración.
 
 **Cómo está organizado este documento:** primero el mapa de endpoints ↔ consumidor
 (la vista por API), después las fases en **orden numérico estricto**, separadas en
-[completadas](#fases-completadas-) (1–13) y [pendientes](#fases-pendientes-) (14–20).
+[completadas](#fases-completadas-) (1–14) y [pendientes](#fases-pendientes-) (15–20).
 Las fases están numeradas por el orden en que se hicieron/se van a hacer, no por
 dependencia: esa se lee en la columna "Depende de" del índice.
 
@@ -61,7 +61,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | `PUT /api/admin/account` | `components/admin/ConfigSection.tsx` → `updateOwnAccount()` de `lib/api/account.ts` (`useMutation`) | ✅ | 6 |
 | `GET /api/admin/orders` | `components/admin/sections/OrdersSection.tsx` → `getAdminOrders()` de `lib/api/adminOrders.ts` (`useQuery` paginado + filtro de fecha) | ✅ | 7 (vista base) + 11 (guía/rastreo Skydropx) |
 | `POST /api/admin/orders/:id/cancel` | `components/admin/orders/OrderDetailModal.tsx` → `cancelAdminOrder()` de `lib/api/adminOrders.ts` (`useMutation`, botón "Cancelar / reembolsar pedido") | ✅ | 12 |
-| `PATCH /api/admin/orders/:id/status` | *(sin consumidor todavía)* — `components/admin/orders/OrderDetailModal.tsx` necesita el botón "Marcar como enviado / entregado" + captura manual de guía | 🔴 | **14** |
+| `PATCH /api/admin/orders/:id/status` | `components/admin/orders/OrderDetailModal.tsx` → `updateAdminOrderStatus()` de `lib/api/adminOrders.ts` (`useMutation`, sección "Estado del envío": enviado / entregado / agregar guía) | ✅ | 14 |
 | `POST /api/admin/orders/:id/shipment/retry` | *(sin consumidor todavía)* — `components/admin/orders/OrderDetailModal.tsx` necesita el botón "Reintentar guía" para un pedido pagado sin `skydropxShipmentId` | 🔴 | **16** |
 | `POST /api/coupons/validate` | *(sin consumidor todavía)* — `components/checkout/OrderSummary.tsx` necesita el campo de cupón (y revalidar con el correo en `ShippingOptions.tsx`) | 🔴 | **19** |
 | `POST /api/orders` → `couponCode` | `lib/api/orders.ts` (`CreateOrderPayload`) + `components/checkout/usePlaceOrder.ts` (el cupón entra en `orderSignature`) | 🔴 | **19** |
@@ -94,7 +94,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | 11 | Admin: envíos y guía Skydropx en pedidos | ✅ | 7 |
 | 12 | Admin: cancelación/reembolso manual de pedidos | ✅ | 7 |
 | 13 | Admin: importación/restock masivo vía Excel | ✅ | 3 |
-| 14 | Admin: marcar pedido como enviado/entregado a mano | 🔴 | 7 |
+| 14 | Admin: marcar pedido como enviado/entregado a mano | ✅ | 7 |
 | 15 | `Idempotency-Key` en el checkout *(mejora, no bloquea)* | 🔴 | 2 |
 | 16 | Admin: reintentar la guía de Skydropx | 🔴 | 11 |
 | 17 | Página pública de seguimiento del pedido *(cara al cliente)* | 🔴 | 2 |
@@ -641,14 +641,83 @@ sin salir del panel y sin riesgo de duplicar stock.
 
 ---
 
+## Fase 14 — Admin: marcar pedido como enviado/entregado a mano ✅ *(depende de Fase 7)*
+
+> **Contexto.** Antes de esta fase un pedido solo llegaba a `shipped`/`delivered` cuando **Skydropx**
+> reportaba un envío que **Skydropx** creó. Si en el checkout la cotización en vivo falló y se cayó al
+> fallback de tarifa plana, el pedido nacía sin `skydropxRateId` → no se generaba guía → nunca llegaba
+> el webhook → **se quedaba en `paid` para siempre**: el cliente jamás recibía el correo de "tu pedido
+> va en camino" y el panel contaba como pendiente algo ya entregado. El panel podía **cancelar**
+> (Fase 12) pero no **avanzar** el estado.
+
+**Lo que el backend ya hacía (referencia — no se tocó):**
+- `PATCH /api/admin/orders/:id/status` `[auth]` — body
+  `{ status: "shipped" | "delivered", trackingNumber?, trackingUrl?, shippingCarrier? }`.
+  Devuelve `{ order }` con el pedido actualizado y sus `items` (mismo shape que
+  `GET /api/admin/orders`, así que `AdminOrderSchema` lo valida sin cambios).
+- **Solo hacia adelante**, con el mismo rango que aplica el webhook de Skydropx
+  (`pending < paid < shipped < delivered`). **Repetir el estado actual sí se permite** — es como se
+  agrega una guía a un pedido ya marcado enviado sin ella; retroceder responde **409**.
+- **Guards:** pedido `cancelled` → **409**; pedido todavía `pending` (sin pago confirmado) → **409**;
+  `status: "cancelled"` en el body → **400** (cancelar es exclusivo de
+  `POST /api/admin/orders/:id/cancel`, el único camino que reembolsa y restockea); id inexistente →
+  **404**; id no numérico → **400**.
+- **El correo "tu pedido va en camino" sale exactamente una vez por pedido**, lo dispare el panel o
+  el webhook de Skydropx: los dos comparten el mismo guard atómico
+  (`WHERE trackingNumber IS NULL`) y el mismo `idempotencyKey` de Resend. Marcar `delivered` **sin**
+  guía es válido (entrega en mano o local) y no manda correo.
+- Ninguna columna nueva: `trackingNumber`/`trackingUrl`/`shippingCarrier` ya existían en el contrato
+  del pedido desde la Fase 11.
+
+**Lo que se hizo en el frontend:**
+1. ✅ **Contrato:** `lib/api/adminOrders.ts` expone `updateAdminOrderStatus(id, input)`
+   (`PATCH /:id/status`, respuesta `{ order }` validada con `AdminOrderSchema`) + el tipo
+   `AdminOrderStatusUpdate`.
+2. ✅ **Acción en la UI:** sección "Estado del envío" en `OrderDetailModal.tsx`, antes del bloque de
+   cancelación: "Marcar como enviado" (solo en `paid`) y "Marcar como entregado" (`paid`/`shipped`);
+   nada en `pending`/`cancelled`/`delivered` — los estados que el backend rechaza con 409. El de
+   "enviado" abre un formulario inline con guía / URL de rastreo / paquetería, **los tres
+   opcionales**, y avisa qué pasa en cada caso (con guía: "se enviará el correo de rastreo, no se
+   puede deshacer"; sin guía: "no se manda el correo, puedes agregarla después").
+3. ✅ **Guía tardía:** un pedido ya `shipped` **sin** `trackingNumber` ofrece "Agregar guía" con el
+   mismo formulario (el backend acepta repetir `status: "shipped"` justo para esto).
+4. ✅ **Mutation + invalidación:** `useMutation` hermano del de cancelación; al `onSuccess` invalida
+   **solo** `adminOrderKeys.all` (avanzar el estado no toca stock) y notifica al padre por callback.
+5. ✅ **Errores mapeados:** `statusUpdateErrorMessage` — `409` (retroceso / cancelado / aún no
+   pagado) y `400` (validación por campo) se pintan con el `message` del backend, `404` con copia
+   propia; el modal no se cierra y no se pierde lo capturado.
+
+**Decisiones de diseño que conviene no revertir sin leer esto:**
+- **Las claves vacías se OMITEN del body, no se mandan como `""`** (`updateAdminOrderStatus` hace el
+  trim y decide). El backend valida los tres campos con `.trim().min(1)`, así que un `""` sería un
+  400; y una clave ausente significa "no toques ese campo", que es justo lo que permite avanzar el
+  estado sin borrar la guía ya guardada (los campos son "último gana").
+- **La confirmación de "entregado" no manda los campos de guía**, aunque el otro formulario los
+  tenga en estado: escribiría datos que el dueño no está viendo en pantalla.
+- **La prop del modal es `onOrderUpdated`, una sola para las dos mutations** (antes `onCancelled`).
+  `OrdersSection` hace lo mismo en ambos casos —marcar `isManualRefreshRef` + `setViewing`—, y esa
+  marca es obligatoria: `status`/`trackingNumber` están en `orderSignature`, así que sin ella el
+  siguiente refetch dispararía el toast de "pedido actualizado" por un cambio que hizo el propio
+  dueño hace dos segundos.
+- **La URL de rastreo se valida en cliente** (`isValidTrackingUrl`, `new URL()` + protocolo http/s)
+  porque es el único 400 que el dueño puede prevenir mientras teclea. El resto de las reglas
+  (longitudes) se deja al backend, cuyo `message` ya dice qué campo corregir; los `maxLength` de los
+  inputs espejean sus topes (100 / 500 / 80).
+- **La acción vive solo en el modal**, no en la fila de `OrdersTable`: marcar enviado sin ver la
+  dirección, los artículos y si el pedido requiere drop-off es justo el error que esta pantalla
+  existe para evitar.
+
+**Salida:** ningún pedido se queda atorado en `paid` por no haber pasado por Skydropx; el dueño lo
+mueve a enviado/entregado desde el panel y el cliente recibe su correo de rastreo igual que en el
+flujo automático.
+
+---
+
 # Fases pendientes 🔴
 
 Van en orden numérico, pero **no hay que hacerlas en ese orden**: son independientes entre sí.
 Cómo priorizarlas:
 
-- **Fase 14** es la única pendiente **que habilita algo que hoy no se puede hacer**
-  (`PATCH /api/admin/orders/:id/status`, Fase O.1 del `../backend/roadmap-operacion-y-negocio.md`):
-  sin ella, un pedido que no pasó por Skydropx se queda en `paid` para siempre.
 - **Fase 15** es una mejora opcional: el backend **ya** deduplica los pedidos duplicados sin ayuda
   del front (Fase O.2). El header solo hace la protección explícita en vez de inferida.
 - **Fase 16** también es opcional en el sentido de que el backend ya se recupera solo con un
@@ -663,58 +732,6 @@ Cómo priorizarlas:
   resultado; el riesgo aparece el día que se cree el primer cupón y algún componente siga sumando
   con cuatro términos. Conviene hacer primero los puntos 1, 2 y 7 (contratos + fila de descuento)
   aunque el campo del checkout llegue después.
-
----
-
-## Fase 14 — Admin: marcar pedido como enviado/entregado a mano 🔴 *(depende de Fase 7)*
-
-> **Contexto.** El backend agregó `PATCH /api/admin/orders/:id/status` (Fase O.1 del
-> `../backend/roadmap-operacion-y-negocio.md`) porque hoy un pedido solo llega a `shipped`/`delivered`
-> cuando **Skydropx** reporta un envío que **Skydropx** creó. Si en el checkout la cotización en vivo
-> falló y se cayó al fallback de tarifa plana, el pedido nace sin `skydropxRateId` → no se genera guía
-> → nunca llega el webhook → **se queda en `paid` para siempre**: el cliente jamás recibe el correo de
-> "tu pedido va en camino" y el panel cuenta como pendiente algo ya entregado. Hoy el panel de pedidos
-> puede **cancelar** (Fase 12) pero no puede **avanzar** el estado. Esta fase cablea ese botón.
-
-**Lo que el backend ya hace (referencia — no tocar):**
-- `PATCH /api/admin/orders/:id/status` `[auth]` — body
-  `{ status: "shipped" | "delivered", trackingNumber?, trackingUrl?, shippingCarrier? }`.
-  Devuelve `{ order }` con el pedido actualizado y sus `items` (mismo shape que
-  `GET /api/admin/orders`, así que `AdminOrderSchema` ya lo valida sin cambios).
-- **Solo hacia adelante**, con el mismo rango que aplica el webhook de Skydropx
-  (`pending < paid < shipped < delivered`). **Repetir el estado actual sí se permite** — es como se
-  agrega una guía a un pedido ya marcado enviado sin ella; retroceder responde **409**.
-- **Guards:** pedido `cancelled` → **409**; pedido todavía `pending` (sin pago confirmado) → **409**;
-  `status: "cancelled"` en el body → **400** (cancelar es exclusivo de
-  `POST /api/admin/orders/:id/cancel`, el único camino que reembolsa y restockea); id inexistente →
-  **404**; id no numérico → **400**.
-- **El correo "tu pedido va en camino" sale exactamente una vez por pedido**, lo dispare el panel o
-  el webhook de Skydropx: los dos comparten el mismo guard atómico
-  (`WHERE trackingNumber IS NULL`) y el mismo `idempotencyKey` de Resend. Marcar `delivered` **sin**
-  guía es válido (entrega en mano o local) y no manda correo.
-- Ninguna columna nueva: `trackingNumber`/`trackingUrl`/`shippingCarrier` ya existen en el contrato
-  del pedido desde la Fase 11.
-
-**Trabajo del frontend:**
-1. [ ] **Contrato:** `lib/api/adminOrders.ts` expone
-   `updateAdminOrderStatus(id, { status, trackingNumber?, trackingUrl?, shippingCarrier? })`
-   (`PATCH /:id/status`, respuesta `{ order }` validada con `AdminOrderSchema`).
-2. [ ] **Acción en la UI:** en `OrderDetailModal.tsx`, botón "Marcar como enviado" (visible cuando
-   `status === "paid"`) y "Marcar como entregado" (visible en `paid`/`shipped`), ocultos en
-   `pending`/`cancelled`/`delivered` — los estados que el backend rechaza con 409. El de "enviado"
-   abre un formulario inline con guía / URL de rastreo / paquetería, **los tres opcionales**, y avisa
-   que capturar la guía manda el correo al cliente (es visible para él y no se puede deshacer).
-3. [ ] **Guía tardía:** en un pedido ya `shipped` **sin** `trackingNumber`, ofrecer "Agregar guía"
-   con el mismo formulario (el backend acepta repetir `status: "shipped"` justo para esto).
-4. [ ] **Mutation + invalidación:** `useMutation` que al `onSuccess` invalide `adminOrderKeys.all` y
-   notifique al padre vía callback (igual que `onCancelled` en la Fase 12), marcando el refresh como
-   manual (`isManualRefreshRef`) para no disparar el toast de polling del webhook de Skydropx.
-5. [ ] **Errores mapeados:** `409` (retroceso / cancelado / aún no pagado) y `400` se muestran inline
-   con el `message` del backend —copia UI accionable— sin cerrar el modal.
-
-**Salida:** ningún pedido se queda atorado en `paid` por no haber pasado por Skydropx; el dueño lo
-mueve a enviado/entregado desde el panel y el cliente recibe su correo de rastreo igual que en el
-flujo automático.
 
 ---
 

@@ -169,7 +169,7 @@ Shipping is quoted **live** against Skydropx from checkout step 3 (see above) �
 - **Marca** — brand identity/copy editor (autosaved).
 - **Productos** — catalog CRUD, including a Cloudinary-backed image gallery (up to 3 images per product).
 - **Importar** — bulk Excel import/restock: upload → preview (no writes) → review/edit → commit. Restock only ever adds stock and can't be undone from the app, so the review screen enforces several invariants (rows that already wrote lock for the session, dependent rows across the same file get flagged, etc.) — see `CLAUDE.md`'s "Importación por Excel" for the full list.
-- **Pedidos** — read-only, paginated order listing with a detail modal (includes cost/margin, admin-only) plus manual cancel/refund.
+- **Pedidos** — paginated order listing with a detail modal (includes cost/margin, admin-only). From the modal the owner can cancel/refund an order, and move it forward to shipped/delivered by hand — capturing the tracking number, URL and carrier when the order never went through Skydropx (a flat-rate order gets no label, so no webhook ever advances it).
 - **Datos** — KPIs, revenue chart, inventory and recent-sales tables (7/30/90-day windows).
 - **Reportes** — monthly sales history feeding an auto-scaling replenishment forecast (simple average → weighted+trend → Holt exponential smoothing, depending on history depth); both export to CSV.
 - **Configuración** — own account settings + admin user management, and logout.

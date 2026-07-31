@@ -2,8 +2,20 @@ import type { AdminOrder } from "@/lib/api/adminOrders";
 
 // Fuente única del color/etiqueta de cada estado — usada por OrdersTable y
 // OrderDetailModal para que el significado visual no se duplique/desalinee.
-// `status` y `paymentStatus` son campos independientes que comparten el string
-// "paid"; se les da color distinto a propósito (no son la misma señal).
+//
+// INVARIANTE DE COLOR: `status` y `paymentStatus` son campos INDEPENDIENTES que
+// se pintan **uno junto al otro** (columnas "Estado" y "Pago" de OrdersTable,
+// y el par de badges del encabezado del modal), así que los cinco hues de
+// STATUS_META y los cinco de PAYMENT_META son DISJUNTOS: ningún par de badges
+// que pueda aparecer en la misma fila comparte color, y dentro de cada columna
+// tampoco se repite ninguno (se escanean en vertical). Al agregar un estado
+// nuevo hay que sacarlo de una familia que no esté en ninguna de las dos
+// tablas, no reusar la que "quede bien" — dos badges del mismo color obligan a
+// leer el texto para saber cuál es cuál, que es justo lo que la píldora evita.
+//
+// STATUS se queda con la rampa intuitiva del ciclo de vida (espera → confirmado
+// → en camino → entregado, más el rojo de cancelado); PAYMENT usa familias que
+// STATUS no toca.
 export const STATUS_META: Record<
   AdminOrder["status"],
   { label: string; classes: string }
@@ -18,6 +30,11 @@ export const STATUS_META: Record<
   cancelled: { label: "Cancelado", classes: "border-red-400 text-red-400" },
 };
 
+// Ninguno de estos hues aparece en STATUS_META (ver la nota de arriba). Las
+// vecindades se eligieron pensando en la pareja que a cada uno le toca al lado:
+// "Procesando" convive con Pendiente (ámbar) → cian; "Fallido" convive con
+// Pendiente (ámbar) y Cancelado (rojo) → fucsia, magenta legible contra los
+// dos; "Reembolsado" solo aparece con Cancelado (rojo) → naranja.
 export const PAYMENT_META: Record<
   AdminOrder["paymentStatus"],
   { label: string; classes: string }
@@ -25,13 +42,13 @@ export const PAYMENT_META: Record<
   unpaid: { label: "Sin pagar", classes: "border-stone-500 text-stone-400" },
   processing: {
     label: "Procesando",
-    classes: "border-amber-400 text-amber-400",
+    classes: "border-cyan-400 text-cyan-400",
   },
-  paid: { label: "Pagado", classes: "border-emerald-400 text-emerald-400" },
-  failed: { label: "Fallido", classes: "border-red-400 text-red-400" },
+  paid: { label: "Pagado", classes: "border-lime-400 text-lime-400" },
+  failed: { label: "Fallido", classes: "border-fuchsia-400 text-fuchsia-400" },
   refunded: {
     label: "Reembolsado",
-    classes: "border-violet-400 text-violet-400",
+    classes: "border-orange-400 text-orange-400",
   },
 };
 
@@ -70,6 +87,13 @@ export function DropoffBadge() {
 // no un enum cerrado validado por el backend, así que este diccionario cubre
 // los valores más comunes del carrier y cualquier otro cae a un fallback
 // legible en vez de mostrar la clave cruda o reventar.
+//
+// Éste SÍ reusa los hues de STATUS_META a propósito (al revés que PAYMENT_META,
+// ver la nota de arriba): es el mismo ciclo de vida contado por la paquetería en
+// vez de por nosotros, así que "En tránsito" en violeta = "Enviado" en violeta
+// dice justo lo que debe decir. Puede hacerlo porque nunca se pinta junto al
+// badge de `status`: vive en su propio Field del modal ("Estado del envío") y no
+// aparece en la tabla.
 const SHIPMENT_STATUS_META: Record<string, { label: string; classes: string }> = {
   pre_transit: { label: "Guía generada", classes: "border-sky-400 text-sky-400" },
   label_created: { label: "Guía generada", classes: "border-sky-400 text-sky-400" },
