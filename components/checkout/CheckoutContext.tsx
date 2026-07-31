@@ -13,6 +13,7 @@ import type { CartTotals } from "@/lib/domain/cart";
 import type { ShippingData } from "@/schemas/checkout";
 import type { OrderResponse } from "@/lib/api/orders";
 import type { SelectedShippingRate } from "@/lib/api/shipping";
+import { newIdempotencyKey } from "@/lib/domain/idempotency";
 
 export const CHECKOUT_STEPS = ["Resumen", "Dirección", "Envío", "Confirmación"] as const;
 export type CheckoutStep = 0 | 1 | 2 | 3;
@@ -55,6 +56,10 @@ interface CheckoutContextValue {
   getSelectedRate: (signature: string) => SelectedShippingRate | null;
   /** Cachea (o limpia, con `null`) la tarifa de envío elegida junto a su firma. */
   setSelectedRate: (signature: string, rate: SelectedShippingRate | null) => void;
+  /** Clave de idempotencia del intento de compra con esa firma (la crea si no existe). */
+  getIdempotencyKey: (signature: string) => string;
+  /** Descarta la clave actual para que el siguiente intento use una nueva. */
+  resetIdempotencyKey: () => void;
   /** Devuelve la orden pendiente cacheada solo si corresponde al carrito actual (misma firma). */
   getPendingOrder: (signature: string) => PendingOrder | null;
   /** Cachea (o limpia, con `null`) la orden pendiente junto a la firma del carrito que la originó. */
@@ -90,6 +95,36 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
     signature: string;
     pending: PendingOrder;
   } | null>(null);
+
+  // Clave de idempotencia que viaja como header en POST /api/orders (Fase 15).
+  // Se guarda junto a la firma que la originó y se reusa mientras esa firma no
+  // cambie: es lo que hace que un doble clic, un reintento del navegador o un
+  // reintento tras un pago fallido sean para el backend el MISMO intento de
+  // compra y no dos pedidos con dos cobros.
+  //
+  // Se clavea con la MISMA firma que la orden pendiente de abajo a propósito:
+  // "otro carrito, otro cliente u otra tarifa" es exactamente lo que hace que un
+  // reenvío deje de ser el mismo pedido, y tener dos criterios distintos para lo
+  // mismo es la forma segura de que se desincronicen. Al cambiar la firma la
+  // clave se rota sola, sin efectos ni invalidación aparte.
+  const idempotencyKeyRef = useRef<{ signature: string; key: string } | null>(
+    null
+  );
+
+  // Perezosa a propósito: solo se llama desde el submit del pago, nunca en
+  // render, así que no hay claves desperdiciadas ni desajuste de hidratación
+  // (crypto.randomUUID no existe en SSR).
+  const getIdempotencyKey = useCallback((signature: string): string => {
+    const cached = idempotencyKeyRef.current;
+    if (cached && cached.signature === signature) return cached.key;
+    const key = newIdempotencyKey();
+    idempotencyKeyRef.current = { signature, key };
+    return key;
+  }, []);
+
+  const resetIdempotencyKey = useCallback(() => {
+    idempotencyKeyRef.current = null;
+  }, []);
 
   // Borrador del formulario de envío. Vive aquí (y no en UserDetails) porque el
   // flujo desmonta el paso al navegar: react-hook-form destruiría su estado y el
@@ -184,6 +219,11 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
       // El pedido ya está congelado arriba: el borrador solo dejaría datos
       // personales en memoria sin uso.
       shippingDraftRef.current = null;
+      // Este intento de compra terminó. Conservar la clave haría que una segunda
+      // compra del mismo carrito dentro de la ventana de 60 s (el cliente que se
+      // arrepiente y pide otro par) se leyera como un reenvío y le devolviera el
+      // pedido anterior en vez de crear el nuevo.
+      idempotencyKeyRef.current = null;
       visit(3);
     },
     [visit]
@@ -205,6 +245,8 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
       confirmShipping,
       getSelectedRate,
       setSelectedRate,
+      getIdempotencyKey,
+      resetIdempotencyKey,
       getPendingOrder,
       setPendingOrder,
       completeOrder,
@@ -223,6 +265,8 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
       confirmShipping,
       getSelectedRate,
       setSelectedRate,
+      getIdempotencyKey,
+      resetIdempotencyKey,
       getPendingOrder,
       setPendingOrder,
       completeOrder,

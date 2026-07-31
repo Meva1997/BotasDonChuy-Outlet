@@ -11,7 +11,7 @@ migración.
 
 **Cómo está organizado este documento:** primero el mapa de endpoints ↔ consumidor
 (la vista por API), después las fases en **orden numérico estricto**, separadas en
-[completadas](#fases-completadas-) (1–14) y [pendientes](#fases-pendientes-) (15–20).
+[completadas](#fases-completadas-) (1–15) y [pendientes](#fases-pendientes-) (16–20).
 Las fases están numeradas por el orden en que se hicieron/se van a hacer, no por
 dependencia: esa se lee en la columna "Depende de" del índice.
 
@@ -36,7 +36,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | `POST /api/orders` | `components/checkout/UserDetails.tsx` → `createOrder()` de `lib/api/orders.ts` (`useMutation`); `completeOrder()` congela la respuesta `201` | ✅ | 2 |
 | `POST /api/orders` → `clientSecret` | `components/checkout/usePlaceOrder.ts` confirma el pago con Stripe.js (`confirmCardPayment` + `pm_card_visa`) usando el `clientSecret` que devuelve `createOrder()`; `PaymentSection.tsx` es el panel de tarjeta de prueba | ✅ | 8 (**test/sandbox**) |
 | `POST /api/webhooks/stripe` | *(lo invoca Stripe, no el front)* — el pago se confirma en el cliente; el webhook marca la orden `paid` | ✅ | 8 — backend activo (firma verificada); no requiere código de front |
-| `POST /api/orders` → header `Idempotency-Key` | `components/checkout/usePlaceOrder.ts` / `lib/api/orders.ts` — el backend ya deduplica solo por huella del carrito; el header lo hace explícito | 🔴 | **15** (mejora, no bloquea) |
+| `POST /api/orders` → header `Idempotency-Key` | `components/checkout/usePlaceOrder.ts` pide la clave al `CheckoutContext` (`getIdempotencyKey(signature)`) y `createOrder()` de `lib/api/orders.ts` la manda como header; la respuesta expone `replayed` leyendo `Idempotency-Replayed` | ✅ | 15 |
 | `POST /api/orders` → `order.publicToken` | `components/checkout/usePlaceOrder.ts` — el `201` del checkout ya trae el token; sirve para mandar al comprador a `/pedido/<token>` sin esperar el correo | 🔴 | **17** |
 | `GET /api/orders/lookup/:token` | *(sin consumidor todavía)* — falta la página pública de seguimiento `/pedido/[token]`, a la que apunta el link del correo de confirmación | 🔴 | **17** |
 | `GET /api/admin/products` | `components/admin/ProductSection.tsx` → `getAdminProducts()` de `lib/api/adminProducts.ts` (`useQuery`) | ✅ | 3 |
@@ -95,7 +95,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | 12 | Admin: cancelación/reembolso manual de pedidos | ✅ | 7 |
 | 13 | Admin: importación/restock masivo vía Excel | ✅ | 3 |
 | 14 | Admin: marcar pedido como enviado/entregado a mano | ✅ | 7 |
-| 15 | `Idempotency-Key` en el checkout *(mejora, no bloquea)* | 🔴 | 2 |
+| 15 | `Idempotency-Key` en el checkout | ✅ | 2 |
 | 16 | Admin: reintentar la guía de Skydropx | 🔴 | 11 |
 | 17 | Página pública de seguimiento del pedido *(cara al cliente)* | 🔴 | 2 |
 | 18 | Outlet: buscador, orden y rango de precio *(cara al cliente)* | 🔴 | — |
@@ -713,14 +713,83 @@ flujo automático.
 
 ---
 
+## Fase 15 — `Idempotency-Key` en el checkout ✅ *(depende de Fase 2)*
+
+> **Contexto.** `POST /api/orders` ya era idempotente antes de esta fase (Fase O.2 del backend), pero
+> lo lograba **infiriendo** la identidad del intento a partir de una huella del carrito + los datos
+> del cliente. Esa inferencia falla en los dos sentidos: dos pedidos legítimos que casualmente se ven
+> iguales se leen como uno, y un reenvío cuyo cuerpo cambió mínimamente se lee como dos. El header
+> convierte la protección en **explícita**: el front declara "este es el mismo intento de compra" en
+> vez de dejar que el servidor lo adivine.
+
+**Lo que el backend ya hacía (referencia — no se tocó):**
+- `POST /api/orders` es **idempotente desde la Fase O.2**. Un reenvío del mismo checkout dentro de
+  una **ventana de 60 s** no crea un segundo pedido: devuelve la **misma respuesta del original**
+  (mismo `order`, mismo `clientSecret`, mismo `201`). Antes, un doble clic creaba otra orden, otro
+  PaymentIntent real y **descontaba el stock otra vez**, y ese stock no se liberaba hasta 30–40 min
+  después.
+- El header `Idempotency-Key` (opcional, máx. 200 caracteres) **tiene prioridad** sobre esa huella.
+- **Contrato del header:** un valor **nuevo por cada intento de compra**. Reenviarlo con el mismo
+  carrito devuelve el pedido original; reusarlo con un carrito **distinto** responde **409**
+  ("Esa clave de idempotencia ya se usó para otro pedido…"); uno de más de 200 caracteres, **400**.
+- Un intento fallido que **no alcanzó a crear el pedido** (`409` sin stock, `503` de cotización,
+  `400` de validación) **libera la clave**: el cliente puede corregir y reintentar de inmediato.
+- El **cuerpo** del reenvío es idéntico al del original; lo que lo distingue es el header
+  **`Idempotency-Replayed: true`**, presente solo en la respuesta repetida y expuesto por CORS
+  (`exposedHeaders` en `app.ts`) para que el navegador lo deje leer.
+
+**Lo que se hizo en el frontend:**
+1. ✅ **Generación de la clave:** `lib/domain/idempotency.ts` → `newIdempotencyKey()`
+   (`crypto.randomUUID()` con fallbacks, ver abajo). Módulo puro, con specs.
+2. ✅ **Ciclo de vida:** `CheckoutContext` guarda `{ signature, key }` en un `ref` y expone
+   `getIdempotencyKey(signature)` (perezosa: la crea si esa firma no tiene) + `resetIdempotencyKey()`.
+   `completeOrder()` la limpia. Se clavea con la **misma firma** que la orden pendiente
+   (carrito + cliente + tarifa elegida), así que rota sola cuando cambia el carrito o se re-cotiza el
+   envío — sin un segundo mecanismo de invalidación que pueda desincronizarse del primero.
+3. ✅ **Envío:** `createOrder(payload, idempotencyKey?)` en `lib/api/orders.ts` la manda como header.
+4. ✅ **Botón deshabilitado mientras el pago está en vuelo:** ya existía
+   (`ShippingOptions.tsx` → `disabled={!selected || isProcessing}`). Sin cambios.
+5. ✅ **Error mapeado:** `isIdempotencyKeyConflict()` (nuevo `components/checkout/checkoutErrors.ts`)
+   detecta el 409 de clave reusada; `usePlaceOrder` llama `resetIdempotencyKey()` antes de mostrar el
+   `message` del backend, para que el siguiente clic no repita el mismo error para siempre.
+6. ✅ **`Idempotency-Replayed` consumido:** `createOrder()` devuelve `replayed` leyéndolo de los
+   headers. Si es `true`, `usePlaceOrder` consulta el PaymentIntent (`retrievePaymentIntent`) antes de
+   confirmar y, si ya está `succeeded`, salta directo a la confirmación.
+
+**Decisiones de diseño que conviene no revertir sin leer esto:**
+- **La clave se deriva de `orderSignature`, no de un ciclo de vida propio.** Esa firma ya define qué
+  es "el mismo intento de compra" para el caché de la orden pendiente; darle a la clave su propio
+  criterio sería una segunda fuente de verdad sobre lo mismo. Rota exactamente cuando debe y no hay
+  efectos ni invalidación aparte.
+- **Se genera perezosamente en el submit, nunca en render.** Además de no desperdiciar claves, evita
+  el desajuste de hidratación: `crypto.randomUUID()` no existe en SSR.
+- **`newIdempotencyKey()` tiene dos fallbacks y no puede lanzar.** `crypto.randomUUID` solo existe en
+  **contexto seguro**, así que abrir el sitio desde el teléfono en `http://192.168.x.x:3000` —cosa
+  que se hace para probar— dejaría el checkout entero sin poder pagar con un `TypeError`. Cae a
+  `crypto.getRandomValues` (que no exige contexto seguro) y, en último caso, a timestamp + random:
+  la clave no necesita ser criptográfica, solo irrepetible dentro de la ventana de 60 s.
+- **`replayed` solo puede ser `true` cuando la orden se creó en esa pasada.** Una orden servida del
+  caché del contexto no trajo respuesta HTTP de la que leer el header.
+- **Por qué se consulta el PaymentIntent en un replay:** el pedido devuelto puede tener su cobro ya
+  hecho; confirmarlo otra vez devuelve un error de Stripe que le diría al comprador que su pago falló
+  cuando en realidad ya se hizo, y lo empujaría a reintentar.
+- **El mapeo de errores se extrajo a `components/checkout/checkoutErrors.ts`** (puro, con specs).
+  Esta ruta devuelve **tres 409 distintos** —sin stock, cotización expirada, clave reusada— que solo
+  se distinguen por el `message` y piden recuperaciones diferentes; confundir dos deja al comprador
+  reintentando en bucle contra el mismo error.
+
+**Salida:** un doble clic, un reintento del navegador o una conexión inestable en el momento de pagar
+no pueden generar dos pedidos ni dos cobros — ni siquiera cuando el carrito cambió lo suficiente como
+para que la huella automática no los reconozca como el mismo.
+
+---
+
 # Fases pendientes 🔴
 
 Van en orden numérico, pero **no hay que hacerlas en ese orden**: son independientes entre sí.
 Cómo priorizarlas:
 
-- **Fase 15** es una mejora opcional: el backend **ya** deduplica los pedidos duplicados sin ayuda
-  del front (Fase O.2). El header solo hace la protección explícita en vez de inferida.
-- **Fase 16** también es opcional en el sentido de que el backend ya se recupera solo con un
+- **Fase 16** es opcional en el sentido de que el backend ya se recupera solo con un
   barrido periódico (Fase O.3); el botón adelanta ese reintento y, sobre todo, muestra el motivo
   del fallo cuando hace falta decidir a mano.
 - **Fase 18** es puramente aditiva: los params nuevos son opcionales y el catálogo sigue
@@ -732,53 +801,6 @@ Cómo priorizarlas:
   resultado; el riesgo aparece el día que se cree el primer cupón y algún componente siga sumando
   con cuatro términos. Conviene hacer primero los puntos 1, 2 y 7 (contratos + fila de descuento)
   aunque el campo del checkout llegue después.
-
----
-
-## Fase 15 — `Idempotency-Key` en el checkout 🔴 *(mejora, no bloquea — depende de Fase 2)*
-
-**Lo que el backend ya hace (referencia — no tocar):**
-- `POST /api/orders` es **idempotente desde la Fase O.2**. Un reenvío del mismo checkout dentro de
-  una **ventana de 60 s** no crea un segundo pedido: devuelve la **misma respuesta del original**
-  (mismo `order`, mismo `clientSecret`, mismo `201`). Antes, un doble clic creaba otra orden, otro
-  PaymentIntent real y **descontaba el stock otra vez**, y ese stock no se liberaba hasta 30–40 min
-  después.
-- **Ya funciona sin tocar el frontend**: cuando no llega el header, el servidor deduplica por una
-  huella del carrito + los datos del cliente. Por eso esta fase es una mejora, no un requisito.
-- El header `Idempotency-Key` (opcional, máx. 200 caracteres) **tiene prioridad** sobre esa huella.
-  Es lo correcto a largo plazo: distingue "el mismo pedido reenviado" de "otro pedido que casualmente
-  se ve igual", sin depender de que el carrito sea idéntico byte a byte.
-- **Contrato del header:** un valor **nuevo por cada intento de compra**. Reenviarlo con el mismo
-  carrito devuelve el pedido original; reusarlo con un carrito **distinto** responde **409**
-  ("Esa clave de idempotencia ya se usó para otro pedido…"); uno de más de 200 caracteres, **400**.
-- Un intento fallido que **no alcanzó a crear el pedido** (`409` sin stock, `503` de cotización,
-  `400` de validación) **libera la clave**: el cliente puede corregir y reintentar de inmediato, con
-  la misma clave o con otra. Si el pedido sí llegó a crearse y lo que falló fue el cobro (un `500`),
-  la clave **no** se libera y un reenvío dentro de la ventana devuelve ese mismo error en vez de
-  duplicar el pedido — ahí el camino es recargar el checkout, no reintentar.
-- El **cuerpo** del reenvío es idéntico al del original, así que el front no necesita ramificar la
-  lógica. Lo que sí lo distingue es el header **`Idempotency-Replayed: true`**, presente solo en la
-  respuesta repetida (ausente en el pedido original) y expuesto por CORS para que el navegador lo
-  deje leer. Es opcional consumirlo: sirve para no decir "¡pedido creado!" cuando en realidad se
-  devolvió uno que ya existía, o para telemetría de cuántos dobles clics están llegando.
-
-**Trabajo del frontend:**
-1. [ ] **Generar la clave** al entrar al checkout (`crypto.randomUUID()`), guardada en un `ref`/estado
-   del flujo de compra — **no** una por render, o cada reintento sería una clave nueva y el header
-   dejaría de servir.
-2. [ ] **Regenerarla** cuando cambie el carrito o se vuelva a cotizar el envío: a partir de ahí es un
-   pedido distinto, y reusar la clave anterior daría `409`.
-3. [ ] **Mandarla** como header `Idempotency-Key` en `createOrder()` de `lib/api/orders.ts`.
-4. [ ] **Deshabilitar el botón de pagar mientras la mutación está en vuelo** (`isPending`). El header
-   es la red de seguridad, no el reemplazo de lo obvio.
-5. [ ] **Error mapeado:** el `409` de clave reusada se muestra con el `message` del backend (copia UI
-   accionable) y se regenera la clave antes de permitir el siguiente intento.
-6. [ ] *(Opcional)* **Leer `Idempotency-Replayed`** en la respuesta de `createOrder()` para no anunciar
-   "pedido creado" cuando el backend devolvió uno que ya existía.
-
-**Salida:** un doble clic, un reintento del navegador o una conexión inestable en el momento de pagar
-no pueden generar dos pedidos ni dos cobros — ni siquiera cuando el carrito cambió lo suficiente como
-para que la huella automática no los reconozca como el mismo.
 
 ---
 
@@ -1109,5 +1131,5 @@ le cobra y qué subió de precio — y la GANANCIA NETA del panel deja de restar
   `../backend/roadmaps-completados/roadmap-skydropx.md` Fases 8.1–8.6). El checkout ya cotiza en vivo (ver "Shipping"
   en `CLAUDE.md`) y el panel de pedidos ya muestra guía/rastreo (**Fase 11** ✅).
 - **Prioridad de lo pendiente:** ver la introducción de [Fases pendientes](#fases-pendientes-)
-  — ahí está qué habilita algo nuevo (14), qué es mejora opcional (15, 16), qué es aditivo (18)
-  y qué ya cambió un invariante aunque no se cablee (19).
+  — ahí está qué es mejora opcional (16), qué es aditivo (18) y qué ya cambió un invariante
+  aunque no se cablee (19).

@@ -57,6 +57,20 @@ export const CreateOrderResponseSchema = z.object({
 
 export type CreateOrderResponse = z.infer<typeof CreateOrderResponseSchema>;
 
+/**
+ * Lo que devuelve `createOrder()`: el cuerpo validado más `replayed`, que NO
+ * viene en el cuerpo sino del header `Idempotency-Replayed` (Fase 15).
+ *
+ * El backend devuelve un reenvío byte a byte idéntico al original —esa es la
+ * garantía de la idempotencia—, así que el header es la única forma de saber
+ * que este `201` no creó nada: es el pedido que ya existía. Importa porque su
+ * PaymentIntent puede estar YA cobrado, y confirmarlo otra vez le diría al
+ * comprador que su pago falló cuando en realidad ya se hizo (ver usePlaceOrder).
+ */
+export interface CreateOrderResult extends CreateOrderResponse {
+  replayed: boolean;
+}
+
 // Payload del checkout: identificadores + cliente, NUNCA montos. El backend
 // recalcula totales y descuenta stock por talla de forma atómica.
 // `quotationId`/`rateId` identifican la cotización de envío en vivo elegida en
@@ -110,15 +124,29 @@ export class OrderResponseParseError extends Error {
   }
 }
 
-// POST /api/orders — 409 sin stock / producto no disponible, 400 carrito vacío o
-// datos de cliente inválidos. Los errores propagan a la mutación (no se capturan).
+// POST /api/orders — 409 sin stock / producto no disponible / cotización
+// expirada / clave de idempotencia reusada, 400 carrito vacío o datos de cliente
+// inválidos. Los errores propagan a la mutación (no se capturan).
+//
+// `idempotencyKey` (Fase 15, opcional): un valor NUEVO por cada intento de
+// compra distinto, el MISMO en cada reintento del mismo intento. Tiene prioridad
+// sobre la huella automática que el backend calcula del carrito, así que es lo
+// que evita que un doble clic cree dos pedidos con sus dos cobros y su stock
+// descontado dos veces. Máximo 200 caracteres (más largo → 400). Quién decide
+// cuándo rota: components/checkout/CheckoutContext.tsx.
 export async function createOrder(
-  payload: CreateOrderPayload
-): Promise<CreateOrderResponse> {
-  const { data } = await api.post("/orders", payload);
+  payload: CreateOrderPayload,
+  idempotencyKey?: string
+): Promise<CreateOrderResult> {
+  const res = await api.post("/orders", payload, {
+    ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
+  });
   // safeParse (no parse): si el pedido ya se creó (2xx) pero la forma derivó,
   // señalamos un error específico en vez de invitar a reintentar → sin duplicados.
-  const parsed = CreateOrderResponseSchema.safeParse(data);
+  const parsed = CreateOrderResponseSchema.safeParse(res.data);
   if (!parsed.success) throw new OrderResponseParseError();
-  return parsed.data;
+  // El header solo está presente en la respuesta REPETIDA (ausente en el pedido
+  // original). El backend lo publica en `exposedHeaders` del CORS; sin eso el
+  // navegador lo recibiría pero no dejaría leerlo.
+  return { ...parsed.data, replayed: res.headers?.["idempotency-replayed"] === "true" };
 }
