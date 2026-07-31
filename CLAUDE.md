@@ -109,8 +109,9 @@ components/
                   #     que navega a ?seccion=importar. Ver "Importación por Excel" abajo — tiene
                   #     invariantes que no se pueden romper sin duplicar stock del catálogo real
                   #   sections/OrdersSection — listado de pedidos (Fase 7). YA conectado vía lib/api/adminOrders
-                  #     (useQuery paginado, GET /api/admin/orders). Lectura + una acción (Fase 12,
-                  #     cancelación/reembolso — ver OrderDetailModal abajo): tabla (desktop) / cards
+                  #     (useQuery paginado, GET /api/admin/orders). Lectura + dos acciones (Fase 12,
+                  #     cancelación/reembolso; Fase 14, avance manual de estado — ver OrderDetailModal
+                  #     abajo, las dos viven ahí): tabla (desktop) / cards
                   #     (mobile) + OrderDetailModal (diálogo con trampa de foco). Dueño de un filtro de
                   #     fecha (`<input type="date">`, mismo patrón que SalesTable) — a diferencia de
                   #     SalesTable (filtra en cliente sobre datos ya cargados), aquí el filtro viaja al
@@ -121,7 +122,14 @@ components/
                   #     que OrdersTable): 20 en desktop, 5 en mobile (menos scroll en las cards).
                   #     Subcomponentes en components/admin/orders/: OrdersTable, OrdersPagination (ventana + elipsis),
                   #     OrderDetailModal, StatusBadges (fuente única de color de status/paymentStatus —
-                  #     campos INDEPENDIENTES — más DropoffBadge y ShipmentStatusBadge). El modal muestra
+                  #     campos INDEPENDIENTES — más DropoffBadge y ShipmentStatusBadge). Los hues de
+                  #     STATUS_META y PAYMENT_META son DISJUNTOS: los dos badges se pintan uno junto al
+                  #     otro (columnas "Estado"/"Pago" y encabezado del modal), así que compartir color
+                  #     obliga a leer el texto para distinguirlos. STATUS se queda con la rampa del ciclo
+                  #     de vida (ámbar/sky/violeta/esmeralda + rojo de cancelado) y PAYMENT usa
+                  #     familias que STATUS no toca (stone/cian/lima/fucsia/naranja). SHIPMENT_STATUS_META
+                  #     sí reusa los hues de STATUS a propósito (mismo ciclo contado por la paquetería, y
+                  #     nunca se pinta al lado del badge de status). El modal muestra
                   #     unitCost + margen (dato sensible, solo /admin/*). `shippingRequiresDropoff` (bandera
                   #     operativa de Skydropx, ver "Shipping" — el dueño debe llevar el paquete a la
                   #     sucursal, esa paquetería no recoge a domicilio) se pinta como DropoffBadge en la
@@ -135,7 +143,8 @@ components/
                   #     envío" junto a "Paquetería". `shipmentStatus` es el string crudo del carrier (no un
                   #     enum cerrado) — `ShipmentStatusBadge`/`SHIPMENT_STATUS_META` lo traduce con
                   #     fallback legible para valores no mapeados. `order.status` (`shipped`/`delivered`)
-                  #     ya lo pinta `OrderStatusBadge` sin cambios: el backend lo avanza vía el mismo webhook.
+                  #     ya lo pinta `OrderStatusBadge` sin cambios: el backend lo avanza vía el mismo webhook,
+                  #     o a mano desde el propio modal (Fase 14, abajo).
                   #     Polling cada 30 min (`refetchInterval`, TanStack Query) para enterarse de cambios del
                   #     webhook sin recargar la pestaña, más un botón de refresh manual (ícono `RefreshCw` de
                   #     lucide-react, gira mientras `isFetching`) para no depender del intervalo. Un
@@ -151,13 +160,29 @@ components/
                   #     cancelAdminOrder() (lib/api/adminOrders.ts, POST /:id/cancel) vía useMutation. Al
                   #     éxito invalida adminOrderKeys.all + adminProductKeys.all + productKeys.all (el
                   #     restock cambia el stock del catálogo admin y del outlet público) y notifica a
-                  #     OrdersSection vía la prop onCancelled para que sincronice su `viewing` (el modal no
+                  #     OrdersSection vía la prop onOrderUpdated para que sincronice su `viewing` (el modal no
                   #     se cierra solo — sigue mostrando el pedido ya cancelado/reembolsado) marcando el
                   #     refresh como manual (isManualRefreshRef) para no disparar el toast de polling de
                   #     arriba. refundId/refundedAt (nuevos en el contrato) se muestran en el modal cuando
                   #     existen. 409 (estado no cancelable) y 502 (falló el reembolso en Stripe) se
                   #     muestran inline con el message del backend; StatusBadges ya pinta
-                  #     paymentStatus: "refunded" ("Reembolsado", acento violeta)
+                  #     paymentStatus: "refunded" ("Reembolsado", acento naranja).
+                  #     Avance manual del estado de envío (Fase 14): sección "Estado del envío" del mismo
+                  #     modal, arriba de la de cancelación — existe porque un pedido cobrado con la tarifa
+                  #     plana nunca pasa por Skydropx (sin guía → sin webhook) y se quedaría en `paid` para
+                  #     siempre. "Marcar como enviado" (solo en paid) abre un form inline con guía / URL de
+                  #     rastreo / paquetería, LOS TRES OPCIONALES; "Marcar como entregado" (paid/shipped) es
+                  #     una confirmación sin form; en pending/cancelled/delivered no se ofrece nada (son los
+                  #     409 del backend). Un pedido shipped SIN trackingNumber ofrece "Agregar guía" con el
+                  #     mismo form (el backend acepta repetir status: "shipped" justo para eso). El correo
+                  #     "tu pedido va en camino" sale UNA sola vez por pedido —guard atómico compartido con
+                  #     el webhook— así que el form avisa la consecuencia según haya guía o no. Llama
+                  #     updateAdminOrderStatus() vía useMutation e invalida SOLO adminOrderKeys.all (avanzar
+                  #     el estado no toca stock) + el mismo onOrderUpdated de arriba (obligatorio: status y
+                  #     trackingNumber están en orderSignature, sin la marca manual el refetch avisaría de un
+                  #     cambio que hizo el propio dueño). 409/400 se muestran inline con el message del
+                  #     backend sin cerrar el modal ni perder lo capturado; la URL sí se valida en cliente
+                  #     (isValidTrackingUrl) por ser el único 400 prevenible mientras se teclea
                   #   sections/DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable). YA conectado vía lib/api/dashboard (GET /api/admin/dashboard). Dueño de un selector 7/30/90 días (mismo Period que RevenueChart) que indexa kpisByPeriod/profitKpisByPeriod antes de pasarlos a los dos KpiGrid (Ventas / Rentabilidad); KpiGrid sigue siendo puramente presentacional (recibe kpis: KpiData[] ya resuelto). SalesTable es stateful: pagina las ventas de 5 en 5 (reutiliza orders/OrdersPagination) y filtra por día vía un `<input type="date">` (sin día = todas; con día = solo ese, paginado). El date picker se acota al rango [minDay, maxDay] presente en los datos; un día sin ventas muestra un estado vacío con buen UX ("Ver todas las ventas"). Filtra por SaleRow.day (clave ISO UTC)
                   #   sections/ReportesSection — análisis mensual con pestañas Ventas / Reposición + selector de mes
                   #   sections/ConfigSection — usuarios del panel + cuenta propia. YA conectado (Fase 6):
@@ -194,7 +219,7 @@ lib/
                   #   commit con safeParse + console.warn + dato crudo (razonamiento de acceptWrite,
                   #   pero más fuerte: reintentar un commit DUPLICA stock). ImportRowInputSchema usa
                   #   z.looseObject para que una clave extra sobreviva al parse y se pueda avisar
-    adminOrders.ts # contrato de pedidos admin (patrón getProducts): AdminOrderSchema/AdminOrderItemSchema (Zod, item SÍ trae unitCost) + adminOrderKeys + getAdminOrders(page, perPage, date?). YA conectado (GET /api/admin/orders?page=&perPage=&date=, PAGINADO en servidor → { orders, total, page, perPage, totalPages }). `date` (YYYY-MM-DD, opcional) acota a los pedidos creados ese día UTC — filtro real de servidor, no de cliente (ver OrdersSection). status y paymentStatus son campos INDEPENDIENTES; paymentStatus incluye "refunded" (Fase 12). AdminOrderSchema también trae los campos de guía/rastreo Skydropx (Fase 11): skydropxShipmentId/trackingNumber/trackingUrl/labelUrl/shipmentStatus, todos nullable — el backend ya los manda en la misma respuesta, pero Zod los descartaba por no estar declarados. Fase 12 agrega refundId/refundedAt (nullable) + cancelAdminOrder(id, reason?) (POST /:id/cancel, valida `{ order }` con AdminOrderSchema) — cancela un pedido pending (libera stock) o paid (reembolso total en Stripe + restock); el backend rechaza shipped/delivered/cancelled con 409
+    adminOrders.ts # contrato de pedidos admin (patrón getProducts): AdminOrderSchema/AdminOrderItemSchema (Zod, item SÍ trae unitCost) + adminOrderKeys + getAdminOrders(page, perPage, date?). YA conectado (GET /api/admin/orders?page=&perPage=&date=, PAGINADO en servidor → { orders, total, page, perPage, totalPages }). `date` (YYYY-MM-DD, opcional) acota a los pedidos creados ese día UTC — filtro real de servidor, no de cliente (ver OrdersSection). status y paymentStatus son campos INDEPENDIENTES; paymentStatus incluye "refunded" (Fase 12). AdminOrderSchema también trae los campos de guía/rastreo Skydropx (Fase 11): skydropxShipmentId/trackingNumber/trackingUrl/labelUrl/shipmentStatus, todos nullable — el backend ya los manda en la misma respuesta, pero Zod los descartaba por no estar declarados. Fase 12 agrega refundId/refundedAt (nullable) + cancelAdminOrder(id, reason?) (POST /:id/cancel, valida `{ order }` con AdminOrderSchema) — cancela un pedido pending (libera stock) o paid (reembolso total en Stripe + restock); el backend rechaza shipped/delivered/cancelled con 409. Fase 14 agrega updateAdminOrderStatus(id, { status: "shipped"|"delivered", trackingNumber?, trackingUrl?, shippingCarrier? }) (PATCH /:id/status, misma validación con AdminOrderSchema) — avance manual del estado sin depender del webhook de Skydropx. Solo hacia adelante (409 si retrocede, si el pedido está cancelado o si aún no está pagado; repetir el estado actual SÍ se permite, así se agrega una guía tardía). Los tres campos de guía son opcionales y la función OMITE las claves vacías en vez de mandarlas como "": el backend las valida con .trim().min(1) (un "" sería 400) y una clave ausente significa "no toques ese campo" — es lo que permite avanzar el estado sin borrar la guía guardada (campos "último gana")
     dashboard.ts  # contrato de métricas admin (patrón getProducts): DashboardSchema (Zod, valida la forma de components/admin/data/types.ts) + dashboardKeys + getAdminDashboard(). YA conectado (GET /api/admin/dashboard). kpisByPeriod/profitKpisByPeriod llegan igual que revenueByPeriod — las tres ventanas (7/30/90) precalculadas en un solo response, sin query params; DataSection alterna en cliente. recentSales[].day es una clave ISO UTC ("2026-07-13") junto al display date ("3 jul · 14:30"), para que SalesTable filtre por día de forma fiable
     reports.ts    # contrato de reportes admin (patrón getProducts): MonthlyReportSchema/ReplenishmentRowSchema (Zod, reflejan components/admin/data/types.ts) + reportKeys + getMonthlyReport()/getReplenishmentReport(). YA conectado (GET /api/admin/reports/monthly, GET /api/admin/reports/replenishment). Ambos endpoints devuelven un array plano ya derivado/ordenado por el backend
     brand.ts      # contrato de marca (patrón getProducts): BrandSettingsSchema (Zod) + brandKeys + getBrandSettings()/updateBrandSettings(). YA conectado (GET público /api/admin/brand, PUT protegido). BrandSettings es un SUBCONJUNTO de BRAND (brandName/heroText/tagline/cartNotice/footerNote/logoUrl); namePrimary/nameAccent/email/instagram NO existen en el backend. updateBrandSettings usa safeParse (un 2xx ya persistió)
@@ -411,7 +436,7 @@ Ambos reportes exportan CSV con un helper `csvField()` (escapado RFC 4180: envue
 
 ## Backend (Express.js) — contrato base
 
-El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/api/products.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Marca (Fase 5), usuarios/cuenta (Fase 6), pedidos del admin (Fase 7, `GET /api/admin/orders` → `OrdersSection`), pagos (Fase 8, Stripe en **test/sandbox**: `usePlaceOrder` + `confirmCardPayment` con `pm_card_visa`), cotización de envío en vivo (Fase 8.4, Skydropx: `lib/api/shipping.ts` + `ShippingOptions`, ver "Shipping") cancelación/reembolso manual de pedidos (Fase 12, `POST /api/admin/orders/:id/cancel` → `OrderDetailModal`) e importación/restock masivo por Excel (Fase 13, `POST /api/admin/products/import/preview` + `/import` → `ImportSection`, ver "Importación por Excel") YA están conectados. Ya no quedan fases pendientes del roadmap de integración.
+El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/api/products.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Marca (Fase 5), usuarios/cuenta (Fase 6), pedidos del admin (Fase 7, `GET /api/admin/orders` → `OrdersSection`), pagos (Fase 8, Stripe en **test/sandbox**: `usePlaceOrder` + `confirmCardPayment` con `pm_card_visa`), cotización de envío en vivo (Fase 8.4, Skydropx: `lib/api/shipping.ts` + `ShippingOptions`, ver "Shipping") cancelación/reembolso manual de pedidos (Fase 12, `POST /api/admin/orders/:id/cancel` → `OrderDetailModal`), importación/restock masivo por Excel (Fase 13, `POST /api/admin/products/import/preview` + `/import` → `ImportSection`, ver "Importación por Excel") y el avance manual de estado enviado/entregado (Fase 14, `PATCH /api/admin/orders/:id/status` → `OrderDetailModal`) YA están conectados. Las fases pendientes del roadmap (15-20) están listadas en `ROADMAP-BACKEND-INTEGRATION.md`; ninguna bloquea la operación actual.
 
 > **Principio:** la lógica de negocio (forecast, reposición, totales de carrito, envío) es de funciones puras que reciben números. Forecast y reposición ya viven en el backend (`backend/src/services/`); el frontend solo pinta las filas ya calculadas. La única matriz "fuente de verdad" es ventas-por-mes-por-producto (las órdenes pagadas).
 

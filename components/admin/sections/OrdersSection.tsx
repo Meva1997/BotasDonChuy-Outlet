@@ -114,10 +114,13 @@ export default function OrdersSection() {
     refetch();
   };
 
-  // El propio admin disparó el cambio al cancelar/reembolsar (no el webhook de
-  // Skydropx) — mismo trato que el refresh manual: sincroniza el modal sin
-  // disparar el toast de "pedido actualizado por el polling".
-  const handleOrderCancelled = (updated: AdminOrder) => {
+  // El propio admin disparó el cambio desde el modal —cancelar/reembolsar, o
+  // avanzar el estado a enviado/entregado— y no el webhook de Skydropx. Mismo
+  // trato que el refresh manual: sincroniza el modal sin disparar el toast de
+  // "pedido actualizado por el polling" (ambas acciones tocan campos que están
+  // en `orderSignature`, así que sin esta marca avisaría de un cambio que el
+  // dueño acaba de hacer él mismo).
+  const handleOrderUpdated = (updated: AdminOrder) => {
     isManualRefreshRef.current = true;
     setViewing(updated);
   };
@@ -239,7 +242,7 @@ export default function OrdersSection() {
         <OrderDetailModal
           order={viewing}
           onClose={() => setViewing(null)}
-          onCancelled={handleOrderCancelled}
+          onOrderUpdated={handleOrderUpdated}
         />
       )}
     </div>

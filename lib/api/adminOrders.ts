@@ -90,8 +90,9 @@ export const adminOrderKeys = {
 };
 
 // GET /api/admin/orders?page=&perPage=&date= — `date` (YYYY-MM-DD, opcional)
-// acota a los pedidos de ese día; sin filtro de status todavía (el backend no
-// expone PATCH/PUT para eso; ver ROADMAP-BACKEND-INTEGRATION.md).
+// acota a los pedidos de ese día. Sin filtro por status: el listado siempre
+// trae todo lo del día/página y el estado se avanza desde el detalle
+// (`updateAdminOrderStatus`, abajo).
 export async function getAdminOrders(
   page = 1,
   perPage = DEFAULT_PER_PAGE,
@@ -113,5 +114,43 @@ export async function cancelAdminOrder(
   reason?: string
 ): Promise<AdminOrder> {
   const { data } = await api.post(`/admin/orders/${id}/cancel`, { reason });
+  return AdminOrderSchema.parse(data.order);
+}
+
+// Avance manual del estado de envío (Fase 14). Los tres datos de la guía son
+// opcionales: se captura a mano lo que la paquetería haya dado.
+export interface AdminOrderStatusUpdate {
+  status: "shipped" | "delivered";
+  trackingNumber?: string;
+  trackingUrl?: string;
+  shippingCarrier?: string;
+}
+
+// PATCH /api/admin/orders/:id/status — mueve el pedido a `shipped`/`delivered`
+// sin depender del webhook de Skydropx (un pedido cobrado con la tarifa plana
+// nunca genera guía, así que se quedaría en `paid` para siempre).
+//
+// Solo hacia adelante: el backend responde 409 si el estado retrocede, si el
+// pedido está cancelado o si todavía no está pagado. **Repetir el estado actual
+// sí se permite** — es como se agrega una guía tardía a un pedido ya enviado.
+//
+// Los campos de guía son "último gana" y solo se escriben los que viajen: por
+// eso las claves vacías se OMITEN en vez de mandarse como "". El backend las
+// valida con `.trim().min(1)` (un "" sería un 400) y una clave ausente
+// significa "no toques ese campo", que es justo lo que hace falta para avanzar
+// el estado sin borrar la guía ya guardada.
+export async function updateAdminOrderStatus(
+  id: number,
+  input: AdminOrderStatusUpdate
+): Promise<AdminOrder> {
+  const body: AdminOrderStatusUpdate = { status: input.status };
+  const trackingNumber = input.trackingNumber?.trim();
+  const trackingUrl = input.trackingUrl?.trim();
+  const shippingCarrier = input.shippingCarrier?.trim();
+  if (trackingNumber) body.trackingNumber = trackingNumber;
+  if (trackingUrl) body.trackingUrl = trackingUrl;
+  if (shippingCarrier) body.shippingCarrier = shippingCarrier;
+
+  const { data } = await api.patch(`/admin/orders/${id}/status`, body);
   return AdminOrderSchema.parse(data.order);
 }

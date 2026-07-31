@@ -7,6 +7,7 @@ import axios from "axios";
 import {
   adminOrderKeys,
   cancelAdminOrder,
+  updateAdminOrderStatus,
   type AdminOrder,
 } from "@/lib/api/adminOrders";
 import { adminProductKeys } from "@/lib/api/adminProducts";
@@ -22,12 +23,18 @@ import {
 interface Props {
   order: AdminOrder;
   onClose: () => void;
-  // El padre (OrdersSection) sincroniza su snapshot `viewing` con el pedido ya
-  // cancelado, para que el modal siga mostrando badges frescos sin cerrarse.
-  onCancelled?: (order: AdminOrder) => void;
+  // El padre (OrdersSection) sincroniza su snapshot `viewing` con el pedido que
+  // devolvió la mutation (cancelación o avance de estado), para que el modal
+  // siga mostrando badges frescos sin cerrarse.
+  onOrderUpdated?: (order: AdminOrder) => void;
 }
 
 const REASON_MAX = 200;
+// Mismos topes que `orderStatusUpdateSchema` en el backend: recortar aquí evita
+// un 400 por longitud que el dueño solo descubriría al enviar.
+const TRACKING_NUMBER_MAX = 100;
+const TRACKING_URL_MAX = 500;
+const CARRIER_MAX = 80;
 
 // 409 (estado no cancelable) y 502 (falló el reembolso en Stripe) traen un
 // `message` accionable del backend — se muestra tal cual, sin genérico encima.
@@ -51,6 +58,37 @@ function cancelOrderErrorMessage(error: unknown): string {
       return message ?? "Revisa los datos e inténtalo de nuevo.";
   }
   return "No pudimos cancelar el pedido. Inténtalo de nuevo.";
+}
+
+// 409 (retroceso de estado / pedido cancelado / todavía sin pagar) y 400
+// (validación por campo) llegan con un `message` ya redactado en es-MX — se
+// prefiere siempre al genérico, que solo cubre el caso de red.
+function statusUpdateErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const message = error.response?.data?.message as string | undefined;
+    if (error.response?.status === 409) {
+      return (
+        message ??
+        "Este pedido ya no puede cambiar a ese estado (está cancelado, sin pagar, o el estado no puede retroceder)."
+      );
+    }
+    if (error.response?.status === 400)
+      return message ?? "Revisa los datos e inténtalo de nuevo.";
+    if (error.response?.status === 404) return "El pedido ya no existe.";
+  }
+  return "No pudimos actualizar el pedido. Inténtalo de nuevo.";
+}
+
+// El backend valida `trackingUrl` con `z.url()`. Comprobarlo antes de mandar
+// ahorra el único 400 que el dueño puede prevenir tecleando; el resto de las
+// reglas se dejan al backend, cuyo mensaje ya dice qué campo corregir.
+function isValidTrackingUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function formatDate(iso?: string): string | null {
@@ -90,18 +128,36 @@ const thR = `${th} text-right`;
 const td = "py-2.5 pr-4 last:pr-0 align-top";
 const tdR = `${td} text-right`;
 
+// Qué está capturando el dueño en la sección "Estado del envío": el formulario
+// de guía (marcar enviado o agregar la guía a un pedido ya enviado), la
+// confirmación de "entregado", o nada.
+type ShippingAction = null | "shipped" | "delivered";
+
 export default function OrderDetailModal({
   order,
   onClose,
-  onCancelled,
+  onOrderUpdated,
 }: Props) {
   const reduceMotion = useReducedMotion();
   const panelRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [shippingAction, setShippingAction] = useState<ShippingAction>(null);
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [trackingUrl, setTrackingUrl] = useState("");
+  const [shippingCarrier, setShippingCarrier] = useState("");
+  const [urlError, setUrlError] = useState<string | null>(null);
 
   const canCancel = order.status === "pending" || order.status === "paid";
+  // Los estados que el backend rechaza con 409 no ofrecen acción. Un pedido ya
+  // `shipped` puede repetir el estado para agregar la guía que le falta.
+  const canMarkShipped = order.status === "paid";
+  const canAddTracking = order.status === "shipped" && !order.trackingNumber;
+  const canMarkDelivered =
+    order.status === "paid" || order.status === "shipped";
+  const hasShippingActions =
+    canMarkShipped || canAddTracking || canMarkDelivered;
 
   const cancelMutation = useMutation({
     mutationFn: () => cancelAdminOrder(order.id, cancelReason.trim() || undefined),
@@ -113,9 +169,57 @@ export default function OrderDetailModal({
       queryClient.invalidateQueries({ queryKey: productKeys.all });
       setConfirmingCancel(false);
       setCancelReason("");
-      onCancelled?.(updated);
+      onOrderUpdated?.(updated);
     },
   });
+
+  const statusMutation = useMutation({
+    mutationFn: (status: "shipped" | "delivered") =>
+      updateAdminOrderStatus(order.id, {
+        status,
+        // La confirmación de "entregado" no captura guía: mandar los campos del
+        // otro formulario ahí escribiría datos que el dueño no está viendo.
+        ...(status === "shipped"
+          ? { trackingNumber, trackingUrl, shippingCarrier }
+          : {}),
+      }),
+    onSuccess: (updated) => {
+      // Avanzar el estado no toca stock (a diferencia de la cancelación), así
+      // que solo se invalida el listado de pedidos.
+      queryClient.invalidateQueries({ queryKey: adminOrderKeys.all });
+      setShippingAction(null);
+      setTrackingNumber("");
+      setTrackingUrl("");
+      setShippingCarrier("");
+      setUrlError(null);
+      onOrderUpdated?.(updated);
+    },
+  });
+
+  const openShippingAction = (action: Exclude<ShippingAction, null>) => {
+    statusMutation.reset();
+    setUrlError(null);
+    setShippingAction(action);
+  };
+
+  const closeShippingForm = () => {
+    setShippingAction(null);
+    setTrackingNumber("");
+    setTrackingUrl("");
+    setShippingCarrier("");
+    setUrlError(null);
+    statusMutation.reset();
+  };
+
+  const submitShipped = () => {
+    const url = trackingUrl.trim();
+    if (url && !isValidTrackingUrl(url)) {
+      setUrlError("Escribe una URL completa, por ejemplo https://…");
+      return;
+    }
+    setUrlError(null);
+    statusMutation.mutate("shipped");
+  };
 
   // Escape para cerrar + trampa de foco (Tab/Shift+Tab cicla dentro del diálogo)
   // + foco inicial dentro del panel y restauración al cerrar + bloqueo del scroll
@@ -446,6 +550,214 @@ export default function OrderDetailModal({
                       <span className="text-amber-100/30">—</span>
                     )}
                   </Field>
+                </div>
+              </>
+            )}
+
+            {hasShippingActions && (
+              <>
+                <div className="border-t border-stone-700/40" />
+                <div>
+                  <span className={labelCls}>Estado del envío</span>
+
+                  {shippingAction === null && (
+                    <div className="flex flex-wrap items-center gap-3">
+                      {canMarkShipped && (
+                        <button
+                          type="button"
+                          onClick={() => openShippingAction("shipped")}
+                          className="text-[11px] uppercase tracking-[0.2em] text-amber-400/90 border border-amber-400/40 px-4 py-2 hover:text-amber-300 hover:border-amber-400/70 transition-colors cursor-pointer"
+                        >
+                          Marcar como enviado
+                        </button>
+                      )}
+                      {/* El backend acepta repetir `status: "shipped"` justo
+                          para esto: la guía puede llegar horas después. */}
+                      {canAddTracking && (
+                        <button
+                          type="button"
+                          onClick={() => openShippingAction("shipped")}
+                          className="text-[11px] uppercase tracking-[0.2em] text-amber-400/90 border border-amber-400/40 px-4 py-2 hover:text-amber-300 hover:border-amber-400/70 transition-colors cursor-pointer"
+                        >
+                          Agregar guía
+                        </button>
+                      )}
+                      {canMarkDelivered && (
+                        <button
+                          type="button"
+                          onClick={() => openShippingAction("delivered")}
+                          className="text-[11px] uppercase tracking-[0.2em] text-emerald-400/90 border border-emerald-400/40 px-4 py-2 hover:text-emerald-300 hover:border-emerald-400/70 transition-colors cursor-pointer"
+                        >
+                          Marcar como entregado
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {shippingAction === "shipped" && (
+                    <div className="space-y-3 border border-amber-400/25 bg-amber-400/5 rounded-md p-4">
+                      <p className="text-[13px] text-amber-100/70 leading-relaxed">
+                        {canAddTracking
+                          ? "Captura la guía de este pedido. Los tres campos son opcionales."
+                          : "El pedido quedará marcado como enviado. Los tres campos son opcionales."}
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label
+                            htmlFor="tracking-number"
+                            className={labelCls}
+                          >
+                            Número de guía
+                          </label>
+                          <input
+                            id="tracking-number"
+                            type="text"
+                            value={trackingNumber}
+                            onChange={(e) =>
+                              setTrackingNumber(
+                                e.target.value.slice(0, TRACKING_NUMBER_MAX)
+                              )
+                            }
+                            maxLength={TRACKING_NUMBER_MAX}
+                            placeholder="Ej. 794658123456"
+                            className="w-full bg-stone-900 border border-amber-400/20 text-amber-50 text-sm font-sans px-3 py-2 rounded hover:border-amber-400/40 focus-visible:border-amber-400/60 transition-colors"
+                          />
+                        </div>
+
+                        <div>
+                          <label
+                            htmlFor="shipping-carrier"
+                            className={labelCls}
+                          >
+                            Paquetería
+                          </label>
+                          <input
+                            id="shipping-carrier"
+                            type="text"
+                            value={shippingCarrier}
+                            onChange={(e) =>
+                              setShippingCarrier(
+                                e.target.value.slice(0, CARRIER_MAX)
+                              )
+                            }
+                            maxLength={CARRIER_MAX}
+                            placeholder={
+                              order.shippingCarrier
+                                ? `Actual: ${order.shippingCarrier}`
+                                : "Ej. Estafeta"
+                            }
+                            className="w-full bg-stone-900 border border-amber-400/20 text-amber-50 text-sm font-sans px-3 py-2 rounded hover:border-amber-400/40 focus-visible:border-amber-400/60 transition-colors"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label htmlFor="tracking-url" className={labelCls}>
+                            URL de rastreo
+                          </label>
+                          <input
+                            id="tracking-url"
+                            type="url"
+                            inputMode="url"
+                            value={trackingUrl}
+                            onChange={(e) => {
+                              setTrackingUrl(
+                                e.target.value.slice(0, TRACKING_URL_MAX)
+                              );
+                              setUrlError(null);
+                            }}
+                            maxLength={TRACKING_URL_MAX}
+                            aria-invalid={urlError ? true : undefined}
+                            placeholder="https://…"
+                            className="w-full bg-stone-900 border border-amber-400/20 text-amber-50 text-sm font-sans px-3 py-2 rounded hover:border-amber-400/40 focus-visible:border-amber-400/60 transition-colors"
+                          />
+                          {urlError && (
+                            <p
+                              role="alert"
+                              className="text-[12px] text-red-400/90 mt-1"
+                            >
+                              {urlError}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* El correo de rastreo sale exactamente una vez por
+                          pedido (guard atómico en el backend, compartido con el
+                          webhook de Skydropx): capturar la guía es visible para
+                          el cliente y no se puede deshacer. */}
+                      <p className="text-[12px] leading-relaxed text-amber-100/60">
+                        {trackingNumber.trim()
+                          ? "Se enviará al cliente el correo de rastreo con esta guía. No se puede deshacer."
+                          : "Sin número de guía no se manda el correo de rastreo; puedes agregarla después."}
+                      </p>
+
+                      {statusMutation.isError && (
+                        <p role="alert" className="text-[12px] text-red-400/90">
+                          {statusUpdateErrorMessage(statusMutation.error)}
+                        </p>
+                      )}
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          disabled={statusMutation.isPending}
+                          onClick={submitShipped}
+                          className="border border-amber-400/60 text-amber-400 uppercase tracking-[0.2em] text-[10px] px-5 py-2.5 hover:bg-amber-400/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {statusMutation.isPending
+                            ? "Guardando…"
+                            : canAddTracking
+                              ? "Guardar guía"
+                              : "Confirmar envío"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={statusMutation.isPending}
+                          onClick={closeShippingForm}
+                          className="text-[10px] uppercase tracking-widest text-amber-100/40 hover:text-amber-100/70 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          Volver
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {shippingAction === "delivered" && (
+                    <div className="space-y-3 border border-emerald-400/25 bg-emerald-400/5 rounded-md p-4">
+                      <p className="text-[13px] text-amber-100/70 leading-relaxed">
+                        El pedido quedará marcado como entregado. El estado no
+                        puede retroceder y no se manda ningún correo al cliente.
+                      </p>
+
+                      {statusMutation.isError && (
+                        <p role="alert" className="text-[12px] text-red-400/90">
+                          {statusUpdateErrorMessage(statusMutation.error)}
+                        </p>
+                      )}
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          disabled={statusMutation.isPending}
+                          onClick={() => statusMutation.mutate("delivered")}
+                          className="border border-emerald-400/60 text-emerald-400 uppercase tracking-[0.2em] text-[10px] px-5 py-2.5 hover:bg-emerald-400/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {statusMutation.isPending
+                            ? "Guardando…"
+                            : "Confirmar entrega"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={statusMutation.isPending}
+                          onClick={closeShippingForm}
+                          className="text-[10px] uppercase tracking-widest text-amber-100/40 hover:text-amber-100/70 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          Volver
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}
