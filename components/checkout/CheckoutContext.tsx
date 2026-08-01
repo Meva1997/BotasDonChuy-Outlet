@@ -32,6 +32,16 @@ export interface CompletedOrder {
   /** Totales autoritativos recalculados por el servidor. */
   totals: CartTotals;
   customer: ShippingData;
+  /**
+   * Credencial de la página pública de seguimiento (Fase 17). Viene en el `201` del
+   * checkout, así que se puede ofrecer el enlace sin esperar el correo. `null` si
+   * el backend no lo mandó (pedido anterior a la columna).
+   *
+   * NO se persiste: vive lo que vive el contexto, igual que el resto del snapshot.
+   * Guardarlo en `localStorage` sería mover una credencial de pedido al navegador
+   * para ahorrarle a alguien buscar su correo — no vale el cambio.
+   */
+  publicToken: string | null;
 }
 
 interface CheckoutContextValue {
@@ -214,6 +224,7 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
           total: order.total,
         },
         customer,
+        publicToken: order.publicToken ?? null,
       });
       clearCart();
       // El pedido ya está congelado arriba: el borrador solo dejaría datos

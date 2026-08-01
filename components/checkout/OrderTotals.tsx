@@ -1,8 +1,20 @@
 import { formatPrice } from "@/lib/utils";
 import type { CartTotals } from "@/lib/domain/cart";
 
-export default function OrderTotals({ totals }: { totals: CartTotals }) {
+interface OrderTotalsProps {
+  totals: CartTotals;
+  /**
+   * Descuento por cupón ya aplicado por el servidor. Opcional: hoy solo lo pasa la
+   * página pública de seguimiento (`GET /api/orders/lookup/:token` devuelve
+   * `couponCode`/`couponDiscount`). Sin él, un pedido con cupón mostraría un total
+   * menor que `subtotal − savings + shipping` sin explicación visible.
+   */
+  discount?: { code: string | null; amount: number };
+}
+
+export default function OrderTotals({ totals, discount }: OrderTotalsProps) {
   const outletPrice = totals.subtotal - totals.savings;
+  const hasDiscount = !!discount && discount.amount > 0;
 
   return (
     <div className="space-y-2">
@@ -19,6 +31,14 @@ export default function OrderTotals({ totals }: { totals: CartTotals }) {
           <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] tracking-wide px-2.5 py-1">
             Ahorras {formatPrice(totals.savings)}
           </span>
+        </div>
+      )}
+      {hasDiscount && (
+        <div className="flex justify-between text-xs text-emerald-400">
+          <span className="tracking-wide">
+            Cupón{discount.code ? ` ${discount.code}` : ""}
+          </span>
+          <span>−{formatPrice(discount.amount)}</span>
         </div>
       )}
       <div className="flex justify-between text-xs text-amber-50/70">

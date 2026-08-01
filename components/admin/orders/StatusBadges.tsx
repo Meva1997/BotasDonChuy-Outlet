@@ -1,4 +1,5 @@
 import type { AdminOrder } from "@/lib/api/adminOrders";
+import { shipmentStatusLabel } from "@/lib/domain/shipmentStatus";
 
 // Fuente única del color/etiqueta de cada estado — usada por OrdersTable y
 // OrderDetailModal para que el significado visual no se duplique/desalinee.
@@ -83,10 +84,11 @@ export function DropoffBadge() {
   );
 }
 
-// `Order.shipmentStatus` (Fase 11) es el string crudo que reporta Skydropx —
-// no un enum cerrado validado por el backend, así que este diccionario cubre
-// los valores más comunes del carrier y cualquier otro cae a un fallback
-// legible en vez de mostrar la clave cruda o reventar.
+// `Order.shipmentStatus` (Fase 11) es el string crudo que reporta Skydropx — no un
+// enum cerrado validado por el backend. La TRADUCCIÓN vive en
+// `lib/domain/shipmentStatus.ts` porque desde la Fase 17 también la usa la página
+// pública de seguimiento, con otra presentación (ver el comentario de ese módulo);
+// aquí solo queda el color, que sí es propio del panel.
 //
 // Éste SÍ reusa los hues de STATUS_META a propósito (al revés que PAYMENT_META,
 // ver la nota de arriba): es el mismo ciclo de vida contado por la paquetería en
@@ -94,36 +96,26 @@ export function DropoffBadge() {
 // dice justo lo que debe decir. Puede hacerlo porque nunca se pinta junto al
 // badge de `status`: vive en su propio Field del modal ("Estado del envío") y no
 // aparece en la tabla.
-const SHIPMENT_STATUS_META: Record<string, { label: string; classes: string }> = {
-  pre_transit: { label: "Guía generada", classes: "border-sky-400 text-sky-400" },
-  label_created: { label: "Guía generada", classes: "border-sky-400 text-sky-400" },
-  in_transit: {
-    label: "En tránsito",
-    classes: "border-violet-400 text-violet-400",
-  },
-  out_for_delivery: {
-    label: "En reparto",
-    classes: "border-violet-400 text-violet-400",
-  },
-  delivered: {
-    label: "Entregado",
-    classes: "border-emerald-400 text-emerald-400",
-  },
-  exception: { label: "Incidencia", classes: "border-red-400 text-red-400" },
-  failure: { label: "Incidencia", classes: "border-red-400 text-red-400" },
-  cancelled: { label: "Cancelado", classes: "border-red-400 text-red-400" },
+const SHIPMENT_STATUS_CLASSES: Record<string, string> = {
+  pre_transit: "border-sky-400 text-sky-400",
+  label_created: "border-sky-400 text-sky-400",
+  in_transit: "border-violet-400 text-violet-400",
+  out_for_delivery: "border-violet-400 text-violet-400",
+  delivered: "border-emerald-400 text-emerald-400",
+  exception: "border-red-400 text-red-400",
+  failure: "border-red-400 text-red-400",
+  cancelled: "border-red-400 text-red-400",
 };
 
-function fallbackShipmentLabel(raw: string): string {
-  return raw
-    .replace(/_/g, " ")
-    .replace(/^./, (c) => c.toUpperCase());
-}
-
 export function ShipmentStatusBadge({ status }: { status: string }) {
-  const meta = SHIPMENT_STATUS_META[status.toLowerCase()] ?? {
-    label: fallbackShipmentLabel(status),
-    classes: "border-stone-500 text-stone-400",
-  };
-  return <span className={`${PILL_BASE} ${meta.classes}`}>{meta.label}</span>;
+  // Un estado que la tabla de labels no conoce tampoco tiene color asignado:
+  // gris neutro en vez de fingir que sabemos en qué punto del ciclo cae.
+  const classes =
+    SHIPMENT_STATUS_CLASSES[status.toLowerCase()] ??
+    "border-stone-500 text-stone-400";
+  return (
+    <span className={`${PILL_BASE} ${classes}`}>
+      {shipmentStatusLabel(status)}
+    </span>
+  );
 }

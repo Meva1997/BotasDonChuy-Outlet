@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, ShoppingBag } from "lucide-react";
 import { useCheckout } from "./CheckoutContext";
@@ -27,7 +28,7 @@ export default function Success() {
     );
   }
 
-  const { orderId, items, totals, customer } = order;
+  const { orderId, items, totals, customer, publicToken } = order;
 
   return (
     <div className="w-full max-w-lg mx-auto space-y-10 animate-fade-in-up">
@@ -98,11 +99,27 @@ export default function Success() {
         </div>
       </div>
 
-      <div className="text-center">
+      {/* El `publicToken` llega en el mismo 201 del checkout (Fase 17), así que el
+          enlace al seguimiento se puede ofrecer sin esperar el correo. Cuando no
+          viene (pedido anterior a la columna), la pantalla queda como estaba: el
+          correo sigue siendo la vía. */}
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+        {publicToken && (
+          <Link
+            href={`/pedido/${publicToken}`}
+            className="btn-shimmer text-center text-xs tracking-[0.25em] uppercase rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 px-10 py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)]"
+          >
+            Ver el estado de mi pedido
+          </Link>
+        )}
         <button
           type="button"
           onClick={() => router.push("/outlet")}
-          className="btn-shimmer text-xs tracking-[0.25em] uppercase rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 px-10 py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)] cursor-pointer"
+          className={
+            publicToken
+              ? "text-xs tracking-[0.25em] uppercase rounded-md border border-amber-500/40 text-amber-400 px-10 py-3.5 hover:bg-amber-500/10 transition-colors cursor-pointer"
+              : "btn-shimmer text-xs tracking-[0.25em] uppercase rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 px-10 py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)] cursor-pointer"
+          }
         >
           Seguir comprando
         </button>
