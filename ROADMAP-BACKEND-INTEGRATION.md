@@ -11,7 +11,7 @@ migración.
 
 **Cómo está organizado este documento:** primero el mapa de endpoints ↔ consumidor
 (la vista por API), después las fases en **orden numérico estricto**, separadas en
-[completadas](#fases-completadas-) (1–15) y [pendientes](#fases-pendientes-) (16–20).
+[completadas](#fases-completadas-) (1–17) y [pendientes](#fases-pendientes-) (18–20).
 Las fases están numeradas por el orden en que se hicieron/se van a hacer, no por
 dependencia: esa se lee en la columna "Depende de" del índice.
 
@@ -37,8 +37,8 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | `POST /api/orders` → `clientSecret` | `components/checkout/usePlaceOrder.ts` confirma el pago con Stripe.js (`confirmCardPayment` + `pm_card_visa`) usando el `clientSecret` que devuelve `createOrder()`; `PaymentSection.tsx` es el panel de tarjeta de prueba | ✅ | 8 (**test/sandbox**) |
 | `POST /api/webhooks/stripe` | *(lo invoca Stripe, no el front)* — el pago se confirma en el cliente; el webhook marca la orden `paid` | ✅ | 8 — backend activo (firma verificada); no requiere código de front |
 | `POST /api/orders` → header `Idempotency-Key` | `components/checkout/usePlaceOrder.ts` pide la clave al `CheckoutContext` (`getIdempotencyKey(signature)`) y `createOrder()` de `lib/api/orders.ts` la manda como header; la respuesta expone `replayed` leyendo `Idempotency-Replayed` | ✅ | 15 |
-| `POST /api/orders` → `order.publicToken` | `components/checkout/usePlaceOrder.ts` — el `201` del checkout ya trae el token; sirve para mandar al comprador a `/pedido/<token>` sin esperar el correo | 🔴 | **17** |
-| `GET /api/orders/lookup/:token` | *(sin consumidor todavía)* — falta la página pública de seguimiento `/pedido/[token]`, a la que apunta el link del correo de confirmación | 🔴 | **17** |
+| `POST /api/orders` → `order.publicToken` | `lib/api/orders.ts` lo declara en `OrderResponseSchema` → `CheckoutContext.completeOrder()` lo congela en el snapshot → `Success.tsx` ofrece "Ver el estado de mi pedido" sin esperar el correo | ✅ | 17 |
+| `GET /api/orders/lookup/:token` | `components/pedido/OrderTracking.tsx` → `lookupOrder()` de `lib/api/orders.ts` (`useQuery` + `PublicOrderSchema`), montado en `app/(public)/pedido/[token]/page.tsx` — la ruta a la que apunta el link del correo | ✅ | 17 |
 | `GET /api/admin/products` | `components/admin/ProductSection.tsx` → `getAdminProducts()` de `lib/api/adminProducts.ts` (`useQuery`) | ✅ | 3 |
 | `POST /api/admin/products` | `components/admin/ProductForm.tsx` → `createProduct()` (`useMutation` + invalidación) | ✅ | 3 |
 | `PUT /api/admin/products/:id` | `components/admin/ProductForm.tsx` → `updateProduct()` (`useMutation`) | ✅ | 3 |
@@ -62,7 +62,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | `GET /api/admin/orders` | `components/admin/sections/OrdersSection.tsx` → `getAdminOrders()` de `lib/api/adminOrders.ts` (`useQuery` paginado + filtro de fecha) | ✅ | 7 (vista base) + 11 (guía/rastreo Skydropx) |
 | `POST /api/admin/orders/:id/cancel` | `components/admin/orders/OrderDetailModal.tsx` → `cancelAdminOrder()` de `lib/api/adminOrders.ts` (`useMutation`, botón "Cancelar / reembolsar pedido") | ✅ | 12 |
 | `PATCH /api/admin/orders/:id/status` | `components/admin/orders/OrderDetailModal.tsx` → `updateAdminOrderStatus()` de `lib/api/adminOrders.ts` (`useMutation`, sección "Estado del envío": enviado / entregado / agregar guía) | ✅ | 14 |
-| `POST /api/admin/orders/:id/shipment/retry` | *(sin consumidor todavía)* — `components/admin/orders/OrderDetailModal.tsx` necesita el botón "Reintentar guía" para un pedido pagado sin `skydropxShipmentId` | 🔴 | **16** |
+| `POST /api/admin/orders/:id/shipment/retry` | `components/admin/orders/OrderDetailModal.tsx` → `retryAdminOrderShipment()` de `lib/api/adminOrders.ts` (`useMutation`, sección "Guía de Skydropx"; clasificación en `orders/shipmentLabel.ts`) | ✅ | 16 |
 | `POST /api/coupons/validate` | *(sin consumidor todavía)* — `components/checkout/OrderSummary.tsx` necesita el campo de cupón (y revalidar con el correo en `ShippingOptions.tsx`) | 🔴 | **19** |
 | `POST /api/orders` → `couponCode` | `lib/api/orders.ts` (`CreateOrderPayload`) + `components/checkout/usePlaceOrder.ts` (el cupón entra en `orderSignature`) | 🔴 | **19** |
 | `POST /api/orders` → `order.couponCode`/`couponDiscount` | `components/checkout/OrderTotals.tsx` (fila de descuento) y `Success.tsx` — el total ya viene neto de cupón | 🔴 | **19** |
@@ -96,8 +96,8 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | 13 | Admin: importación/restock masivo vía Excel | ✅ | 3 |
 | 14 | Admin: marcar pedido como enviado/entregado a mano | ✅ | 7 |
 | 15 | `Idempotency-Key` en el checkout | ✅ | 2 |
-| 16 | Admin: reintentar la guía de Skydropx | 🔴 | 11 |
-| 17 | Página pública de seguimiento del pedido *(cara al cliente)* | 🔴 | 2 |
+| 16 | Admin: reintentar la guía de Skydropx | ✅ | 11 |
+| 17 | Página pública de seguimiento del pedido *(cara al cliente)* | ✅ | 2 |
 | 18 | Outlet: buscador, orden y rango de precio *(cara al cliente)* | 🔴 | — |
 | 19 | Cupones: campo en el checkout + sección en el panel | 🔴 | 2 |
 | 20 | Admin: gastos y suscripciones | 🔴 | — |
@@ -784,27 +784,7 @@ para que la huella automática no los reconozca como el mismo.
 
 ---
 
-# Fases pendientes 🔴
-
-Van en orden numérico, pero **no hay que hacerlas en ese orden**: son independientes entre sí.
-Cómo priorizarlas:
-
-- **Fase 16** es opcional en el sentido de que el backend ya se recupera solo con un
-  barrido periódico (Fase O.3); el botón adelanta ese reintento y, sobre todo, muestra el motivo
-  del fallo cuando hace falta decidir a mano.
-- **Fase 18** es puramente aditiva: los params nuevos son opcionales y el catálogo sigue
-  funcionando igual sin mandarlos, así que se puede cablear por partes (primero el buscador,
-  después el orden y el rango) sin romper nada.
-- **Fase 19** es la única pendiente que **no** es aditiva: aunque nadie mande un `couponCode`, el
-  invariante de totales ya cambió a `subtotal − savings − couponDiscount + shipping` y
-  `couponDiscount` llega en `0`. Mientras no se cablee, la aritmética actual sigue dando el mismo
-  resultado; el riesgo aparece el día que se cree el primer cupón y algún componente siga sumando
-  con cuatro términos. Conviene hacer primero los puntos 1, 2 y 7 (contratos + fila de descuento)
-  aunque el campo del checkout llegue después.
-
----
-
-## Fase 16 — Admin: reintentar la guía de Skydropx 🔴 *(depende de Fase 11)*
+## Fase 16 — Admin: reintentar la guía de Skydropx ✅ *(depende de Fase 11)*
 
 > **Contexto.** La guía se genera sola al confirmarse el pago. Si esa única llamada falla (Skydropx
 > caído, saldo agotado, o el proceso se reinicia a media creación), el pedido queda **pagado y sin
@@ -843,83 +823,147 @@ Cómo priorizarlas:
   haya tocado el botón — la vista ya refresca con el polling de la Fase 11.
 
 **Trabajo del frontend:**
-1. [ ] **Contrato:** `lib/api/adminOrders.ts` expone `retryAdminOrderShipment(id, { force? })`
+1. [x] **Contrato:** `lib/api/adminOrders.ts` expone `retryAdminOrderShipment(id, { force? })`
    (`POST /:id/shipment/retry`, body opcional, respuesta `{ order }` validada con
-   `AdminOrderSchema`).
-2. [ ] **Acción en la UI:** en `OrderDetailModal.tsx`, botón "Reintentar guía" visible solo cuando
-   `status === "paid"`, hay `skydropxRateId` y **no** hay guía real (`skydropxShipmentId` nulo o con
-   valor `"creating"`), con una nota de que cada guía se cobra.
-3. [ ] **Estado "necesita revisión":** si `skydropxShipmentId` empieza con `unreconciled:`, mostrar
-   un aviso (no un botón): la guía ya se pagó y hay que localizarla en el panel de Skydropx.
-4. [ ] **Estado "sin confirmar" (`unreconciled:desconocido`):** aviso con dos salidas explícitas —
-   "ya la encontré en Skydropx" (lleva al flujo de capturar la guía de la Fase 14) y "no existe,
-   generar de todos modos", que es el único lugar donde se manda `force: true`. Conviene una
-   confirmación explícita antes de mandarlo: si la guía sí existía, se paga otra.
-5. [ ] **Mutation + invalidación:** `useMutation` que al `onSuccess` invalide `adminOrderKeys.all` y
-   marque el refresh como manual (`isManualRefreshRef`), igual que las Fases 12/14.
-6. [ ] **Errores mapeados:** `409` y `502` se muestran inline con el `message` del backend sin cerrar
-   el modal — el `502` es reintentable, el `409` no (salvo el de `unreconciled:desconocido`, que se
-   resuelve con el punto 4).
+   `AdminOrderSchema`). `force` solo viaja cuando es `true` — el reintento normal manda `{}`.
+2. [x] **Acción en la UI:** en `OrderDetailModal.tsx`, sección "Guía de Skydropx" (arriba de "Estado
+   del envío": generar la guía precede a marcarla como enviada) con el botón "Reintentar guía" y una
+   confirmación inline que dice que **cada guía se cobra**.
+3. [x] **Estado "necesita revisión":** `unreconciled:<id>` muestra un aviso **sin botón**, con el id
+   real para buscarla en el panel de Skydropx y capturarla con el formulario de la Fase 14.
+4. [x] **Estado "sin confirmar" (`unreconciled:desconocido`):** aviso con las dos salidas — "ya la
+   encontré" abre el formulario de captura de la Fase 14, y "no existe, generar de todos modos" es
+   el único lugar de la app que manda `force: true`, tras su propia confirmación.
+5. [x] **Mutation + invalidación:** `useMutation` que al `onSuccess` invalida **solo**
+   `adminOrderKeys.all` (generar la guía no toca stock) y marca el refresh como manual vía
+   `onOrderUpdated`, igual que las Fases 12/14.
+6. [x] **Errores mapeados:** `retryShipmentErrorMessage` (409/502/404/400) inline, sin cerrar el
+   modal.
+
+**Decisiones que conviene no revertir:**
+- **La clasificación de `skydropxShipmentId` se extrajo a `components/admin/orders/shipmentLabel.ts`**
+  (puro, con specs), por el mismo motivo que `checkoutErrors.ts` en la Fase 15: el campo no es "un id
+  o `null`" sino cinco estados que solo se distinguen por su texto, y confundir dos **cuesta una guía
+  pagada de más** o deja el pedido atorado para siempre.
+- **`canRetryShipment` espeja los cuatro guards del backend** (pagado + `skydropxQuotationId` +
+  `skydropxRateId` + sin guía) para no ofrecer un botón que solo puede devolver `409`.
+- **`AdminOrderSchema` necesitaba `skydropxQuotationId`/`skydropxRateId`.** El backend ya los mandaba
+  —`adminGetOrders` serializa el modelo `Order` completo— pero Zod los descartaba por no estar
+  declarados: el mismo bug que la Fase 11 arregló con los campos de guía.
+- **El `onError` también refresca la tabla** (prop nueva `onRequestRefresh`, cableada al refresh
+  manual de `OrdersSection`): un reintento fallido **igual escribió** — un `502` puede dejar el pedido
+  en `unreconciled:*` y `force` limpia el marcador antes de intentar—, así que sin refrescar la lista
+  mentiría. El snapshot del modal se queda un momento viejo a propósito: el `message` del backend es
+  la verdad de ese instante.
+- **"Guía en proceso" mentía en dos casos** y ahora la columna "Envío" (`OrdersTable`, desktop y
+  cards) y el campo "Guía" del modal dicen **"Sin guía"** y **"Guía por revisar"**. Sin eso, un pedido
+  atorado es invisible desde la lista: había que abrirlos de uno en uno.
+- **`skydropxShipmentId` entró a `orderSignature`**: el barrido automático corre en paralelo y ese
+  campo es lo primero que cambia cuando por fin genera la guía, mucho antes del `labelUrl` del webhook.
 
 **Salida:** un pedido pagado deja de quedarse sin guía por una falla puntual de Skydropx, y cuando
-requiere intervención humana el panel lo dice en vez de callarlo.
+requiere intervención humana el panel lo dice —en el pedido y en la lista— en vez de callarlo.
 
 ---
 
-## Fase 17 — Página pública de seguimiento del pedido 🔴 *(cara al cliente, no al admin)*
+## Fase 17 — Página pública de seguimiento del pedido ✅ *(cara al cliente, no al admin)*
 
 > **Contexto.** No hay cuentas de cliente ni ninguna otra lectura pública de órdenes: después de
 > pagar, lo único que tenía el comprador era el correo de confirmación. Si lo borraba o le caía en
 > spam, cada "¿ya salió mi pedido?" acababa siendo un WhatsApp que el dueño contestaba a mano. El
 > backend agregó `GET /api/orders/lookup/:token` (Fase O.4 del
-> `../backend/roadmap-operacion-y-negocio.md`) y **el correo ya manda el link a
-> `/pedido/<token>`** — o sea que esa ruta hoy es un 404 del front. Es la única fase de este
+> `../backend/roadmap-operacion-y-negocio.md`) y **el correo ya mandaba el link a
+> `/pedido/<token>`** — o sea que esa ruta era un 404 del front. Es la única fase de este
 > documento que no toca el panel: el consumidor es el comprador.
 
 **Lo que el backend ya hace (referencia — no tocar):**
 - `GET /api/orders/lookup/:token` `[público, sin auth]`. El `publicToken` (UUID opaco de la orden)
   **es** la credencial; por eso no se pide correo ni ningún otro dato.
-- Devuelve `{ order }` con una **proyección propia**, distinta de `AdminOrderSchema` — hay que
-  escribirle su schema de zod:
-  `{ id, status, paymentStatus, createdAt, subtotal, savings, shipping, total, customerName,
-  shippingAddress: { street, neighborhood, city, state, postalCode, references }, shippingCarrier,
-  trackingNumber, trackingUrl, shipmentStatus, refundedAt,
+- Devuelve `{ order }` con una **proyección propia**, distinta de `AdminOrderSchema`:
+  `{ id, status, paymentStatus, createdAt, subtotal, savings, shipping, couponCode, couponDiscount,
+  total, customerName, shippingAddress: { street, neighborhood, city, state, postalCode,
+  references }, shippingCarrier, trackingNumber, trackingUrl, shipmentStatus, refundedAt,
   items: [{ nameSnapshot, size, quantity, unitOriginalPrice, unitSalePrice }] }`.
+  > ⚠️ Esta forma **corrige** la que se documentó al planear la fase, verificada contra
+  > `getOrderByPublicToken` en `../backend/src/services/orders.service.ts`: faltaban
+  > `couponCode`/`couponDiscount` (la proyección los incluye a propósito — sin ellos el total no
+  > cuadraría con `subtotal − savings + shipping` y el faltante no tendría explicación visible,
+  > justo la llamada de soporte que la fase vino a evitar) y `paymentStatus` incluye `"refunded"`.
 - **No** incluye `unitCost`, `paymentIntentId`, `refundId`, `labelUrl`, los ids de Skydropx,
   `shippingRequiresDropoff`, el propio token ni el correo/teléfono del cliente. Es deliberado: el
   link se comparte por WhatsApp con facilidad.
 - Un token **inexistente, alterado o mal formado** responde siempre el **mismo `404`** con el mismo
-  `message`, a propósito (no revela si el pedido existe). Ese `message` es la copia de UI: píntalo
-  tal cual.
-- Rate limit propio de **30 req/min por IP** (`429` con su `message`). Es holgado, pero descarta un
-  polling agresivo: si se quiere refresco automático, que sea de un minuto para arriba.
-- El token también viene en el `201` de `POST /api/orders` (`order.publicToken`), así que el
-  checkout puede llevar al comprador a la página sin esperar el correo.
+  `message`, a propósito (no revela si el pedido existe). Ese `message` es la copia de UI.
+- Rate limit propio de **30 req/min por IP** (`429` con su `message`).
+- El token también viene en el `201` de `POST /api/orders` (`order.publicToken`).
 
-**Trabajo del frontend:**
-1. [ ] **Contrato:** `lib/api/orders.ts` expone `lookupOrder(token)` (`GET /api/orders/lookup/:token`,
-   sin `Authorization`) + `PublicOrderSchema` de zod con la forma de arriba. **No reutilizar**
-   `AdminOrderSchema`: la proyección es distinta y más chica a propósito.
-2. [ ] **Ruta:** `app/(public)/pedido/[token]/page.tsx`. El path tiene que ser exactamente ese —
-   es el que el backend construye en el correo (`publicOrderUrl` en `payment.service.ts`).
-3. [ ] **Vista de estado:** línea de tiempo legible a partir de `status`
-   (`pending` "esperando el pago" · `paid` "preparando tu envío" · `shipped` "va en camino" ·
-   `delivered` "entregado" · `cancelled`), con `shipmentStatus` como detalle secundario (es el
-   texto crudo de la paquetería, no copia nuestra) y el botón "Rastrear" cuando haya `trackingUrl`.
-4. [ ] **Resumen de la compra:** renglones con los precios **congelados** que manda la API
-   (`unitSalePrice`/`unitOriginalPrice`, tachado cuando hubo descuento), totales y dirección de
-   envío — reusando el formato de moneda del checkout.
-5. [ ] **Pedido cancelado:** cuando `paymentStatus === "refunded"`, decir que el dinero se devolvió
-   y **cuándo** (`refundedAt`); el reembolso tarda días hábiles en aparecer en el estado de cuenta
-   y esa es justo la siguiente pregunta del cliente.
-6. [ ] **404 y 429:** estado vacío con el `message` del backend y una salida clara (volver a la
-   tienda / buscar el correo de confirmación). Nada de "token inválido" inventado por el front.
-7. [ ] **Enganche desde el checkout:** guardar `order.publicToken` del `201` y ofrecer el link
-   "Ver el estado de mi pedido" en la pantalla de compra completada.
-8. [ ] **SEO:** `noindex` en esta ruta — el token es una credencial y no debe acabar en un buscador.
+**Trabajo del frontend (esta fase — hecho):**
+1. [x] **Contrato:** `lib/api/orders.ts` expone `lookupOrder(token)` (`skipAuth` — la ruta es
+   pública, no debe llevar Bearer y su `401` no debe expulsar a un comprador a `/login`) +
+   `PublicOrderSchema`/`PublicOrderItemSchema` + `orderKeys.lookup(token)` +
+   `lookupOrderErrorMessage()`. **No reutiliza** `AdminOrderSchema` ni `OrderResponseSchema`.
+   `.parse()` estricto (solo lectura, un parse fallido es reintentable sin riesgo).
+   Además `OrderResponseSchema` declara `publicToken`: el backend **ya lo mandaba** en el `201` y
+   Zod lo descartaba — el mismo bug que arreglaron las Fases 11 y 16 con otros campos.
+2. [x] **Rutas:** `app/(public)/pedido/[token]/page.tsx` (el path es el que construye
+   `publicOrderUrl` en `payment.service.ts`; server component fino con `await params`) y
+   `app/(public)/pedido/page.tsx` (entrada sin token). Las dos heredan `NavHeader`/`Footer` del
+   layout del grupo `(public)`.
+3. [x] **Vista de estado:** `components/pedido/OrderStatusTimeline.tsx` sobre `orderTimeline.ts`
+   (módulo **puro**, con specs). `shipmentStatus` va como detalle secundario y **atribuido** ("La
+   paquetería reporta: …", vía `shipmentStatusLabel`), nunca como el título del estado; botón
+   "Rastrear" solo cuando hay `trackingUrl`, y `trackingNumber` seleccionable.
+4. [x] **Resumen de la compra:** `TrackedOrderItems` con los precios **congelados** de la API
+   (tachado cuando hubo descuento) + `checkout/OrderTotals` reutilizado + dirección de envío.
+5. [x] **Pedido cancelado:** con `paymentStatus === "refunded"` se dice que el dinero se devolvió,
+   **cuándo** (`refundedAt`) y que tarda de 5 a 10 días hábiles en aparecer en el estado de cuenta.
+6. [x] **404 y 429:** estado vacío con el `message` del backend tal cual (sobre el sello de
+   `EmptyState`) y dos salidas: "Buscar otro pedido" / "Volver a la tienda". `retry: false` en la
+   query — un 404 es definitivo y reintentarlo gasta tres consultas del presupuesto de 30/min.
+7. [x] **Enganche desde el checkout:** `CompletedOrder` gana `publicToken` y `Success.tsx` ofrece
+   "Ver el estado de mi pedido" como CTA primario cuando existe.
+8. [x] **SEO:** `robots: noindex` en las dos rutas **y** `/pedido` en el disallow de `app/robots.ts`.
+
+**Decisiones de diseño que conviene no revertir sin leer esto:**
+- **El acceso global vive en el Footer, no en el home ni en el NavHeader.** `/pedido/<token>`
+  necesita un UUID opaco que nadie teclea de memoria, así que una banda en el home sería un bloque
+  muerto para casi todos los visitantes; solo funcionaría guardando el token en `localStorage`.
+- **Nada se recuerda en el navegador.** No hay store nuevo: la credencial vive en el correo (y en
+  la URL). `Success` puede ofrecer el enlace porque el token acaba de llegar en el `201` y vive en
+  el `CheckoutContext`, que no se persiste. Mover una credencial de pedido a `localStorage` para
+  ahorrarle a alguien buscar su correo no vale el cambio.
+- **La frontera de la validación local.** `lib/domain/publicOrderToken.ts` (puro, con specs) solo
+  decide si lo pegado **tiene forma** de enlace —`extractPublicOrderToken` saca el UUID de la URL
+  completa del correo—, para no gastar una de las 30 consultas/min en basura. Si el pedido existe
+  o no lo dice el `404` del backend, con su copia: el front **nunca** inventa un "token inválido".
+- **Sin `refetchInterval`.** El estado de un pedido cambia en horas, no en segundos, y el backend
+  pide que cualquier polling sea de ≥1 min. Hay botón "Actualizar" manual + `refetchOnWindowFocus`.
+- **`SHIPMENT_STATUS_META` se movió a `lib/domain/shipmentStatus.ts`.** Ahora lo consumen dos
+  superficies con presentación distinta (la píldora del panel y la frase del comprador); con dos
+  tablas paralelas, agregar un estado en una y olvidarla en la otra le contaría al comprador algo
+  distinto de lo que ve el dueño. `StatusBadges` conserva su tabla de **colores**, que sí es del panel.
+- **`OrderTotals` ganó una prop opcional `discount`** para la fila de cupón. Es aditiva (hoy solo
+  la pasa esta página) y adelanta sin costo un punto que la Fase 19 ya tenía listado.
 
 **Salida:** el comprador consulta su pedido solo, a cualquier hora, y el dueño deja de contestar
 estados por WhatsApp.
+
+---
+
+# Fases pendientes 🔴
+
+Van en orden numérico, pero **no hay que hacerlas en ese orden**: son independientes entre sí.
+Cómo priorizarlas:
+
+- **Fase 18** es puramente aditiva: los params nuevos son opcionales y el catálogo sigue
+  funcionando igual sin mandarlos, así que se puede cablear por partes (primero el buscador,
+  después el orden y el rango) sin romper nada.
+- **Fase 19** es la única pendiente que **no** es aditiva: aunque nadie mande un `couponCode`, el
+  invariante de totales ya cambió a `subtotal − savings − couponDiscount + shipping` y
+  `couponDiscount` llega en `0`. Mientras no se cablee, la aritmética actual sigue dando el mismo
+  resultado; el riesgo aparece el día que se cree el primer cupón y algún componente siga sumando
+  con cuatro términos. Conviene hacer primero los puntos 1, 2 y 7 (contratos + fila de descuento)
+  aunque el campo del checkout llegue después.
 
 ---
 
@@ -1029,8 +1073,12 @@ creciendo por importación masiva.
    mejor que fallar al cobrar.
 6. [ ] **`orderSignature` en `usePlaceOrder.ts` tiene que incluir el cupón**, o aplicar/quitar uno
    reconfirmaría el pedido cacheado con el precio anterior.
-7. [ ] **Fila "Cupón" en `OrderTotals.tsx`** (arriba de Envío) y en `Success.tsx`, solo cuando
-   `couponDiscount > 0`.
+7. [~] **Fila "Cupón" en `OrderTotals.tsx`** (arriba de Envío) y en `Success.tsx`, solo cuando
+   `couponDiscount > 0`. **Medio hecho en la Fase 17:** `OrderTotals` ya acepta una prop opcional
+   `discount?: { code, amount }` y pinta la fila arriba de Envío cuando `amount > 0`; hoy solo se
+   la pasa la página pública de seguimiento (la única superficie que ya recibe `couponCode`/
+   `couponDiscount` del backend). Falta cablearla en `OrderSummary`, `ShippingOptions` y `Success`
+   cuando el checkout empiece a mandar el cupón.
 8. [ ] **Sección "Cupones" del panel:** `components/admin/types.ts` (`AdminSection`), `NAV_ITEMS` de
    `Sidebar.tsx`, y `VALID_SECTIONS` + el switch de `app/admin/page.tsx`. Tabla con estado/vigencia/
    usos, formulario de alta y edición, y borrado con confirmación inline como en `AdminsCard.tsx`.

@@ -16,7 +16,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **sileo** — toast notifications (admin panel only)
 - **pnpm** as package manager
 
-> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). Specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen; see that folder's `README.md` for the layout — plus two pure checkout modules (`lib/domain/__tests__/idempotency.test.ts`, `components/checkout/__tests__/checkoutErrors.test.ts`).
+> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). Specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen; see that folder's `README.md` for the layout — plus five pure modules: `lib/domain/__tests__/idempotency.test.ts`, `lib/domain/__tests__/publicOrderToken.test.ts`, `components/checkout/__tests__/checkoutErrors.test.ts`, `components/admin/orders/__tests__/shipmentLabel.test.ts` and `components/pedido/__tests__/orderTimeline.test.ts`.
 
 ## Commands
 
@@ -41,13 +41,16 @@ app/              # Next.js App Router
                   #   own <html>/<body> (the layout it would inherit is the thing that failed), so no
                   #   providers exist here: it's fully static, no NavHeader/Footer. Production only.
   sitemap.ts      # /sitemap.xml — static routes + every product, revalidated hourly
-  robots.ts       # /robots.txt — disallows /admin, /login, /forgot-password, /checkout, /api/
+  robots.ts       # /robots.txt — disallows /admin, /login, /forgot-password, /checkout, /pedido, /api/
   opengraph-image.tsx # Generated 1200x630 share image (next/og), inherited by every route
   admin/          # Admin dashboard (Sidebar + section routing). Layout carries noindex for all /admin/*
   (public)/
     outlet/[slug]/producto/  # Product detail view (generateMetadata + Product/Breadcrumb JSON-LD).
                              #   Deliberately has no loading.tsx — see "Loading & error states"
     botas/ sombreros/ ropa/  # Category listings (reuse OutletView)
+    pedido/         # Public order tracking. /pedido = paste-the-link entry point;
+                    #   /pedido/[token] = the URL the confirmation email points at.
+                    #   Both noindex — the token is the order's credential
     terminos/ privacidad/ envios/  # Legal pages
     nosotros/       # About Us page
   login/                # Login page
@@ -61,10 +64,15 @@ components/
   providers/      # QueryProvider (TanStack Query), BrandProvider (brand identity)
   checkout/       # 4-step checkout wizard, incl. ShippingOptions (live Skydropx rate quoting)
                   #   and checkoutErrors.ts (pure order/payment error mapping, with specs)
+  pedido/         # Public order tracking (the only buyer-facing screen): OrderTracking (query owner),
+                  #   OrderStatusTimeline, TrackedOrderItems, OrderLookupForm + orderTimeline.ts
+                  #   (pure status → timeline derivation, with specs)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
   nosotros/       # AboutUs — static "About Us" page
   auth/           # AuthShell, LoginForm, ForgotPasswordForm (+ CodeInput/ResetCodeForm/NewPasswordForm), AdminGuard
   admin/          # Sidebar, types.ts + sections/ (Marca, Productos, Importar, Pedidos, Datos, Reportes, Configuración)
+                  #   orders/ — orders table, pagination, detail modal (cancel/refund, manual
+                  #   shipped/delivered, Skydropx label retry) + shipmentLabel.ts (pure, with specs)
                   #   data/ — chart/table subcomponents (recharts)
                   #   reportes/ — SalesReport (historical) + ReplenishmentReport (forecast)
                   #   import/ — Excel import review screen: pure modules (types, rowInput, importReducer,
@@ -104,6 +112,8 @@ See `CLAUDE.md` for the full architecture reference (file-by-file responsibiliti
 | `/botas`, `/sombreros`, `/ropa` | Category listings (same `OutletView`, scoped) |
 | `/outlet/[slug]/producto` | Product detail |
 | `/checkout` | 4-step checkout wizard (incl. live shipping-rate selection) |
+| `/pedido` | Order tracking entry point — paste the link from the confirmation email |
+| `/pedido/[token]` | Public order tracking (status timeline, tracking, frozen order summary) |
 | `/terminos` | Terms & Conditions |
 | `/privacidad` | Privacy Policy |
 | `/envios` | Shipping Policy |
@@ -139,7 +149,7 @@ Env: set `NEXT_PUBLIC_API_URL` to the backend URL (defaults to `/api`), `NEXT_PU
 
 ## SEO
 
-All storefront routes carry title/description/canonical/Open Graph metadata; `/admin`, `/login`, `/forgot-password` and `/checkout` are `noindex` and also disallowed in `robots.txt` (two layers: robots.txt blocks crawling, the meta tag blocks indexing of URLs linked from elsewhere).
+All storefront routes carry title/description/canonical/Open Graph metadata; `/admin`, `/login`, `/forgot-password`, `/checkout` and `/pedido*` are `noindex` and also disallowed in `robots.txt` (two layers: robots.txt blocks crawling, the meta tag blocks indexing of URLs linked from elsewhere — and `/pedido` *is* linked, from the footer of every page).
 
 - **Build public pages' metadata with `pageMetadata()`** (`lib/seo/metadata.ts`), not by hand. Next inherits `alternates` from the parent layout but *replaces* `openGraph` wholesale, so hand-rolled metadata silently ends up either canonicalized to the wrong URL or stripped of its share image. The helper always emits the full block. Exceptions: the home page (defines only `alternates`; its OG block is the layout's default) and product pages (their image is the real photo).
 - **`NEXT_PUBLIC_SITE_URL`** is the base for `metadataBase`, canonicals, the sitemap and OG image URLs. Unset it falls back to `http://localhost:3000` (`lib/seo/site.ts`) — **set it in Vercel (Production) to the real origin, no trailing slash**, otherwise canonicals and `sitemap.xml` will point at localhost.
@@ -155,9 +165,17 @@ All storefront routes carry title/description/canonical/Open Graph metadata; `/a
 1. **Resumen** — read-only cart review; requires accepting terms & privacy before continuing. Shows a flat-rate shipping estimate (no address yet, never charged).
 2. **Dirección** — shipping address form validated with react-hook-form + zod (Mexico only). Submitting just saves the validated address to context and advances — no order, no payment yet.
 3. **Envío** — **live shipping-rate quoting** against Skydropx (`POST /api/shipping/rates` via `lib/api/shipping.ts`; always resolves 200, falling back to the same flat rate as step 1 if Skydropx is unavailable). One option auto-selects; two or more require an explicit pick. The total shown here is exactly what gets charged. On "Pagar y confirmar", `usePlaceOrder` runs a two-phase flow: (1) **posts the order** (`POST /api/orders` via `createOrder` in `lib/api/orders.ts`) — `{ items, customer, quotationId?, rateId? }`, no amounts; the backend re-queries Skydropx for that exact quote (or falls back to its own flat rate) and returns a Stripe `clientSecret`; a `409` (out of stock, or an expired quote — which also clears the selected rate so the user re-quotes) or `400` keeps the user on the form. (2) **confirms payment** with Stripe.js (`confirmCardPayment`). Running in **test/sandbox**, so the test card is hardcoded (`pm_card_visa` = `4242 4242 4242 4242`) and `PaymentSection` is a read-only test-card panel. Only after `succeeded` does it freeze the order snapshot and advance; the `paid` status is reconciled by the backend webhook. The created order is cached (keyed by cart contents, customer data, **and** the selected rate) so retrying doesn't duplicate it. That cache only covers retries that go through the hook; an **`Idempotency-Key` header** covers the ones that don't (a double-click firing two requests before the first responds, or the browser's own retry). The key is derived from the same signature, so it rotates exactly when the purchase attempt stops being the same one, and a replayed response (`Idempotency-Replayed`) makes the hook check the PaymentIntent before re-confirming a payment that already went through.
-4. **Confirmación** — frozen order snapshot (with `Pedido #<id>` and the server's authoritative totals) plus shipping address.
+4. **Confirmación** — frozen order snapshot (with `Pedido #<id>` and the server's authoritative totals) plus shipping address, and — when the `201` carried a `publicToken` — a "Ver el estado de mi pedido" link into the tracking page below.
 
 Key files: `app/(public)/checkout/`, `components/checkout/` (incl. `ShippingOptions.tsx` and `checkoutErrors.ts`), `schemas/checkout.ts`, `lib/domain/cart.ts`, `lib/domain/idempotency.ts`, `lib/api/orders.ts`, `lib/api/shipping.ts`.
+
+## Order tracking
+
+There are no customer accounts, so a buyer's only handle on their order used to be the confirmation email. `/pedido/[token]` closes that gap: the order's opaque `publicToken` **is** the credential (`GET /api/orders/lookup/:token`, public, no auth), and it's the URL the confirmation email points at. The page shows a status timeline derived from `status`/`paymentStatus` (`orderTimeline.ts`, pure, with specs), the carrier's raw `shipmentStatus` as an attributed secondary detail, tracking link and number, the frozen order summary and the shipping address; a cancelled+refunded order says when the money went back and that banks take days to show it.
+
+Nothing is remembered in the browser — the credential lives in the email. `/pedido` (linked from the footer of every page) is just a "paste the link we emailed you" form; `lib/domain/publicOrderToken.ts` pulls the UUID out of a full pasted URL and only judges whether the input *looks* like a link, so a bad paste doesn't spend one of the endpoint's 30 requests/minute. Whether the order exists is the backend's 404 to answer, with its own copy. There's no polling for the same reason — a manual refresh button plus `refetchOnWindowFocus`.
+
+Key files: `app/(public)/pedido/`, `components/pedido/`, `lib/domain/publicOrderToken.ts`, `lib/domain/shipmentStatus.ts`, `lib/api/orders.ts` (`lookupOrder`, `PublicOrderSchema`).
 
 ## Shipping
 
