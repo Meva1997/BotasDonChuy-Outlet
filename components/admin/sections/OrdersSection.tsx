@@ -20,11 +20,16 @@ const POLL_INTERVAL_MS = 30 * 60 * 1000;
 
 // Firma comparable de los campos que puede tocar el webhook. Comparar por
 // pedido (no el objeto entero) evita falsos positivos por reordenamiento.
+// `skydropxShipmentId` entra por el barrido automático de reintento de guía
+// (Fase 16): corre en paralelo y es lo primero que cambia cuando por fin logra
+// generarla —o cuando la deja "por revisar"—, mucho antes de que el webhook
+// traiga el `labelUrl`.
 function orderSignature(order: AdminOrder): string {
   return [
     order.status,
     order.paymentStatus,
     order.shipmentStatus ?? "",
+    order.skydropxShipmentId ?? "",
     order.labelUrl ?? "",
     order.trackingNumber ?? "",
   ].join("|");
@@ -243,6 +248,11 @@ export default function OrdersSection() {
           order={viewing}
           onClose={() => setViewing(null)}
           onOrderUpdated={handleOrderUpdated}
+          // El reintento de guía escribe aunque falle (un 502 puede dejar el
+          // pedido "por revisar"), y ahí no hay pedido nuevo que pasar: se
+          // refresca la tabla con el mismo camino del botón manual, que ya
+          // suprime el toast del polling.
+          onRequestRefresh={handleManualRefresh}
         />
       )}
     </div>
