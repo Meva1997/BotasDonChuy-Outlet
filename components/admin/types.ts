@@ -6,4 +6,5 @@ export type AdminSection =
   | "datos"
   | "pedidos"
   | "reportes"
+  | "gastos"
   | "configuracion";

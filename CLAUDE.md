@@ -22,7 +22,7 @@ Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependenci
 - **Next.js 16** with App Router (all pages in `app/`)
 - **React 19**, **TypeScript**
 - **Tailwind CSS v4** — configured via `@import "tailwindcss"` in `globals.css`, not a `tailwind.config.*` file. Custom theme tokens (fonts, `tobacco-*` color scale) live in a `@theme {}` block in `globals.css`.
-- **Testing** — **Jest + React Testing Library + @testing-library/user-event** (`jest.config.ts` usa `next/jest`; `jest.setup.ts` carga `@testing-library/jest-dom` **y stubea `window.matchMedia`**, que jsdom no implementa y framer-motion llama desde `useReducedMotion()`). `jest.config.ts` acota `testMatch` a `**/*.test.{ts,tsx}` en vez del default de Jest —que trata como suite **cualquier** archivo bajo un `__tests__/`— para poder tener fixtures y helpers compartidos ahí dentro. Las specs cubren **solo módulos puros y la pantalla de importación**: las de la importación por Excel (`components/admin/import/__tests__/`), que cubren tanto los módulos **puros** como **todos** los componentes de esa pantalla, más dos módulos puros del checkout (`lib/domain/__tests__/idempotency.test.ts` y `components/checkout/__tests__/checkoutErrors.test.ts`, Fase 15), uno del admin (`components/admin/orders/__tests__/shipmentLabel.test.ts`, Fase 16), dos del seguimiento público (`lib/domain/__tests__/publicOrderToken.test.ts` y `components/pedido/__tests__/orderTimeline.test.ts`, Fase 17), uno del catálogo (`lib/domain/__tests__/catalogFilters.test.ts`, Fase 18) y uno de los cupones (`components/admin/coupons/__tests__/couponStatus.test.ts`, Fase 19) — sin specs de componentes ni de hooks del checkout, ni de los pedidos, ni de la barra de filtros del outlet, ni de la sección de cupones. Están agrupadas por fase del flujo (`pure/`, `intake/`, `review/`, `editing/`, `presentation/`, `commit/`) + `helpers/` (fixtures del contrato y utilidades de montaje, **no** son suites); un archivo por módulo, con su mismo nombre. El mapa completo y las convenciones están en `components/admin/import/__tests__/README.md` — leerlo antes de agregar specs ahí. Sin snapshots a propósito (cambiarían con cada ajuste de Tailwind sin decir nada). Playwright se eliminó (nunca tuvo config ni specs); no reintroducir e2e sin pedirlo.
+- **Testing** — **Jest + React Testing Library + @testing-library/user-event** (`jest.config.ts` usa `next/jest`; `jest.setup.ts` carga `@testing-library/jest-dom` **y stubea `window.matchMedia`**, que jsdom no implementa y framer-motion llama desde `useReducedMotion()`). `jest.config.ts` acota `testMatch` a `**/*.test.{ts,tsx}` en vez del default de Jest —que trata como suite **cualquier** archivo bajo un `__tests__/`— para poder tener fixtures y helpers compartidos ahí dentro. Las specs cubren **solo módulos puros y la pantalla de importación**: las de la importación por Excel (`components/admin/import/__tests__/`), que cubren tanto los módulos **puros** como **todos** los componentes de esa pantalla, más dos módulos puros del checkout (`lib/domain/__tests__/idempotency.test.ts` y `components/checkout/__tests__/checkoutErrors.test.ts`, Fase 15), uno del admin (`components/admin/orders/__tests__/shipmentLabel.test.ts`, Fase 16), dos del seguimiento público (`lib/domain/__tests__/publicOrderToken.test.ts` y `components/pedido/__tests__/orderTimeline.test.ts`, Fase 17), uno del catálogo (`lib/domain/__tests__/catalogFilters.test.ts`, Fase 18), uno de los cupones (`components/admin/coupons/__tests__/couponStatus.test.ts`, Fase 19) y uno de los gastos (`components/admin/expenses/__tests__/expenseStatus.test.ts`, Fase 20) — sin specs de componentes ni de hooks del checkout, ni de los pedidos, ni de la barra de filtros del outlet, ni de las secciones de cupones y gastos. Están agrupadas por fase del flujo (`pure/`, `intake/`, `review/`, `editing/`, `presentation/`, `commit/`) + `helpers/` (fixtures del contrato y utilidades de montaje, **no** son suites); un archivo por módulo, con su mismo nombre. El mapa completo y las convenciones están en `components/admin/import/__tests__/README.md` — leerlo antes de agregar specs ahí. Sin snapshots a propósito (cambiarían con cada ajuste de Tailwind sin decir nada). Playwright se eliminó (nunca tuvo config ni specs); no reintroducir e2e sin pedirlo.
 - **Sileo** — librería de toasts (physics-based). Solo se usa en `/admin` (`<Toaster />` montado en `app/admin/layout.tsx`, no en el root layout, para no cargarla en el storefront público). Hoy su único consumidor es el polling de `OrdersSection` (ver abajo). `theme="light"` + `position="top-center"` + `options={{ fill: "#000000" }}` (píldora negra; `theme="light"` es lo que hace que Sileo pinte el texto claro — su CSS interno asume pill oscura en ese theme) + `styles: { description: "text-white/75!" }` (sube la opacidad del texto de descripción sobre el default blanco/50%). Tamaño de píldora y tipografía agrandados, y acento "info" ajustado al ámbar de marca — en `globals.css` con `!important` (necesario: `sileo/styles.css` se importa después y empata en especificidad con nuestros overrides).
 
 ## Architecture
@@ -320,6 +320,28 @@ components/
                   #     CouponStatusBadge, couponStatus.ts (ver abajo)
                   #   sections/DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable). YA conectado vía lib/api/dashboard (GET /api/admin/dashboard). Dueño de un selector 7/30/90 días (mismo Period que RevenueChart) que indexa kpisByPeriod/profitKpisByPeriod antes de pasarlos a los dos KpiGrid (Ventas / Rentabilidad); KpiGrid sigue siendo puramente presentacional (recibe kpis: KpiData[] ya resuelto). SalesTable es stateful: pagina las ventas de 5 en 5 (reutiliza orders/OrdersPagination) y filtra por día vía un `<input type="date">` (sin día = todas; con día = solo ese, paginado). El date picker se acota al rango [minDay, maxDay] presente en los datos; un día sin ventas muestra un estado vacío con buen UX ("Ver todas las ventas"). Filtra por SaleRow.day (clave ISO UTC)
                   #   sections/ReportesSection — análisis mensual con pestañas Ventas / Reposición + selector de mes
+                  #   sections/ExpensesSection — gastos y suscripciones (Fase 20). YA conectado vía
+                  #     lib/api/adminExpenses (dos useQuery: lista + summary; cuatro useMutation:
+                  #     guardar, cambiar precio, dar de baja/reactivar y borrar). Es la pantalla que
+                  #     llena el KPI GASTOS / GANANCIA OPERATIVA del dashboard, que antes restaba
+                  #     $2,000 hardcodeados. Layout: tarjeta de resumen SIEMPRE visible arriba +
+                  #     pestañas Gastos / Historial (patrón de ReportesSection); la query del
+                  #     historial vive en ExpenseHistory para montarse lazy al abrir su pestaña.
+                  #     **Invalida adminExpenseKeys.all Y dashboardKeys.all** — al revés que los
+                  #     cupones: un gasto SÍ mueve el KPI del panel, y dejar DataSection con el
+                  #     número viejo es justo la incoherencia que la fase vino a cerrar.
+                  #     "Dar de baja" es un PUT { active: false } y NO un borrado (el backend le fija
+                  #     endsAt en hoy solo, y reactivarlo lo limpia: la UI solo manda `active`). El
+                  #     DELETE lo decide el backend (`deactivated: true` = ya generó cargos, así que
+                  #     se desactivó en vez de borrarse) y el aviso dice cuál de las dos pasó, mismo
+                  #     contrato que el DELETE de cupones.
+                  #     El aviso del cambio de precio se redacta sobre el `currentAmount` que
+                  #     DEVOLVIÓ el backend, no sobre lo que se tecleó: si el monto vigente en esa
+                  #     fecha ya era el mismo, el backend no escribe nada y decir "precio
+                  #     actualizado" sería mentir.
+                  #     Subcomponentes en components/admin/expenses/: ExpenseSummaryCard,
+                  #     ExpensesTable, ExpenseForm, ExpenseAmountForm, ExpenseHistory,
+                  #     ExpenseStateBadge, expenseStatus.ts (ver abajo)
                   #   sections/ConfigSection — usuarios del panel + cuenta propia. YA conectado (Fase 6):
                   #     tarjeta "Mi cuenta" (react-hook-form + updateAccountSchema, un solo form que
                   #     exige contraseña actual) vía lib/api/account; tarjeta "Administradores"
@@ -367,6 +389,40 @@ components/
                   #     sobre `adminProductKeys.all` (comparte cache con ProductSection, sin fetch
                   #     extra si esa pestaña ya se visitó): sin esa referencia, el dueño está
                   #     adivinando un mínimo en pesos sin memorizar el precio de cada pieza
+                  #   expenses/ — subcomponentes de ExpensesSection. expenseStatus.ts es un módulo
+                  #     PURO (sin React, con specs en expenses/__tests__/): "¿este gasto sigue
+                  #     costando?" sale de cuatro campos (active, startsAt, endsAt, frequency) y el
+                  #     ORDEN importa. La precedencia de expenseState() es inactivo (acción
+                  #     deliberada del dueño; gana aunque además ya hubiera terminado) → terminado
+                  #     (endsAt < hoy, con `<` y no `<=`: un gasto que termina hoy TODAVÍA se cobra
+                  #     hoy, espejo del `endsAt >= today` del backend) → programado → **cobrado**
+                  #     (un `once` cuya fecha ya pasó) → activo. "Cobrado" existe aparte de "activo"
+                  #     porque su monthlyRunRate es 0: pintarlo activo lo pondría a la par de la
+                  #     renta y el hosting, que es justo el número que la pantalla evita confundir.
+                  #     **Las fechas se leen en UTC, NO en la zona de la tienda** — al revés que en
+                  #     cupones. Las de un gasto son DATEONLY ("2026-08-01", sin hora) y el backend
+                  #     las compara contra isoDay() (UTC), así que `storeDayISO()` de couponStatus.ts
+                  #     NO se debe reusar aquí: rodaría el día en sentido contrario. Los `<input
+                  #     type="date">` se siembran con el string TAL CUAL.
+                  #     priceChangeDelta()/priceChangeLabel() son lo ÚNICO que el front calcula (el
+                  #     backend devuelve previousAmount/amount crudos y deja el delta al cliente a
+                  #     propósito); `percent` es null —no 0— cuando previousAmount es 0, o la UI
+                  #     pintaría "+Infinity%". **Nada de aritmética de run-rate**: currentAmount,
+                  #     monthlyRunRate y los totales del historial vienen listos del mismo servicio
+                  #     que alimenta el KPI del dashboard, y duplicar `weekly × 52/12` garantiza que
+                  #     un día las dos pantallas digan números distintos.
+                  #     Se llama expenseStatus.ts y el badge ExpenseStateBadge.tsx a propósito: un
+                  #     `ExpenseStatus.tsx` al lado dejaría el import a merced del orden de
+                  #     extensiones del bundler en un FS insensible a mayúsculas (macOS), la misma
+                  #     trampa que separa couponStatus.ts de CouponStatusBadge.tsx.
+                  #     **ExpenseAmountForm está separado de ExpenseForm y eso no es cosmético**: en
+                  #     el backend el monto no es una columna del gasto sino una versión fechada, así
+                  #     que guardar $340 desde el 1 de agosto NO reescribe lo que costaba en julio.
+                  #     Un campo "monto" dentro del formulario de edición escondería esa diferencia
+                  #     y haría que corregir un typo repreciara el gasto. Por eso ExpenseForm solo
+                  #     captura el monto en el ALTA (primera versión) y en la edición lo sustituye
+                  #     por un aviso que manda a "Cambiar precio". ExpenseAmountForm muestra además
+                  #     el historial de versiones para que el cambio se haga contra algo, no a ciegas
                   #   data/ — subcomponentes de gráficas y tablas (recharts) + types.ts (contratos de datos del admin, también consumidos por lib/api/dashboard.ts, lib/api/reports.ts y reportes/)
                   #   reportes/ — SalesReport (histórico por mes) y ReplenishmentReport (forecast + pedido sugerido). YA conectados vía lib/api/reports (GET /api/admin/reports/*)
 lib/
@@ -404,6 +460,33 @@ lib/
                   #   como `YYYY-MM-DD` crudo (lo que escribe un <input type="date">): el backend
                   #   las interpreta en la zona de la tienda —inicio de día para startsAt, FIN de
                   #   día para expiresAt— que es lo que un dueño quiere decir con "vence el 31"
+    adminExpenses.ts # contrato de gastos y suscripciones del panel (Fase 20, patrón getProducts):
+                  #   EXPENSE_CATEGORIES/EXPENSE_FREQUENCIES (claves crudas del backend; sus
+                  #   etiquetas en español viven en expenses/expenseStatus.ts, no aquí) +
+                  #   ExpenseSchema/ExpenseSummarySchema/ExpenseMonthSchema + adminExpenseKeys
+                  #   (all · list(filters) · summary() · history(), las tres colgando de `all` para
+                  #   que una sola invalidación las refresque: cualquier escritura mueve las tres) +
+                  #   getAdminExpenses/getExpenseSummary/getExpenseHistory (`.parse` estricto) +
+                  #   createExpense/updateExpense (acceptWrite: un 2xx ya escribió, reintentar
+                  #   daría de alta un segundo gasto o agregaría otra versión de monto) +
+                  #   deleteExpense → { ok, deactivated } + expenseWriteErrorMessage.
+                  #   **El monto NO es un campo del gasto**: vive versionado por fecha en `amounts`.
+                  #   Mandar `amount` en el PUT AGREGA una versión con vigencia `amountEffectiveFrom`
+                  #   —o HOY si se omite, ojo: distinto del POST, que usa `startsAt`— en vez de
+                  #   sobrescribir; si ya existe una versión con esa fecha la corrige en su lugar, y
+                  #   si el monto vigente ahí ya era el mismo NO escribe nada. `amountEffectiveFrom`
+                  #   sin `amount` es 400. Eso es lo que hace que subir Render de $290 a $340 no
+                  #   reescriba lo que costaba en julio, y por lo que el cambio de precio tiene
+                  #   formulario propio.
+                  #   currentAmount/monthlyRunRate/nextChargeDate vienen CALCULADOS — no
+                  #   recalcularlos en cliente (ver expenses/expenseStatus.ts).
+                  #   `active` y `endsAt` se mantienen coherentes solos en el servidor (apagar fija
+                  #   endsAt en hoy, reactivar lo limpia): la UI solo manda `active`.
+                  #   Los filtros inválidos son **400 y no se ignoran** (al revés que el catálogo
+                  #   público de la Fase 18): aquí quien consulta es el dueño y un filtro que no
+                  #   aplicó le haría leer mal sus propios números. Sus `message` ya son copia de UI
+                  #   accionable en español → expenseWriteErrorMessage los pinta VERBATIM.
+                  #   `from`/`to` del listado filtran por fecha de CARGO, no de alta
     shipping.ts   # contrato de cotización de envío en vivo (patrón getProducts): ShippingRateSchema/ShippingRatesResponseSchema (Zod) + SelectedShippingRate (= ShippingRate + quotationId, la forma que viaja por CheckoutContext/usePlaceOrder) + shippingKeys + getShippingRates(items, customer). YA conectado (POST /api/shipping/rates, pública). SIEMPRE responde 200 (el backend cae a su propia tarifa plana si Skydropx falla); usa `.parse` simple (no hay OrderResponseParseError aquí — es de solo lectura, un parse fallido es reintentable sin riesgo de duplicar nada)
     adminProducts.ts # contrato del catálogo admin (patrón getProducts): AdminProductSchema (SÍ trae unitCost + images: { url, publicId }[]) + adminProductKeys + getAdminProducts()/createProduct()/updateProduct()/deleteProduct() + addProductImages()/deleteProductImage(). YA conectado (GET/POST/PUT/DELETE /api/admin/products + POST/DELETE /api/admin/products/:id/images). AdminProductInput manda sizes como CSV donde repetir talla = unidades de stock (el backend agrupa en filas ProductSize) y YA NO incluye imageSrc (las imágenes se gestionan solo por los endpoints dedicados: addProductImages sube multipart `images` 1-3 File, tope 3 total; deleteProductImage borra por publicId)
     adminProductImport.ts # contrato de la importación masiva por Excel (Fase 13): schemas Zod
@@ -497,6 +580,21 @@ schemas/
                   #   Los montos se capturan con type="text" inputMode="decimal" y reusan
                   #   parseNumberText de components/admin/import/rowInput.ts (puro, con specs) —
                   #   una segunda copia del parser divergiría en el primer caso raro
+  expenses.ts     # zod expenseFormSchema + amountChangeFormSchema + emptyExpenseForm +
+                  #   expenseInputFromForm/expenseUpdateFromForm/amountChangeFromForm (Fase 20) —
+                  #   validación de los DOS formularios de ExpensesSection, espejo de
+                  #   expenseInputSchema del backend (incluidas las reglas cruzadas: fin ≥ inicio,
+                  #   un `once` no lleva fecha de término). Mismo patrón que coupons.ts: todos los
+                  #   campos son texto y la conversión vive en los mappers; los montos usan
+                  #   type="text" inputMode="decimal" y el mismo parseNumberText.
+                  #   `expenseFormSchema` es una **función** de `isNew` y no un objeto con un campo
+                  #   `isNew` adentro: un booleano que el formulario nunca pinta tendría que viajar
+                  #   como defaultValue sin registrar, y depender de que react-hook-form lo arrastre
+                  #   hasta el resolver es un detalle de implementación suyo, no un contrato.
+                  #   **expenseUpdateFromForm NO manda amount ni amountEffectiveFrom**: en el PUT
+                  #   esas claves agregan una versión de monto, así que incluirlas haría que
+                  #   corregir un typo en el concepto repreciara el gasto en cada guardado. Ese
+                  #   camino es amountChangeFromForm, y por eso son dos formularios
 store/
   cartStore.ts    # Zustand store (persist) — cart items, open/close, totals, stock-aware addItem
   importStore.ts  # Zustand store (SIN persist) — estado de la importación por Excel sobre el
@@ -678,7 +776,7 @@ Ambos reportes exportan CSV con un helper `csvField()` (escapado RFC 4180: envue
 
 ## Backend (Express.js) — contrato base
 
-El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/api/products.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Marca (Fase 5), usuarios/cuenta (Fase 6), pedidos del admin (Fase 7, `GET /api/admin/orders` → `OrdersSection`), pagos (Fase 8, Stripe en **test/sandbox**: `usePlaceOrder` + `confirmCardPayment` con `pm_card_visa`), cotización de envío en vivo (Fase 8.4, Skydropx: `lib/api/shipping.ts` + `ShippingOptions`, ver "Shipping") cancelación/reembolso manual de pedidos (Fase 12, `POST /api/admin/orders/:id/cancel` → `OrderDetailModal`), importación/restock masivo por Excel (Fase 13, `POST /api/admin/products/import/preview` + `/import` → `ImportSection`, ver "Importación por Excel") el avance manual de estado enviado/entregado (Fase 14, `PATCH /api/admin/orders/:id/status` → `OrderDetailModal`), la `Idempotency-Key` del checkout (Fase 15, header de `POST /api/orders` → `usePlaceOrder`, ver "Checkout flow") el reintento manual de la guía de Skydropx (Fase 16, `POST /api/admin/orders/:id/shipment/retry` → `OrderDetailModal` + `orders/shipmentLabel.ts`) el seguimiento público del pedido (Fase 17, `GET /api/orders/lookup/:token` → `components/pedido/`, la única pantalla cara al comprador), el buscador/orden/rango de precio del catálogo (Fase 18, los cuatro query params nuevos de `GET /api/products` → `OutletFilters` + `lib/domain/catalogFilters.ts`) y los cupones de descuento (Fase 19, `POST /api/coupons/validate` → `CouponField` + `lib/api/coupons.ts`, y el CRUD de `/api/admin/coupons` → `CouponsSection` + `lib/api/adminCoupons.ts`) YA están conectados. Las fases pendientes del roadmap (20-21) están listadas en `ROADMAP-BACKEND-INTEGRATION.md`; ninguna bloquea la operación actual.
+El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/api/products.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Marca (Fase 5), usuarios/cuenta (Fase 6), pedidos del admin (Fase 7, `GET /api/admin/orders` → `OrdersSection`), pagos (Fase 8, Stripe en **test/sandbox**: `usePlaceOrder` + `confirmCardPayment` con `pm_card_visa`), cotización de envío en vivo (Fase 8.4, Skydropx: `lib/api/shipping.ts` + `ShippingOptions`, ver "Shipping") cancelación/reembolso manual de pedidos (Fase 12, `POST /api/admin/orders/:id/cancel` → `OrderDetailModal`), importación/restock masivo por Excel (Fase 13, `POST /api/admin/products/import/preview` + `/import` → `ImportSection`, ver "Importación por Excel") el avance manual de estado enviado/entregado (Fase 14, `PATCH /api/admin/orders/:id/status` → `OrderDetailModal`), la `Idempotency-Key` del checkout (Fase 15, header de `POST /api/orders` → `usePlaceOrder`, ver "Checkout flow") el reintento manual de la guía de Skydropx (Fase 16, `POST /api/admin/orders/:id/shipment/retry` → `OrderDetailModal` + `orders/shipmentLabel.ts`) el seguimiento público del pedido (Fase 17, `GET /api/orders/lookup/:token` → `components/pedido/`, la única pantalla cara al comprador), el buscador/orden/rango de precio del catálogo (Fase 18, los cuatro query params nuevos de `GET /api/products` → `OutletFilters` + `lib/domain/catalogFilters.ts`) los cupones de descuento (Fase 19, `POST /api/coupons/validate` → `CouponField` + `lib/api/coupons.ts`, y el CRUD de `/api/admin/coupons` → `CouponsSection` + `lib/api/adminCoupons.ts`) y los gastos y suscripciones (Fase 20, las seis rutas de `/api/admin/expenses` → `ExpensesSection` + `lib/api/adminExpenses.ts`, que es de donde ahora sale el KPI `GASTOS`/`GANANCIA OPERATIVA` en vez de una constante) YA están conectados. La única fase pendiente del roadmap (21) está listada en `ROADMAP-BACKEND-INTEGRATION.md`; no bloquea la operación actual.
 
 > **Principio:** la lógica de negocio (forecast, reposición, totales de carrito, envío) es de funciones puras que reciben números. Forecast y reposición ya viven en el backend (`backend/src/services/`); el frontend solo pinta las filas ya calculadas. La única matriz "fuente de verdad" es ventas-por-mes-por-producto (las órdenes pagadas).
 

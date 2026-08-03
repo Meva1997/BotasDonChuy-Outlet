@@ -70,12 +70,12 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | `POST /api/admin/coupons` | `components/admin/coupons/CouponForm.tsx` → `createCoupon()` (`useMutation`) | ✅ | 19 |
 | `PUT /api/admin/coupons/:id` | `CouponForm.tsx` (edición) y `CouponsTable.tsx` (Cancelar/Reactivar = `{ active }` a secas) → `updateCoupon()` | ✅ | 19 |
 | `DELETE /api/admin/coupons/:id` | `components/admin/coupons/CouponsTable.tsx` → `deleteCoupon()` con confirmación inline; el aviso distingue `deactivated: true` (ya hay pedidos que lo usaron) de un borrado real | ✅ | 19 |
-| `GET /api/admin/expenses` | *(sin consumidor todavía)* — falta la sección **Gastos** del panel | 🔴 | **20** |
-| `GET /api/admin/expenses/summary` | *(sin consumidor todavía)* — tarjeta "cuánto retirar este mes" + lista de próximos cargos | 🔴 | **20** |
-| `GET /api/admin/expenses/history` | *(sin consumidor todavía)* — historial mes con mes + los cambios de precio de cada mes | 🔴 | **20** |
-| `POST /api/admin/expenses` | *(sin consumidor todavía)* — formulario de alta en la sección **Gastos** | 🔴 | **20** |
-| `PUT /api/admin/expenses/:id` | *(sin consumidor todavía)* — edición; mandar `amount` **agrega una versión**, no sobrescribe | 🔴 | **20** |
-| `DELETE /api/admin/expenses/:id` | *(sin consumidor todavía)* — borrado con confirmación inline, igual que `AdminsCard.tsx` | 🔴 | **20** |
+| `GET /api/admin/expenses` | `components/admin/sections/ExpensesSection.tsx` → `getAdminExpenses()` de `lib/api/adminExpenses.ts` (`useQuery`) | ✅ | 20 |
+| `GET /api/admin/expenses/summary` | `components/admin/expenses/ExpenseSummaryCard.tsx` → `getExpenseSummary()` (`useQuery` de `ExpensesSection`; "hay que apartar al mes" + próximos cargos) | ✅ | 20 |
+| `GET /api/admin/expenses/history` | `components/admin/expenses/ExpenseHistory.tsx` → `getExpenseHistory()` (`useQuery` propia, lazy al abrir la pestaña; gráfica de barras + `changes` resaltados) | ✅ | 20 |
+| `POST /api/admin/expenses` | `components/admin/expenses/ExpenseForm.tsx` → `createExpense()` (`useMutation` + invalidación de `adminExpenseKeys`/`dashboardKeys`) | ✅ | 20 |
+| `PUT /api/admin/expenses/:id` | `ExpenseForm.tsx` (edición, SIN `amount`), `ExpenseAmountForm.tsx` (cambio de precio: `amount` + `amountEffectiveFrom` + `amountNote`) y `ExpensesTable.tsx` (baja/reactivación = `{ active }` a secas) → `updateExpense()` | ✅ | 20 |
+| `DELETE /api/admin/expenses/:id` | `components/admin/expenses/ExpensesTable.tsx` → `deleteExpense()` con confirmación inline; el aviso distingue `deactivated: true` (ya generó cargos) de un borrado real | ✅ | 20 |
 
 ## Índice de fases
 
@@ -100,7 +100,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | 17 | Página pública de seguimiento del pedido *(cara al cliente)* | ✅ | 2 |
 | 18 | Outlet: buscador, orden y rango de precio *(cara al cliente)* | ✅ | — |
 | 19 | Cupones: campo en el checkout + sección en el panel | ✅ | 2 |
-| 20 | Admin: gastos y suscripciones | 🔴 | — |
+| 20 | Admin: gastos y suscripciones | ✅ | — |
 | 21 | Seguimiento: el correo manda el código, no el enlace *(cara al cliente, solo copia)* | 🔴 | 17 |
 
 ---
@@ -1138,89 +1138,116 @@ el descuento calculado y canjeado por el backend.
 
 ---
 
-# Fases pendientes 🔴
-
-Van en orden numérico, pero **no hay que hacerlas en ese orden**: son independientes entre sí.
-Cómo priorizarlas:
-
-- **Fase 21** es la más barata de las dos y la única que ya está *rota de cara al cliente*: el
-  correo cambió y manda el código, mientras el formulario sigue pidiendo el enlace. No toca lógica
-  ni contratos, solo copia, así que conviene despacharla antes que la 20.
-
----
-
-## Fase 20 — Admin: gastos y suscripciones 🔴 *(solo panel, no toca la tienda)*
+## Fase 20 — Admin: gastos y suscripciones ✅ *(solo panel, no toca la tienda)*
 
 > **Contexto.** Hasta ahora el KPI **GANANCIA NETA** del panel restaba una constante de `$2,000`
 > hardcodeada en el backend, con el comentario "no existe un modelo de gastos". La Fase N.3 del
 > `../backend/roadmap-operacion-y-negocio.md` la sustituyó por gastos capturados: hay modelo, CRUD,
-> resumen de "cuánto retirar" e historial mes con mes. Falta la pantalla donde el dueño da de alta
+> resumen de "cuánto retirar" e historial mes con mes. Faltaba la pantalla donde el dueño da de alta
 > Render, Vercel, la base de datos, la renta y lo que sea.
 >
-> **El KPI del dashboard ya funciona sin tocar el frontend** (`KpiGrid` pinta los labels tal como
-> vienen), así que esta fase no desbloquea nada roto: agrega la pantalla que llena esos datos.
+> El KPI del dashboard ya funcionaba sin tocar el frontend (`KpiGrid` pinta los labels tal como
+> vienen), así que esta fase no desbloqueó nada roto: agregó la pantalla que llena esos datos.
 
-**Lo que el backend ya hace (referencia — no tocar):**
+**Lo que hace el backend (referencia — no tocar):**
 - **El monto no es un campo del gasto: está versionado por fecha de vigencia.** Mandar `amount` en el
   `PUT` **agrega una versión** con vigencia `amountEffectiveFrom` (o hoy) en vez de sobrescribir. Eso
   es lo que hace que subir Render de $290 a $340 no reescriba lo que costaba en julio. Dos
   excepciones que el backend resuelve solo: si ya existe una versión con esa misma fecha la
-  **corrige en su lugar**, y si el monto no cambió no escribe nada. **La UI tiene que decir "esto es
-  un cambio de precio", no "editar monto"** — y ofrecer la fecha desde la que aplica.
+  **corrige en su lugar**, y si el monto no cambió no escribe nada.
 - **Cada gasto trae su historial de precios** en `amounts` (del más viejo al más nuevo), más
-  `currentAmount`, `monthlyRunRate` y `nextChargeDate` ya calculados. **No recalcular nada de eso en
-  el cliente.**
+  `currentAmount`, `monthlyRunRate` y `nextChargeDate` ya calculados.
 - **`/history` responde el "¿algo cambió?"**: cada mes trae `total`, `byCategory`, `byExpense` (con
   `occurrences`) y **`changes`** — los cambios de precio vigentes ese mes con `previousAmount` y
-  `amount`. El delta y el % **los calcula el front** (misma regla que el resto de métricas
-  derivadas). Los meses van sin huecos (los vacíos en `$0`) y el mes en curso trae `partial: true`,
-  igual que el reporte mensual de ventas.
+  `amount`. El delta y el % los calcula el front. Los meses van sin huecos (los vacíos en `$0`) y el
+  mes en curso trae `partial: true`, igual que el reporte mensual de ventas.
 - **`/summary` responde "cuánto tengo que retirar"**: `monthlyRunRate` (la suma de los recurrentes
   llevados a su equivalente mensual — anual ÷ 12, semanal × 52/12), `annualRunRate`, `byCategory`,
   `byFrequency` y `upcomingCharges` (qué se cobra, de cuánto y en qué fecha, próximos 60 días).
 - **Los gastos de única vez (`frequency: "once"`) no entran en la carga mensual**: cuentan completos
-  en su mes. Si la UI los mezcla en el "cuánto retirar", miente.
-- **Todo en pesos.** No hay divisas: si Render cobra en USD, se captura lo que cobró la tarjeta. Un
-  movimiento del dólar se registra como un cambio de monto (y por eso `amountNote` existe: "subió el
-  dólar").
+  en su mes.
+- **Todo en pesos.** No hay divisas: si Render cobra en USD, se captura lo que cobró la tarjeta.
 - **Las fechas son días de calendario** (`"2026-08-01"`), así que un `<input type="date">` sirve tal
-  cual — no hay que convertir a ISO ni preocuparse por la zona horaria.
+  cual.
 - **`active` y `endsAt` se mantienen coherentes solos**: apagar un gasto le fija `endsAt` en hoy y
   reactivarlo lo limpia. La UI solo manda `active`.
 - **`DELETE` responde `{ ok, deactivated }`**: `deactivated: true` significa que se desactivó en vez
-  de borrarse porque ya generó cargos y borrarlo dejaría el historial mintiendo sobre meses cerrados.
-  Mismo contrato que el `DELETE` de cupones.
-- **Los filtros inválidos son `400`, no se ignoran** (al revés que los del catálogo público): aquí
-  quien consulta es el dueño y un filtro que no aplicó le haría leer mal sus propios números. Los
-  `message` ya son copia de UI accionable en español — **pintarlos verbatim**.
-- El filtro `from`/`to` del listado es por **fecha de cargo**, no de alta: un gasto dado de alta en
-  enero y vigente desde entonces sí sale al consultar agosto.
+  de borrarse porque ya generó cargos. Mismo contrato que el `DELETE` de cupones.
+- **Los filtros inválidos son `400`, no se ignoran** (al revés que los del catálogo público). Los
+  `message` ya son copia de UI accionable en español — se pintan verbatim.
+- El filtro `from`/`to` del listado es por **fecha de cargo**, no de alta.
 
 **Trabajo del frontend:**
-1. [ ] **Contrato:** `lib/api/adminExpenses.ts` (CRUD + `summary` + `history` + `adminExpenseKeys`),
+1. [x] **Contrato:** `lib/api/adminExpenses.ts` (CRUD + `summary` + `history` + `adminExpenseKeys`),
    con el patrón de siempre — axios vía `lib/api/client.ts`, Zod en runtime, `.parse` en lecturas y
    `acceptWrite()` en escrituras.
-2. [ ] **Sección "Gastos" del panel:** `components/admin/types.ts` (`AdminSection`), `NAV_ITEMS` de
-   `Sidebar.tsx`, y `VALID_SECTIONS` + el switch de `app/admin/page.tsx`.
-3. [ ] **Tarjeta de encabezado con `/summary`:** "hay que retirar $X al mes" bien grande, el anual
-   como secundario, y la lista de próximos cargos con fecha y monto.
-4. [ ] **Tabla de gastos** con concepto, proveedor, categoría, frecuencia, monto vigente, carga
-   mensual y próximo cargo; formulario de alta/edición y borrado con confirmación inline como en
-   `AdminsCard.tsx`.
-5. [ ] **Formulario de cambio de precio separado del de edición.** Cambiar el monto pide fecha de
-   vigencia y una nota opcional; que se sienta distinto de corregir un typo en el concepto, porque
-   en el backend lo es.
-6. [ ] **Vista de historial** con el total por mes, el desglose por categoría y —lo importante— los
-   `changes` del mes resaltados ("Render: $290 → $340 desde el 1 de agosto"), con el delta calculado
-   en el cliente.
-7. [ ] **Etiquetas en español de `category` y `frequency`** en un mapa local (como
-   `lib/categories.ts` hace con los tipos de producto). El backend manda las claves crudas.
-8. [ ] **Nada de recalcular montos en el cliente.** `currentAmount`, `monthlyRunRate` y los totales
-   del historial vienen listos; duplicar las fórmulas (sobre todo `weekly × 52/12`) garantiza que un
-   día diverjan del KPI del dashboard.
+2. [x] **Sección "Gastos" del panel:** `components/admin/types.ts` (`AdminSection`), `NAV_ITEMS` de
+   `Sidebar.tsx` (junto a Datos y Reportes: es la contraparte de gasto de las pantallas de ingreso),
+   y `VALID_SECTIONS` + el render de `app/admin/page.tsx`.
+3. [x] **Tarjeta de encabezado con `/summary`:** `ExpenseSummaryCard` — "hay que apartar $X al mes"
+   bien grande, el anual como secundario, el desglose por categoría y la lista de próximos cargos
+   con fecha y monto.
+4. [x] **Tabla de gastos** (`ExpensesTable`) con concepto, proveedor, categoría, frecuencia, monto
+   vigente, carga mensual, próximo cargo y estado; formulario de alta/edición (`ExpenseForm`) y
+   borrado con confirmación inline como en `AdminsCard.tsx`.
+5. [x] **Formulario de cambio de precio separado del de edición** (`ExpenseAmountForm`): pide fecha
+   de vigencia y una nota opcional, y muestra el historial de versiones del gasto.
+6. [x] **Vista de historial** (`ExpenseHistory`) con gráfica de barras del total por mes, el
+   desglose por categoría y por gasto, y —lo importante— los `changes` del mes resaltados
+   ("Render: $290 → $340 desde el 1 de agosto · +$50 (+17.2%)"), con el delta calculado en cliente.
+7. [x] **Etiquetas en español de `category` y `frequency`** en `expenses/expenseStatus.ts`.
+8. [x] **Nada de recalcular montos en el cliente.**
+
+**Detalles de implementación que conviene no re-descubrir:**
+- **La trampa de fechas va al REVÉS que en cupones.** Los gastos usan `isoDay()` del backend (UTC) y
+  sus fechas son `DATEONLY` sin hora, así que **`storeDayISO()` de `couponStatus.ts` NO se debe
+  reusar aquí**: ahí corrige un instante a la zona de la tienda, y aplicarlo a un día de calendario
+  lo rodaría en sentido contrario. Los `<input type="date">` se siembran con el string tal cual, y
+  las etiquetas usan el patrón UTC-pinned de `SalesTable` (`new Date(\`${iso}T00:00:00Z\`)` +
+  `timeZone: "UTC"`).
+- **El cambio de precio es un formulario aparte y eso no es cosmético.** Un campo "monto" dentro del
+  formulario de edición escondería que en el backend son dos operaciones distintas, y haría que
+  corregir un typo en el concepto repreciara el gasto en cada guardado. Por eso `ExpenseForm` solo
+  captura el monto en el **alta** (primera versión) y `expenseUpdateFromForm` **no manda** `amount`
+  ni `amountEffectiveFrom`.
+- **El aviso del cambio de precio se redacta sobre lo que DEVOLVIÓ el backend**, no sobre lo que se
+  tecleó: si el monto vigente en esa fecha ya era el mismo, el backend no escribe nada, y decir
+  "precio actualizado" sería mentir sobre una operación que no ocurrió.
+- **La invalidación toca `dashboardKeys.all`, no solo `adminExpenseKeys.all`.** Al revés que un
+  cupón, un gasto **sí** mueve el KPI `GASTOS`/`GANANCIA OPERATIVA` del panel: sin eso, la pestaña
+  Datos se queda con el número viejo, que es justo la incoherencia que la fase vino a cerrar.
+- **`expenseState()` tiene un estado que el backend no nombra: `cobrado`.** Un `once` cuya fecha ya
+  pasó no está "activo" —su `monthlyRunRate` es 0 y no se va a volver a cobrar— y pintarlo así lo
+  pondría a la par de la renta y el hosting en la lectura de un vistazo. La precedencia es inactivo
+  (acción deliberada del dueño) → terminado → programado → cobrado → activo.
+- **`terminado` usa `endsAt < hoy`, no `<=`**: un gasto que termina hoy todavía se cobra hoy (el
+  backend lo considera vigente con `endsAt >= today`). Con `<=` el panel lo daría por muerto la
+  mañana de su último cargo.
+- **`priceChangeDelta` devuelve `percent: null` —no `0`— cuando `previousAmount` es 0.** La división
+  da `Infinity`, y tanto "+Infinity%" como "0%" dirían lo contrario de lo que pasó.
+- **La columna "Carga mensual" pinta "—", no "$0.00", en los `once`.** Un gasto de $8,000 con
+  "$0.00" ahí se lee como gratuito en vez de como no-recurrente; la tarjeta de resumen lo explica
+  también en texto, porque si no el número de "hay que apartar" parece mal sumado.
+- **`expenseFormSchema` es una función de `isNew`**, no un objeto con un campo `isNew` adentro: un
+  booleano que el formulario nunca pinta tendría que viajar como `defaultValue` sin registrar, y
+  depender de que react-hook-form lo arrastre hasta el resolver es un detalle de implementación
+  suyo, no un contrato.
+- **La barra del mes en curso va translúcida** en la gráfica: pintarla llena la haría leer como un
+  mes cerrado, y un mes a medias se vería como una caída del gasto.
+- **El `onClick` del `<Bar>` usa el índice, no el payload.** Recharts tipa ese argumento como su
+  propio `BarRectangleItem` (geometría del rect), así que leer `isoMonth` de ahí sería apostarle a
+  un campo que el tipo no promete.
 
 **Salida:** el dueño ve cuánto tiene que apartar de sus ventas cada mes, con qué se le va, cuándo se
 le cobra y qué subió de precio — y la GANANCIA NETA del panel deja de restar un número inventado.
+
+---
+
+# Fases pendientes 🔴
+
+Queda una sola, y es la más barata de todas: **la Fase 21** es la única que ya está *rota de cara
+al cliente* — el correo cambió y manda el código, mientras el formulario sigue pidiendo el enlace.
+No toca lógica ni contratos, solo copia.
 
 ---
 
@@ -1285,5 +1312,4 @@ exactamente eso.
   `../backend/roadmaps-completados/roadmap-skydropx.md` Fases 8.1–8.6). El checkout ya cotiza en vivo (ver "Shipping"
   en `CLAUDE.md`) y el panel de pedidos ya muestra guía/rastreo (**Fase 11** ✅).
 - **Prioridad de lo pendiente:** ver la introducción de [Fases pendientes](#fases-pendientes-)
-  — quedan la 20 (solo panel, no desbloquea nada roto) y la 21 (solo copia, pero ya está rota de
-  cara al cliente).
+  — queda solo la 21 (solo copia, pero ya está rota de cara al cliente).
