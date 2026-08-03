@@ -11,7 +11,7 @@ migración.
 
 **Cómo está organizado este documento:** primero el mapa de endpoints ↔ consumidor
 (la vista por API), después las fases en **orden numérico estricto**, separadas en
-[completadas](#fases-completadas-) (1–17) y [pendientes](#fases-pendientes-) (18–21).
+[completadas](#fases-completadas-) (1–19) y [pendientes](#fases-pendientes-) (20–21).
 Las fases están numeradas por el orden en que se hicieron/se van a hacer, no por
 dependencia: esa se lee en la columna "Depende de" del índice.
 
@@ -31,7 +31,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | `POST /api/auth/reset-password` | `components/auth/NewPasswordForm.tsx` → `resetPassword()` (`useMutation` → redirect `/login`) | ✅ | 10 |
 | `GET /api/auth/me` | `components/auth/AdminGuard.tsx` → `getMe()` (valida token + rehidrata `user`) | ✅ | 1 |
 | `GET /api/products` | `lib/api/products.ts` → `getProducts()` | ✅ | — |
-| `GET /api/products` → `q` / `orden` / `precioMin` / `precioMax` | *(sin consumidor todavía)* — `components/outlet/OutletFilters.tsx` necesita buscador, selector de orden y rango de precio; hoy `ProductFilters` solo manda `categoria`/`talla`/`page` | 🔴 | **18** |
+| `GET /api/products` → `q` / `orden` / `precioMin` / `precioMax` | `components/outlet/OutletFilters.tsx` (buscador con debounce, selector de orden y rango de precio) → `ProductFilters` de `lib/api/products.ts`, saneados por `lib/domain/catalogFilters.ts` | ✅ | 18 |
 | `GET /api/products/:id` | `lib/api/products.ts` → `getProductById()` | ✅ | — |
 | `POST /api/orders` | `components/checkout/UserDetails.tsx` → `createOrder()` de `lib/api/orders.ts` (`useMutation`); `completeOrder()` congela la respuesta `201` | ✅ | 2 |
 | `POST /api/orders` → `clientSecret` | `components/checkout/usePlaceOrder.ts` confirma el pago con Stripe.js (`confirmCardPayment` + `pm_card_visa`) usando el `clientSecret` que devuelve `createOrder()`; `PaymentSection.tsx` es el panel de tarjeta de prueba | ✅ | 8 (**test/sandbox**) |
@@ -63,13 +63,13 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | `POST /api/admin/orders/:id/cancel` | `components/admin/orders/OrderDetailModal.tsx` → `cancelAdminOrder()` de `lib/api/adminOrders.ts` (`useMutation`, botón "Cancelar / reembolsar pedido") | ✅ | 12 |
 | `PATCH /api/admin/orders/:id/status` | `components/admin/orders/OrderDetailModal.tsx` → `updateAdminOrderStatus()` de `lib/api/adminOrders.ts` (`useMutation`, sección "Estado del envío": enviado / entregado / agregar guía) | ✅ | 14 |
 | `POST /api/admin/orders/:id/shipment/retry` | `components/admin/orders/OrderDetailModal.tsx` → `retryAdminOrderShipment()` de `lib/api/adminOrders.ts` (`useMutation`, sección "Guía de Skydropx"; clasificación en `orders/shipmentLabel.ts`) | ✅ | 16 |
-| `POST /api/coupons/validate` | *(sin consumidor todavía)* — `components/checkout/OrderSummary.tsx` necesita el campo de cupón (y revalidar con el correo en `ShippingOptions.tsx`) | 🔴 | **19** |
-| `POST /api/orders` → `couponCode` | `lib/api/orders.ts` (`CreateOrderPayload`) + `components/checkout/usePlaceOrder.ts` (el cupón entra en `orderSignature`) | 🔴 | **19** |
-| `POST /api/orders` → `order.couponCode`/`couponDiscount` | `components/checkout/OrderTotals.tsx` (fila de descuento) y `Success.tsx` — el total ya viene neto de cupón | 🔴 | **19** |
-| `GET /api/admin/coupons` | *(sin consumidor todavía)* — falta la sección **Cupones** del panel | 🔴 | **19** |
-| `POST /api/admin/coupons` | *(sin consumidor todavía)* — formulario de alta en la sección **Cupones** | 🔴 | **19** |
-| `PUT /api/admin/coupons/:id` | *(sin consumidor todavía)* — edición y cancelación (`active: false`) en la sección **Cupones** | 🔴 | **19** |
-| `DELETE /api/admin/coupons/:id` | *(sin consumidor todavía)* — borrado con confirmación inline, igual que `AdminsCard.tsx` | 🔴 | **19** |
+| `POST /api/coupons/validate` | `components/checkout/CouponField.tsx` → `validateCoupon()` de `lib/api/coupons.ts` (`useMutation`, paso 0) + `ShippingOptions.tsx` (`useQuery`, revalidación con el correo confirmado) | ✅ | 19 |
+| `POST /api/orders` → `couponCode` | `lib/api/orders.ts` (`CreateOrderPayload` + `buildOrderPayload`) + `components/checkout/usePlaceOrder.ts` (el cupón entra en `orderSignature`, así que rota también la clave de idempotencia) | ✅ | 19 |
+| `POST /api/orders` → `order.couponCode`/`couponDiscount` | `components/checkout/OrderTotals.tsx` (fila de descuento) desde `OrderSummary`, `ShippingOptions` y `Success.tsx` — el total del servidor ya viene neto de cupón | ✅ | 19 |
+| `GET /api/admin/coupons` | `components/admin/sections/CouponsSection.tsx` → `getAdminCoupons()` de `lib/api/adminCoupons.ts` (`useQuery`) | ✅ | 19 |
+| `POST /api/admin/coupons` | `components/admin/coupons/CouponForm.tsx` → `createCoupon()` (`useMutation`) | ✅ | 19 |
+| `PUT /api/admin/coupons/:id` | `CouponForm.tsx` (edición) y `CouponsTable.tsx` (Cancelar/Reactivar = `{ active }` a secas) → `updateCoupon()` | ✅ | 19 |
+| `DELETE /api/admin/coupons/:id` | `components/admin/coupons/CouponsTable.tsx` → `deleteCoupon()` con confirmación inline; el aviso distingue `deactivated: true` (ya hay pedidos que lo usaron) de un borrado real | ✅ | 19 |
 | `GET /api/admin/expenses` | *(sin consumidor todavía)* — falta la sección **Gastos** del panel | 🔴 | **20** |
 | `GET /api/admin/expenses/summary` | *(sin consumidor todavía)* — tarjeta "cuánto retirar este mes" + lista de próximos cargos | 🔴 | **20** |
 | `GET /api/admin/expenses/history` | *(sin consumidor todavía)* — historial mes con mes + los cambios de precio de cada mes | 🔴 | **20** |
@@ -99,7 +99,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | 16 | Admin: reintentar la guía de Skydropx | ✅ | 11 |
 | 17 | Página pública de seguimiento del pedido *(cara al cliente)* | ✅ | 2 |
 | 18 | Outlet: buscador, orden y rango de precio *(cara al cliente)* | ✅ | — |
-| 19 | Cupones: campo en el checkout + sección en el panel | 🔴 | 2 |
+| 19 | Cupones: campo en el checkout + sección en el panel | ✅ | 2 |
 | 20 | Admin: gastos y suscripciones | 🔴 | — |
 | 21 | Seguimiento: el correo manda el código, no el enlace *(cara al cliente, solo copia)* | 🔴 | 17 |
 
@@ -943,8 +943,9 @@ requiere intervención humana el panel lo dice —en el pedido y en la lista— 
   superficies con presentación distinta (la píldora del panel y la frase del comprador); con dos
   tablas paralelas, agregar un estado en una y olvidarla en la otra le contaría al comprador algo
   distinto de lo que ve el dueño. `StatusBadges` conserva su tabla de **colores**, que sí es del panel.
-- **`OrderTotals` ganó una prop opcional `discount`** para la fila de cupón. Es aditiva (hoy solo
-  la pasa esta página) y adelanta sin costo un punto que la Fase 19 ya tenía listado.
+- **`OrderTotals` ganó una prop opcional `discount`** para la fila de cupón. Es aditiva (al cerrar
+  esta fase solo la pasaba esta página; la Fase 19 la cableó en los tres pasos del checkout) y
+  adelantó sin costo un punto que la Fase 19 ya tenía listado.
 
 **Salida:** el comprador consulta su pedido solo, a cualquier hora, y el dueño deja de contestar
 estados por WhatsApp.
@@ -1027,24 +1028,7 @@ creciendo por importación masiva.
 
 ---
 
-# Fases pendientes 🔴
-
-Van en orden numérico, pero **no hay que hacerlas en ese orden**: son independientes entre sí.
-Cómo priorizarlas:
-
-- **Fase 19** es la única pendiente que **no** es aditiva: aunque nadie mande un `couponCode`, el
-  invariante de totales ya cambió a `subtotal − savings − couponDiscount + shipping` y
-  `couponDiscount` llega en `0`. Mientras no se cablee, la aritmética actual sigue dando el mismo
-  resultado; el riesgo aparece el día que se cree el primer cupón y algún componente siga sumando
-  con cuatro términos. Conviene hacer primero los puntos 1, 2 y 7 (contratos + fila de descuento)
-  aunque el campo del checkout llegue después.
-- **Fase 21** es la más barata de todas y la única que ya está *rota de cara al cliente*: el correo
-  cambió y manda el código, mientras el formulario sigue pidiendo el enlace. No toca lógica ni
-  contratos, solo copia, así que conviene despacharla antes que 19/20.
-
----
-
-## Fase 19 — Cupones: campo en el checkout + sección en el panel 🔴 *(las dos caras a la vez)*
+## Fase 19 — Cupones: campo en el checkout + sección en el panel ✅ *(las dos caras a la vez)*
 
 > **Contexto.** No existe ninguna forma de lanzar una promoción sin repreciar producto por producto,
 > que es permanente y toca el catálogo. El backend cerró la Fase N.2 del
@@ -1087,35 +1071,81 @@ Cómo priorizarlas:
   tienda (fin de día para el vencimiento), así que un `<input type="date">` sirve tal cual.
 
 **Trabajo del frontend:**
-1. [ ] **Contratos:** `lib/api/coupons.ts` (público: `validateCoupon`) y `lib/api/adminCoupons.ts`
+1. [x] **Contratos:** `lib/api/coupons.ts` (público: `validateCoupon`) y `lib/api/adminCoupons.ts`
    (CRUD + `adminCouponKeys`), con el patrón de siempre — axios vía `lib/api/client.ts`, Zod en
    runtime, `.parse` en lecturas y `acceptWrite()` en escrituras.
-2. [ ] **`CreateOrderPayload`** gana `couponCode?`; `OrderResponseSchema` gana
+2. [x] **`CreateOrderPayload`** gana `couponCode?`; `OrderResponseSchema` gana
    `couponCode`/`couponDiscount`.
-3. [ ] **Campo de cupón en `OrderSummary.tsx`**, entre `<OrderItems />` y el bloque de totales:
+3. [x] **Campo de cupón en `OrderSummary.tsx`**, entre `<OrderItems />` y el bloque de totales:
    input + botón "Aplicar", estado aplicado con opción de quitarlo, y el `message` del error pintado
    verbatim.
-4. [ ] **Guardar el cupón aplicado en `CheckoutContext`** con el patrón de caché por firma que ya
+4. [x] **Guardar el cupón aplicado en `CheckoutContext`** con el patrón de caché por firma que ya
    usan `getSelectedRate`/`getPendingOrder`, para que sobreviva al avance entre pasos.
-5. [ ] **Revalidar en el paso de envío** (`ShippingOptions.tsx`) mandando ya el correo confirmado:
+5. [x] **Revalidar en el paso de envío** (`ShippingOptions.tsx`) mandando ya el correo confirmado:
    es el único momento en que `/validate` puede verificar el "un uso por cliente", y avisar ahí es
    mejor que fallar al cobrar.
-6. [ ] **`orderSignature` en `usePlaceOrder.ts` tiene que incluir el cupón**, o aplicar/quitar uno
+6. [x] **`orderSignature` en `usePlaceOrder.ts` tiene que incluir el cupón**, o aplicar/quitar uno
    reconfirmaría el pedido cacheado con el precio anterior.
-7. [~] **Fila "Cupón" en `OrderTotals.tsx`** (arriba de Envío) y en `Success.tsx`, solo cuando
-   `couponDiscount > 0`. **Medio hecho en la Fase 17:** `OrderTotals` ya acepta una prop opcional
-   `discount?: { code, amount }` y pinta la fila arriba de Envío cuando `amount > 0`; hoy solo se
-   la pasa la página pública de seguimiento (la única superficie que ya recibe `couponCode`/
-   `couponDiscount` del backend). Falta cablearla en `OrderSummary`, `ShippingOptions` y `Success`
-   cuando el checkout empiece a mandar el cupón.
-8. [ ] **Sección "Cupones" del panel:** `components/admin/types.ts` (`AdminSection`), `NAV_ITEMS` de
+7. [x] **Fila "Cupón" en `OrderTotals.tsx`** (arriba de Envío) y en `Success.tsx`, solo cuando
+   `couponDiscount > 0`. La prop opcional `discount?: { code, amount }` venía de la Fase 17 (la
+   usaba solo la página pública de seguimiento); ahora se la pasan también `OrderSummary`,
+   `ShippingOptions` y `Success`.
+8. [x] **Sección "Cupones" del panel:** `components/admin/types.ts` (`AdminSection`), `NAV_ITEMS` de
    `Sidebar.tsx`, y `VALID_SECTIONS` + el switch de `app/admin/page.tsx`. Tabla con estado/vigencia/
    usos, formulario de alta y edición, y borrado con confirmación inline como en `AdminsCard.tsx`.
-9. [ ] **Nada de calcular el descuento en el cliente.** El monto que se muestra siempre sale de
+9. [x] **Nada de calcular el descuento en el cliente.** El monto que se muestra siempre sale de
    `/validate` o del pedido; duplicar la fórmula garantiza que un día diverja del cobro.
+10. [x] **Extra, no listado arriba:** `AdminOrderSchema` no declaraba `couponCode`/`couponDiscount`
+   —el backend ya los mandaba, Zod los descartaba, mismo bug que arreglaron las Fases 11 y 16— así
+   que el modal de pedidos habría mostrado `Subtotal − Ahorro + Envío ≠ Total` en cuanto existiera
+   el primer cupón.
+
+**Detalles de implementación que conviene no re-descubrir:**
+- **El cupón se clavea con una firma MÁS LAXA que la tarifa**: solo `cartLineSignature(items)`, sin
+  cliente ni tarifa. El descuento depende únicamente de la mercancía neta, así que corregir la
+  dirección o cambiar de paquetería no debe tirar un cupón válido. `orderSignature` (la de
+  `usePlaceOrder`) sí lo incluye, porque ahí la pregunta es otra: "¿este sigue siendo el mismo
+  pedido?".
+- **`CouponField` usa `useMutation` y la revalidación del paso 3 usa `useQuery`**, y la diferencia
+  no es de estilo: aplicar un cupón es un clic deliberado (con una query, cada tecla mal escrita
+  gastaría una de las 20 consultas/min de la ruta), mientras que en el paso 3 el dato se necesita
+  para poder pagar y no lo dispara ningún clic.
+- **Un rechazo del cupón nunca lo quita solo.** Cambiaría en silencio el precio que el comprador
+  aceptó en pantalla. Se pinta el `message` del backend —que literalmente dice "quítalo del
+  checkout"— y se ofrece el botón.
+- **`couponBlocked` exige que el cupón siga aplicado** (`!!coupon && isCouponRejection(...)`): al
+  quitarlo, la query se deshabilita pero TanStack Query **conserva** el error de la última corrida,
+  así que sin ese guard el botón "Quitar cupón y continuar" dejaba el pago bloqueado para siempre.
+- **`isCouponRejection` separa 4xx de red/5xx/429.** Bloquear el pago por una red intermitente le
+  quitaría un descuento válido a alguien que sí podía pagar.
+- **`storeDayISO()` (en `couponStatus.ts`) es obligatorio para sembrar los `<input type="date">`.**
+  El backend guarda "31 de agosto" como `2026-08-31T23:59:59.999-06:00` = `2026-09-01T05:59Z`, así
+  que un `iso.slice(0, 10)` sembraría el 1 de septiembre: abrir un cupón para cambiarle cualquier
+  otra cosa le correría la vigencia un día, y otro más en cada guardado.
+- **La precedencia de `couponState()` importa**: cancelado → agotado → vencido → programado →
+  activo. "Cancelado" gana porque es la única acción deliberada del dueño; "agotado" va antes que
+  "vencido" porque cuenta que la promoción se consumió, no que se le pasó la fecha.
+- **Los campos opcionales no se pueden BORRAR desde el panel**: el `PUT` no acepta `null` en
+  `maxDiscount`/`minSubtotal`/`maxRedemptions`/`startsAt`/`expiresAt`, y una clave ausente significa
+  "no toques ese campo". `CouponForm` lo avisa cuando detecta que se vació uno, en vez de dejar
+  creer que se quitó; la salida es desactivar el cupón y crear otro, igual que con un código mal
+  escrito.
+- **El margen del modal de pedidos resta el `couponDiscount`**: sale del bolsillo de la tienda, y
+  sin restarlo una promoción se vería igual de rentable que una venta a precio de lista.
 
 **Salida:** el dueño lanza una promoción desde el panel y el comprador la aplica en el checkout, con
 el descuento calculado y canjeado por el backend.
+
+---
+
+# Fases pendientes 🔴
+
+Van en orden numérico, pero **no hay que hacerlas en ese orden**: son independientes entre sí.
+Cómo priorizarlas:
+
+- **Fase 21** es la más barata de las dos y la única que ya está *rota de cara al cliente*: el
+  correo cambió y manda el código, mientras el formulario sigue pidiendo el enlace. No toca lógica
+  ni contratos, solo copia, así que conviene despacharla antes que la 20.
 
 ---
 
@@ -1255,5 +1285,5 @@ exactamente eso.
   `../backend/roadmaps-completados/roadmap-skydropx.md` Fases 8.1–8.6). El checkout ya cotiza en vivo (ver "Shipping"
   en `CLAUDE.md`) y el panel de pedidos ya muestra guía/rastreo (**Fase 11** ✅).
 - **Prioridad de lo pendiente:** ver la introducción de [Fases pendientes](#fases-pendientes-)
-  — ahí está qué es mejora opcional (16), qué es aditivo (18) y qué ya cambió un invariante
-  aunque no se cablee (19).
+  — quedan la 20 (solo panel, no desbloquea nada roto) y la 21 (solo copia, pero ya está rota de
+  cara al cliente).

@@ -29,6 +29,15 @@ export const AdminOrderSchema = z.object({
   subtotal: z.number(),
   savings: z.number(),
   shipping: z.number(),
+  // Cupón canjeado (Fase 19), congelado en el pedido: editar o borrar el cupón
+  // después NO altera lo que se vendió. Vienen en la respuesta desde que existe
+  // la columna —adminGetOrders serializa el modelo Order completo— pero Zod los
+  // descartaba por no estar declarados (mismo bug que arreglaron las Fases 11 y
+  // 16). Sin ellos el modal mostraría `Subtotal − Ahorro + Envío ≠ Total` y el
+  // faltante no tendría explicación: el invariante ahora es
+  // `total = subtotal − savings − couponDiscount + shipping`.
+  couponCode: z.string().nullable().optional(),
+  couponDiscount: z.number().optional(),
   total: z.number(),
   customerName: z.string(),
   customerEmail: z.string(),

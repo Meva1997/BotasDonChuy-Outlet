@@ -16,7 +16,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **sileo** — toast notifications (admin panel only)
 - **pnpm** as package manager
 
-> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). Specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen; see that folder's `README.md` for the layout — plus five pure modules: `lib/domain/__tests__/idempotency.test.ts`, `lib/domain/__tests__/publicOrderToken.test.ts`, `components/checkout/__tests__/checkoutErrors.test.ts`, `components/admin/orders/__tests__/shipmentLabel.test.ts` and `components/pedido/__tests__/orderTimeline.test.ts`.
+> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). Specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen; see that folder's `README.md` for the layout — plus seven pure modules: `lib/domain/__tests__/idempotency.test.ts`, `lib/domain/__tests__/publicOrderToken.test.ts`, `lib/domain/__tests__/catalogFilters.test.ts`, `components/checkout/__tests__/checkoutErrors.test.ts`, `components/admin/orders/__tests__/shipmentLabel.test.ts`, `components/admin/coupons/__tests__/couponStatus.test.ts` and `components/pedido/__tests__/orderTimeline.test.ts`.
 
 ## Commands
 
@@ -63,17 +63,21 @@ components/
   product/        # ProductInfo — product detail panel (gallery, size picker, add-to-cart)
   ui/             # Global primitives: Cart, CartProvider, FormControls, ImageCarousel
   providers/      # QueryProvider (TanStack Query), BrandProvider (brand identity)
-  checkout/       # 4-step checkout wizard, incl. ShippingOptions (live Skydropx rate quoting)
-                  #   and checkoutErrors.ts (pure order/payment error mapping, with specs)
+  checkout/       # 4-step checkout wizard, incl. ShippingOptions (live Skydropx rate quoting),
+                  #   CouponField (discount code, validated server-side) and checkoutErrors.ts
+                  #   (pure order/payment error mapping, with specs)
   pedido/         # Public order tracking (the only buyer-facing screen): OrderTracking (query owner),
                   #   OrderStatusTimeline, TrackedOrderItems, OrderLookupForm + orderTimeline.ts
                   #   (pure status → timeline derivation, with specs)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
   nosotros/       # AboutUs — static "About Us" page
   auth/           # AuthShell, LoginForm, ForgotPasswordForm (+ CodeInput/ResetCodeForm/NewPasswordForm), AdminGuard
-  admin/          # Sidebar, types.ts + sections/ (Marca, Productos, Importar, Pedidos, Datos, Reportes, Configuración)
+  admin/          # Sidebar, types.ts + sections/ (Marca, Productos, Importar, Cupones, Pedidos,
+                  #   Datos, Reportes, Configuración)
                   #   orders/ — orders table, pagination, detail modal (cancel/refund, manual
                   #   shipped/delivered, Skydropx label retry) + shipmentLabel.ts (pure, with specs)
+                  #   coupons/ — coupons table, form, status badge + couponStatus.ts (pure, with
+                  #   specs: derived state, labels, and the store-timezone date helper)
                   #   data/ — chart/table subcomponents (recharts)
                   #   reportes/ — SalesReport (historical) + ReplenishmentReport (forecast)
                   #   import/ — Excel import review screen: pure modules (types, rowInput, importReducer,
@@ -82,7 +86,8 @@ components/
 lib/
   api/            # axios client + per-domain contracts (Zod schemas + fetchers + query keys):
                   #   auth, products, adminProducts, adminProductImport, adminOrders, adminUsers, account,
-                  #   dashboard, reports, brand, orders, shipping (live Skydropx rate quotes)
+                  #   dashboard, reports, brand, orders, shipping (live Skydropx rate quotes),
+                  #   coupons (public validate) + adminCoupons (CRUD)
   domain/         # pure business logic: cart.ts (totals + shared item/signature helpers),
                   #   brand.ts (fallback identity), categories.ts
   seo/            # site.ts (SITE_URL/absoluteUrl/keywords) + jsonLd.ts (schema.org builders)
@@ -93,6 +98,7 @@ schemas/
   checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list
   auth.ts         # zod loginSchema + forgotPasswordSchema + resetPasswordSchema
   users.ts        # zod createUserSchema + updateAccountSchema (shared password complexity rules)
+  coupons.ts      # zod coupon form schema (mirrors the backend's cross-field rules) + payload mapping
 store/
   cartStore.ts    # Zustand cart store with localStorage persistence
   authStore.ts    # Zustand auth store (token + user) — admin session, persisted
@@ -163,12 +169,12 @@ All storefront routes carry title/description/canonical/Open Graph metadata; `/a
 
 `/checkout` is a 4-step wizard (state held in React context, resets on refresh). Steps render conditionally, so navigating away unmounts them — anything that must survive back-and-forth lives in the context instead: a shipping draft (restored when `UserDetails` remounts), the validated address (`confirmedCustomer`, what step 3 quotes against), the selected shipping rate (cached by cart+customer signature), the pending Stripe order, the checkout's idempotency key, and `acceptedTerms`. The `Stepper` distinguishes three states per step (done / visited-but-not-current / pending), letting users jump back to any step they've already seen.
 
-1. **Resumen** — read-only cart review; requires accepting terms & privacy before continuing. Shows a flat-rate shipping estimate (no address yet, never charged).
+1. **Resumen** — read-only cart review; requires accepting terms & privacy before continuing. Shows a flat-rate shipping estimate (no address yet, never charged). Also where a **discount coupon** is entered (`CouponField.tsx` → `POST /api/coupons/validate`, which validates *without* redeeming, so checking a code never spends the promotion). The frontend never computes a discount: the amount always comes from the server, which shares its discount function with the checkout. The coupon discount is **not** the outlet `savings` — they're separate lines and the coupon never touches shipping, so the invariant is `total = subtotal − savings − couponDiscount + shipping`.
 2. **Dirección** — shipping address form validated with react-hook-form + zod (Mexico only). Submitting just saves the validated address to context and advances — no order, no payment yet.
-3. **Envío** — **live shipping-rate quoting** against Skydropx (`POST /api/shipping/rates` via `lib/api/shipping.ts`; always resolves 200, falling back to the same flat rate as step 1 if Skydropx is unavailable). One option auto-selects; two or more require an explicit pick. The total shown here is exactly what gets charged. On "Pagar y confirmar", `usePlaceOrder` runs a two-phase flow: (1) **posts the order** (`POST /api/orders` via `createOrder` in `lib/api/orders.ts`) — `{ items, customer, quotationId?, rateId? }`, no amounts; the backend re-queries Skydropx for that exact quote (or falls back to its own flat rate) and returns a Stripe `clientSecret`; a `409` (out of stock, or an expired quote — which also clears the selected rate so the user re-quotes) or `400` keeps the user on the form. (2) **confirms payment** with Stripe.js (`confirmCardPayment`). Running in **test/sandbox**, so the test card is hardcoded (`pm_card_visa` = `4242 4242 4242 4242`) and `PaymentSection` is a read-only test-card panel. Only after `succeeded` does it freeze the order snapshot and advance; the `paid` status is reconciled by the backend webhook. The created order is cached (keyed by cart contents, customer data, **and** the selected rate) so retrying doesn't duplicate it. That cache only covers retries that go through the hook; an **`Idempotency-Key` header** covers the ones that don't (a double-click firing two requests before the first responds, or the browser's own retry). The key is derived from the same signature, so it rotates exactly when the purchase attempt stops being the same one, and a replayed response (`Idempotency-Replayed`) makes the hook check the PaymentIntent before re-confirming a payment that already went through.
+3. **Envío** — **live shipping-rate quoting** against Skydropx (`POST /api/shipping/rates` via `lib/api/shipping.ts`; always resolves 200, falling back to the same flat rate as step 1 if Skydropx is unavailable). One option auto-selects; two or more require an explicit pick. The total shown here is exactly what gets charged. If a coupon is applied, this step **re-validates it with the now-confirmed email** — the only moment where "one use per customer" can actually be checked, since the code is entered before the address exists; a `4xx` blocks payment and offers to drop the coupon, while a network error or `429` doesn't (neither says anything about the coupon). On "Pagar y confirmar", `usePlaceOrder` runs a two-phase flow: (1) **posts the order** (`POST /api/orders` via `createOrder` in `lib/api/orders.ts`) — `{ items, customer, couponCode?, quotationId?, rateId? }`, no amounts; the backend re-queries Skydropx for that exact quote (or falls back to its own flat rate) and returns a Stripe `clientSecret`; a `409` (out of stock; an expired quote — which also clears the selected rate so the user re-quotes; or a coupon that ran out between the preview and the payment, since `/validate` reserves nothing) or `400` keeps the user on the form. A rejected coupon is never dropped automatically — that would silently change the price the buyer accepted — so the backend's message is shown with a button to remove it. (2) **confirms payment** with Stripe.js (`confirmCardPayment`). Running in **test/sandbox**, so the test card is hardcoded (`pm_card_visa` = `4242 4242 4242 4242`) and `PaymentSection` is a read-only test-card panel. Only after `succeeded` does it freeze the order snapshot and advance; the `paid` status is reconciled by the backend webhook. The created order is cached (keyed by cart contents, customer data, **and** the selected rate) so retrying doesn't duplicate it. That cache only covers retries that go through the hook; an **`Idempotency-Key` header** covers the ones that don't (a double-click firing two requests before the first responds, or the browser's own retry). The key is derived from the same signature, so it rotates exactly when the purchase attempt stops being the same one, and a replayed response (`Idempotency-Replayed`) makes the hook check the PaymentIntent before re-confirming a payment that already went through.
 4. **Confirmación** — frozen order snapshot (with `Pedido #<id>` and the server's authoritative totals) plus shipping address, and — when the `201` carried a `publicToken` — a "Ver el estado de mi pedido" link into the tracking page below.
 
-Key files: `app/(public)/checkout/`, `components/checkout/` (incl. `ShippingOptions.tsx` and `checkoutErrors.ts`), `schemas/checkout.ts`, `lib/domain/cart.ts`, `lib/domain/idempotency.ts`, `lib/api/orders.ts`, `lib/api/shipping.ts`.
+Key files: `app/(public)/checkout/`, `components/checkout/` (incl. `ShippingOptions.tsx`, `CouponField.tsx` and `checkoutErrors.ts`), `schemas/checkout.ts`, `lib/domain/cart.ts`, `lib/domain/idempotency.ts`, `lib/api/orders.ts`, `lib/api/shipping.ts`, `lib/api/coupons.ts`.
 
 ## Order tracking
 
@@ -184,11 +190,12 @@ Shipping is quoted **live** against Skydropx from checkout step 3 (see above) �
 
 ## Admin panel
 
-`/admin` has seven sections (`components/admin/sections/`), all connected to the real backend:
+`/admin` has eight sections (`components/admin/sections/`), all connected to the real backend:
 
 - **Marca** — brand identity/copy editor (autosaved).
 - **Productos** — catalog CRUD, including a Cloudinary-backed image gallery (up to 3 images per product).
 - **Importar** — bulk Excel import/restock: upload → preview (no writes) → review/edit → commit. Restock only ever adds stock and can't be undone from the app, so the review screen enforces several invariants (rows that already wrote lock for the session, dependent rows across the same file get flagged, etc.) — see `CLAUDE.md`'s "Importación por Excel" for the full list.
+- **Cupones** — discount coupons: the only way to run a promotion without repricing the catalog product by product (which is permanent). Table with value, validity window, usage against the global cap and derived status (`couponStatus.ts`, pure, with specs), plus a create/edit form. "Cancelar" is `active: false`, not a delete — the history of what was sold with the coupon is kept, and it can be reactivated. Deleting is the backend's call: a coupon that orders already used gets deactivated instead, and the notice says which of the two happened.
 - **Pedidos** — paginated order listing with a detail modal (includes cost/margin, admin-only). From the modal the owner can cancel/refund an order, and move it forward to shipped/delivered by hand — capturing the tracking number, URL and carrier when the order never went through Skydropx (a flat-rate order gets no label, so no webhook ever advances it).
 - **Datos** — KPIs, revenue chart, inventory and recent-sales tables (7/30/90-day windows).
 - **Reportes** — monthly sales history feeding an auto-scaling replenishment forecast (simple average → weighted+trend → Holt exponential smoothing, depending on history depth); both export to CSV.

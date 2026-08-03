@@ -14,6 +14,7 @@ import type { CartItem } from "@/store/cartStore";
 import type { ShippingData } from "@/schemas/checkout";
 import { useCheckout } from "./CheckoutContext";
 import {
+  isCouponError,
   isIdempotencyKeyConflict,
   isRateExpiredError,
   placeOrderErrorMessage,
@@ -28,20 +29,29 @@ const TEST_PAYMENT_METHOD = "pm_card_visa";
 type PlaceOrderStatus = "idle" | "processing";
 
 // Firma sobre todo lo que determina la orden en el backend: el carrito
-// (productId + talla + cantidad), los datos del cliente y la tarifa de envío
-// elegida. Si cambia cualquiera, la orden pendiente cacheada ya no corresponde
-// a lo que el usuario está pidiendo y se descarta (se crea una nueva). Incluir
-// al cliente es lo que evita que, tras corregir la dirección después de un pago
-// fallido, se reconfirme la orden vieja y se envíe a la dirección anterior;
-// incluir la tarifa evita reconfirmar un PaymentIntent cotizado con una opción
-// de envío distinta a la que el usuario acaba de elegir.
+// (productId + talla + cantidad), los datos del cliente, la tarifa de envío
+// elegida y el cupón aplicado. Si cambia cualquiera, la orden pendiente cacheada
+// ya no corresponde a lo que el usuario está pidiendo y se descarta (se crea una
+// nueva). Incluir al cliente es lo que evita que, tras corregir la dirección
+// después de un pago fallido, se reconfirme la orden vieja y se envíe a la
+// dirección anterior; incluir la tarifa evita reconfirmar un PaymentIntent
+// cotizado con una opción de envío distinta a la que el usuario acaba de elegir;
+// e incluir el cupón (Fase 19) evita reconfirmar el pedido cacheado con el precio
+// de antes de aplicarlo o quitarlo — que es justo el error que le cobraría al
+// comprador un total distinto al que tiene en pantalla. De paso rota la clave de
+// idempotencia, que se pide con esta misma firma: el backend también mete el
+// `couponCode` en su huella, así que los dos criterios coinciden por
+// construcción en vez de por coincidencia.
 function orderSignature(
   items: CartItem[],
   customer: ShippingData,
-  rate: SelectedShippingRate
+  rate: SelectedShippingRate,
+  couponCode: string | null
 ): string {
   const rateKey = `${rate.quotationId ?? "flat"}:${rate.rateId ?? "flat"}`;
-  return `${cartLineSignature(items)}#${JSON.stringify(customer)}#${rateKey}`;
+  return `${cartLineSignature(items)}#${JSON.stringify(customer)}#${rateKey}#${
+    couponCode ?? "sincupon"
+  }`;
 }
 
 /**
@@ -67,6 +77,11 @@ function orderSignature(
 export function usePlaceOrder() {
   const [status, setStatus] = useState<PlaceOrderStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  // El último error vino del cupón (Fase 19). Se expone en vez de quitar el
+  // cupón aquí mismo: cambiar en silencio el precio que el comprador aceptó es
+  // peor que pedirle un clic. ShippingOptions lo usa para ofrecer "Quitar cupón
+  // y reintentar" junto al mensaje del backend.
+  const [couponRejected, setCouponRejected] = useState(false);
   const {
     getPendingOrder,
     setPendingOrder,
@@ -81,22 +96,29 @@ export function usePlaceOrder() {
       items: CartItem[],
       customer: ShippingData,
       selectedRate: SelectedShippingRate,
+      couponCode: string | null,
       onSuccess: (order: OrderResponse) => void
     ) => {
       setStatus("processing");
       setError(null);
-      const signature = orderSignature(items, customer, selectedRate);
+      setCouponRejected(false);
+      const signature = orderSignature(
+        items,
+        customer,
+        selectedRate,
+        couponCode
+      );
       try {
         // 1. Crear la orden (o reusar la de un intento previo que falló en el
-        //    pago, siempre que ni el carrito, los datos, ni la tarifa elegida
-        //    hayan cambiado).
+        //    pago, siempre que ni el carrito, los datos, la tarifa elegida ni el
+        //    cupón hayan cambiado).
         let pending = getPendingOrder(signature);
         // Solo puede ser true si la orden se creó en ESTA pasada: una orden
         // servida del caché no trajo respuesta HTTP de la que leer el header.
         let replayed = false;
         if (!pending) {
           const res = await createOrder(
-            buildOrderPayload(items, customer, selectedRate),
+            buildOrderPayload(items, customer, selectedRate, couponCode),
             // Misma clave mientras el intento de compra sea el mismo (la firma
             // no cambió): es lo que convierte un doble clic o un reintento del
             // navegador en un solo pedido con un solo cobro.
@@ -197,6 +219,14 @@ export function usePlaceOrder() {
           // backend rechaza antes de crear), así que no hay pedido que limpiar.
           resetIdempotencyKey();
         }
+        if (isCouponError(err)) {
+          // El cupón dejó de aplicar entre el visto bueno de /validate y el
+          // pago (se agotó, lo usó otro carrito del mismo correo, o el total
+          // quedó bajo el mínimo cobrable). No se creó nada: el backend rechaza
+          // dentro de la transacción, así que no hay pedido pendiente que
+          // limpiar — solo hay que dejar de reintentar contra el mismo cupón.
+          setCouponRejected(true);
+        }
         setError(placeOrderErrorMessage(err));
         setStatus("idle");
       }
@@ -211,5 +241,5 @@ export function usePlaceOrder() {
     ]
   );
 
-  return { status, error, placeOrder };
+  return { status, error, couponRejected, placeOrder };
 }

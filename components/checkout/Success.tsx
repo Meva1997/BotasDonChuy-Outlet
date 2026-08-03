@@ -28,7 +28,8 @@ export default function Success() {
     );
   }
 
-  const { orderId, items, totals, customer, publicToken } = order;
+  const { orderId, items, totals, customer, couponCode, couponDiscount, publicToken } =
+    order;
 
   return (
     <div className="w-full max-w-lg mx-auto space-y-10 animate-fade-in-up">
@@ -79,8 +80,14 @@ export default function Success() {
 
         <OrderItems items={items} />
 
+        {/* Los `totals` son los del servidor y YA traen el descuento restado, así
+            que esta fila es informativa: sin ella el total no cuadraría con
+            `subtotal − savings + shipping` y el faltante quedaría sin explicar. */}
         <div className="border-t border-amber-600/30 pt-5">
-          <OrderTotals totals={totals} />
+          <OrderTotals
+            totals={totals}
+            discount={{ code: couponCode, amount: couponDiscount }}
+          />
         </div>
 
         <div className="border-t border-amber-600/30 pt-5">

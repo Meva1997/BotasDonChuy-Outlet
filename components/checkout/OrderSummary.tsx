@@ -2,15 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/cartStore";
-import { computeTotals } from "@/lib/domain/cart";
+import { cartLineSignature, computeTotals } from "@/lib/domain/cart";
 import { useCheckout } from "./CheckoutContext";
+import CouponField from "./CouponField";
 import OrderItems from "./OrderItems";
 import OrderTotals from "./OrderTotals";
 
 export default function OrderSummary() {
   const router = useRouter();
   const items = useCartStore((s) => s.items);
-  const { acceptedTerms, setAcceptedTerms, goToDetails } = useCheckout();
+  const { acceptedTerms, setAcceptedTerms, goToDetails, getAppliedCoupon } =
+    useCheckout();
 
   if (items.length === 0) {
     return (
@@ -32,7 +34,14 @@ export default function OrderSummary() {
     );
   }
 
-  const totals = computeTotals(items);
+  // El envío de aquí es un ESTIMADO de tarifa plana (todavía no hay dirección que
+  // cotizar) y nunca se cobra este número. El descuento del cupón, en cambio, sí
+  // sale del servidor: se resta del total en vez de recalcularlo.
+  const base = computeTotals(items);
+  const coupon = getAppliedCoupon(cartLineSignature(items));
+  const totals = coupon
+    ? { ...base, total: base.total - coupon.discount }
+    : base;
 
   return (
     <div className="w-full max-w-lg mx-auto">
@@ -60,7 +69,16 @@ export default function OrderSummary() {
         <OrderItems items={items} />
 
         <div className="border-t border-amber-600/30 pt-5">
-          <OrderTotals totals={totals} />
+          <CouponField />
+        </div>
+
+        <div className="border-t border-amber-600/30 pt-5">
+          <OrderTotals
+            totals={totals}
+            discount={
+              coupon ? { code: coupon.code, amount: coupon.discount } : undefined
+            }
+          />
         </div>
 
         <div className="rounded-md border border-amber-600/30 bg-amber-600/5 px-4 py-3">

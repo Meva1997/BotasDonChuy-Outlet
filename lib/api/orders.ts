@@ -31,6 +31,19 @@ export const OrderResponseSchema = z.object({
   subtotal: z.number(),
   savings: z.number(),
   shipping: z.number(),
+  // Cupón canjeado (Fase 19). El backend ya los mandaba —createOrder solo excluye
+  // `shippingRequiresDropoff` y el `couponId` interno— y Zod los descartaba por no
+  // declararlos, el mismo bug que arreglaron las Fases 11, 16 y 17 con otros
+  // campos. Sin ellos, la pantalla de confirmación mostraría un total menor que
+  // `subtotal − savings + shipping` sin explicar el faltante.
+  //
+  // Invariante nuevo de toda la app: `total = subtotal − savings − couponDiscount
+  // + shipping`. `savings` (ahorro outlet) y `couponDiscount` son cosas DISTINTAS
+  // y no se suman: el primero es `originalPrice` vs `salePrice`, el segundo es la
+  // promoción, y mezclarlos le mentiría al comprador sobre de dónde viene cada
+  // descuento.
+  couponCode: z.string().nullable().optional(),
+  couponDiscount: z.number().optional(),
   total: z.number(),
   customerName: z.string(),
   customerEmail: z.string(),
@@ -89,6 +102,13 @@ export interface CreateOrderPayload {
   items: Array<{ productId: number; size: number; quantity: number }>;
   customer: ShippingData;
   shippingCarrier?: string;
+  // Cupón de descuento (Fase 19). Va el CÓDIGO, jamás un monto: el backend
+  // re-decide el descuento de forma atómica (misma regla que rige precios y
+  // envío). Un cupón inválido, vencido, agotado o ya usado responde 400/409 y
+  // NUNCA se ignora en silencio — al contrario de los filtros del catálogo,
+  // donde un valor inválido se descarta: ahí ignorarlo devuelve más productos,
+  // aquí le cobraría al comprador un precio distinto al que aceptó en pantalla.
+  couponCode?: string;
   quotationId?: string;
   rateId?: string;
 }
@@ -118,10 +138,11 @@ export type PublicOrderItem = z.infer<typeof PublicOrderItemSchema>;
  * Skydropx, `shippingRequiresDropoff`, el propio `publicToken` (el cliente ya lo
  * tiene) y el correo/teléfono del comprador.
  *
- * `couponCode`/`couponDiscount` SÍ vienen aunque el cupón sea trabajo de la Fase 19:
- * sin ellos esta página mostraría un total que no cuadra con
- * `subtotal − savings + shipping` y el faltante no tendría explicación visible —
- * justo la llamada de soporte que esta fase vino a evitar. Hoy llegan `null`/`0`.
+ * `couponCode`/`couponDiscount` SÍ vienen (se declararon en la Fase 17, antes de que
+ * el checkout supiera mandar un cupón): sin ellos esta página mostraría un total que
+ * no cuadra con `subtotal − savings + shipping` y el faltante no tendría explicación
+ * visible — justo la llamada de soporte que esa fase vino a evitar. Desde la Fase 19
+ * ya pueden llegar con valor.
  */
 export const PublicOrderSchema = z.object({
   id: z.number(),
@@ -219,10 +240,14 @@ export function lookupOrderErrorMessage(error: unknown): string {
 // null en la tarifa plana de respaldo (rateId/quotationId null): en ese caso
 // solo se manda el `carrier` ("Estándar") y NUNCA quotationId/rateId, para
 // respetar el both-or-neither del backend.
+//
+// `couponCode` (Fase 19) se OMITE cuando no hay cupón aplicado: el backend lo
+// valida con `.optional()`, y una clave presente con `""` sería un 400.
 export function buildOrderPayload(
   items: CartItem[],
   customer: ShippingData,
-  selectedRate?: SelectedShippingRate | null
+  selectedRate?: SelectedShippingRate | null,
+  couponCode?: string | null
 ): CreateOrderPayload {
   const liveRate =
     selectedRate?.quotationId && selectedRate?.rateId ? selectedRate : null;
@@ -230,6 +255,7 @@ export function buildOrderPayload(
     items: mapCartItemsToOrderItems(items),
     customer,
     ...(selectedRate?.carrier ? { shippingCarrier: selectedRate.carrier } : {}),
+    ...(couponCode ? { couponCode } : {}),
     ...(liveRate
       ? { quotationId: liveRate.quotationId!, rateId: liveRate.rateId! }
       : {}),
