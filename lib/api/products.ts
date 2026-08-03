@@ -1,6 +1,7 @@
 import axios from "axios";
 import { z } from "zod";
 import { api } from "@/lib/api/client";
+import type { CatalogOrden } from "@/lib/domain/catalogFilters";
 
 // Forma pública de un producto (GET /api/products). Refleja el schema `Product`
 // del backend: NO incluye `unitCost` (dato sensible, solo en /api/admin/products).
@@ -46,11 +47,22 @@ export const ProductListResponseSchema = z.object({
 
 export type ProductsResult = z.infer<typeof ProductListResponseSchema>;
 
+// Filtros de GET /api/products. `q`/`orden`/`precioMin`/`precioMax` (Fase 18) los
+// resuelve el backend en SQL, igual que `categoria`/`talla`: `total`/`totalPages`
+// ya vienen acotados por todos ellos, así que el front NUNCA filtra ni ordena por
+// su cuenta (hacerlo rompería la paginación). Los valores se sanean antes de
+// llegar aquí con lib/domain/catalogFilters.ts.
 export interface ProductFilters {
   categoria?: string;
   talla?: number;
   page?: number;
   perPage?: number;
+  /** Busca en nombre y código; parcial y sin distinguir mayúsculas. Va tal cual: `%`/`_` son texto literal allá. */
+  q?: string;
+  orden?: CatalogOrden;
+  /** Sobre el precio de venta, inclusivo. `precioMin > precioMax` devuelve cero resultados a propósito. */
+  precioMin?: number;
+  precioMax?: number;
 }
 
 // Query key factory — drop-in ready for TanStack Query:

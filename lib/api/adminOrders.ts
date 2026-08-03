@@ -49,7 +49,17 @@ export const AdminOrderSchema = z.object({
   // Guía/rastreo Skydropx (Fase 11): la creación de la guía es asíncrona — nacen `null` y las
   // puebla el webhook `POST /api/webhooks/skydropx` cuando la paquetería procesa el envío.
   // `shipmentStatus` es el string crudo del carrier (no un enum cerrado), ver StatusBadges.tsx.
+  // `skydropxShipmentId` NO es siempre un id: puede traer los centinelas
+  // "creating" y "unreconciled:<id>" que decide el backend. Clasificarlo es
+  // trabajo de components/admin/orders/shipmentLabel.ts (Fase 16).
   skydropxShipmentId: z.string().nullable().optional(),
+  // Tarifa de Skydropx con la que se cobró el pedido (Fase 16). Vienen en la
+  // respuesta del listado desde siempre —adminGetOrders serializa el modelo
+  // Order completo—, pero Zod las descartaba por no estar declaradas. Sin las
+  // dos no hay tarifa que convertir en guía: ese pedido se cobró con la tarifa
+  // plana de respaldo y el reintento de guía responde 409.
+  skydropxQuotationId: z.string().nullable().optional(),
+  skydropxRateId: z.string().nullable().optional(),
   trackingNumber: z.string().nullable().optional(),
   trackingUrl: z.string().nullable().optional(),
   labelUrl: z.string().nullable().optional(),
@@ -152,5 +162,32 @@ export async function updateAdminOrderStatus(
   if (shippingCarrier) body.shippingCarrier = shippingCarrier;
 
   const { data } = await api.patch(`/admin/orders/${id}/status`, body);
+  return AdminOrderSchema.parse(data.order);
+}
+
+// POST /api/admin/orders/:id/shipment/retry — reintento manual de la guía de
+// Skydropx (Fase 16). La guía se genera sola al confirmarse el pago; si esa
+// única llamada falla, el pedido queda pagado y sin guía y no hay webhook que
+// llegue por una guía que nunca se creó. El backend corre además un barrido
+// automático: este endpoint adelanta ese reintento y, sobre todo, **espera el
+// resultado** para poder decir por qué no se pudo.
+//
+// 200 → la guía existe (`order.skydropxShipmentId` trae su id).
+// 502 → Skydropx volvió a fallar; se puede reintentar de inmediato.
+// 409 → cualquier duda: ya tiene guía (real o cobrada sin persistir), otra
+//       solicitud la está generando, el pedido no está pagado, está cancelado,
+//       ya se marcó como enviado/entregado, o se cobró con la tarifa plana.
+//       Cada guía se cobra, así que ante la duda el backend no genera otra.
+//
+// `force` solo viaja cuando es true (el reintento normal manda `{}`): es la
+// confirmación de "ya revisé el panel de Skydropx y no existe ninguna guía", y
+// el backend solo la acepta para el marcador "unreconciled:desconocido". Un id
+// real nunca se fuerza — esa guía existe y ya está cobrada.
+export async function retryAdminOrderShipment(
+  id: number,
+  opts?: { force?: boolean }
+): Promise<AdminOrder> {
+  const body = opts?.force ? { force: true } : {};
+  const { data } = await api.post(`/admin/orders/${id}/shipment/retry`, body);
   return AdminOrderSchema.parse(data.order);
 }

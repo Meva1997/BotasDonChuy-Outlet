@@ -17,6 +17,11 @@ const FOOTER_SECTIONS = [
     heading: "Información",
     links: [
       { label: "Sobre nosotros", href: "/nosotros" },
+      // Única entrada global al seguimiento (Fase 17). Va aquí y no en el
+      // NavHeader ni en el home porque /pedido/<token> necesita un UUID que nadie
+      // teclea: sin memoria en el navegador, el acceso útil es el enlace del
+      // correo, y el Footer es donde la gente busca las páginas de servicio.
+      { label: "Seguimiento de pedido", href: "/pedido" },
       { label: "Términos y condiciones", href: "/terminos" },
       { label: "Política de privacidad", href: "/privacidad" },
       { label: "Envíos", href: "/envios" },

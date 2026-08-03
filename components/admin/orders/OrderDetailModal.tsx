@@ -7,6 +7,7 @@ import axios from "axios";
 import {
   adminOrderKeys,
   cancelAdminOrder,
+  retryAdminOrderShipment,
   updateAdminOrderStatus,
   type AdminOrder,
 } from "@/lib/api/adminOrders";
@@ -14,6 +15,11 @@ import { adminProductKeys } from "@/lib/api/adminProducts";
 import { productKeys } from "@/lib/api/products";
 import { formatPrice } from "@/lib/utils";
 import { EASE_LUXE } from "@/lib/ui/motion";
+import {
+  canRetryShipment,
+  retryShipmentErrorMessage,
+  shipmentLabelState,
+} from "./shipmentLabel";
 import {
   OrderStatusBadge,
   PaymentStatusBadge,
@@ -27,6 +33,12 @@ interface Props {
   // devolvió la mutation (cancelación o avance de estado), para que el modal
   // siga mostrando badges frescos sin cerrarse.
   onOrderUpdated?: (order: AdminOrder) => void;
+  // Refresca el listado sin tener un pedido nuevo que mostrar. Lo usa el
+  // reintento de guía cuando FALLA: un 502 pudo dejar el pedido en
+  // `unreconciled:*` y `force` limpia el marcador antes de intentar, así que
+  // aun fallando cambió la BD y la tabla mentiría. OrdersSection lo cablea con
+  // su refresh manual, para no dispararse a sí mismo el toast del polling.
+  onRequestRefresh?: () => void;
 }
 
 const REASON_MAX = 200;
@@ -137,6 +149,7 @@ export default function OrderDetailModal({
   order,
   onClose,
   onOrderUpdated,
+  onRequestRefresh,
 }: Props) {
   const reduceMotion = useReducedMotion();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -148,6 +161,11 @@ export default function OrderDetailModal({
   const [trackingUrl, setTrackingUrl] = useState("");
   const [shippingCarrier, setShippingCarrier] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
+  // Cada guía se cobra, así que ninguna de las dos ramas del reintento dispara
+  // la petición al primer clic: las dos piden una confirmación explícita.
+  const [confirmingRetry, setConfirmingRetry] = useState<null | "normal" | "force">(
+    null
+  );
 
   const canCancel = order.status === "pending" || order.status === "paid";
   // Los estados que el backend rechaza con 409 no ofrecen acción. Un pedido ya
@@ -158,6 +176,13 @@ export default function OrderDetailModal({
     order.status === "paid" || order.status === "shipped";
   const hasShippingActions =
     canMarkShipped || canAddTracking || canMarkDelivered;
+
+  // Guía de Skydropx (Fase 16). `skydropxShipmentId` puede traer centinelas en
+  // vez de un id — ver shipmentLabel.ts.
+  const label = shipmentLabelState(order.skydropxShipmentId);
+  const canRetryLabel = canRetryShipment(order);
+  const needsLabelReview =
+    label.state === "unreconciled" || label.state === "unreconciled-unknown";
 
   const cancelMutation = useMutation({
     mutationFn: () => cancelAdminOrder(order.id, cancelReason.trim() || undefined),
@@ -194,6 +219,22 @@ export default function OrderDetailModal({
       setUrlError(null);
       onOrderUpdated?.(updated);
     },
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: (force?: boolean) =>
+      retryAdminOrderShipment(order.id, force ? { force: true } : undefined),
+    onSuccess: (updated) => {
+      // Generar la guía no toca stock (a diferencia de la cancelación): solo
+      // se invalida el listado de pedidos.
+      queryClient.invalidateQueries({ queryKey: adminOrderKeys.all });
+      setConfirmingRetry(null);
+      onOrderUpdated?.(updated);
+    },
+    // Un reintento fallido igual escribió: el 502 puede haber dejado el pedido
+    // en `unreconciled:*` y `force` limpia el marcador antes de intentar. El
+    // mensaje del backend se queda visible; la tabla sí se pone al día.
+    onError: () => onRequestRefresh?.(),
   });
 
   const openShippingAction = (action: Exclude<ShippingAction, null>) => {
@@ -390,6 +431,12 @@ export default function OrderDetailModal({
                   >
                     Descargar guía (PDF)
                   </a>
+                ) : needsLabelReview ? (
+                  // "En proceso" mentiría: hay una guía que puede estar cobrada
+                  // y necesita que alguien la revise (ver la sección de abajo).
+                  <span className="text-amber-400/80">Por revisar en Skydropx</span>
+                ) : canRetryLabel ? (
+                  <span className="text-amber-400/80">Sin guía</span>
                 ) : (
                   <span className="text-amber-100/30">
                     {canHaveLabel
@@ -550,6 +597,199 @@ export default function OrderDetailModal({
                       <span className="text-amber-100/30">—</span>
                     )}
                   </Field>
+                </div>
+              </>
+            )}
+
+            {/* Guía de Skydropx (Fase 16). La guía se genera sola al confirmarse
+                el pago; si esa única llamada falló, el pedido queda pagado y sin
+                guía y ningún webhook llega por una guía que nunca se creó. */}
+            {(canRetryLabel || needsLabelReview) && (
+              <>
+                <div className="border-t border-stone-700/40" />
+                <div>
+                  <span className={labelCls}>Guía de Skydropx</span>
+
+                  {/* Falta la guía y se puede generar. `creating` incluido: ese
+                      centinela puede ser huérfano de un proceso caído, y el
+                      backend lo libera (o responde 409 si de verdad está en
+                      vuelo). */}
+                  {canRetryLabel && (
+                    <>
+                      {confirmingRetry !== "normal" ? (
+                        <div className="space-y-2.5">
+                          <p className="text-[13px] text-amber-100/70 leading-relaxed">
+                            {label.state === "creating"
+                              ? "Este pedido está pagado y su guía quedó a medio generar. Puede estar generándose en este momento; si no, reintentarlo la crea."
+                              : "Este pedido está pagado y no tiene guía. Skydropx falló al generarla."}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              retryMutation.reset();
+                              setConfirmingRetry("normal");
+                            }}
+                            className="text-[11px] uppercase tracking-[0.2em] text-amber-400/90 border border-amber-400/40 px-4 py-2 hover:text-amber-300 hover:border-amber-400/70 transition-colors cursor-pointer"
+                          >
+                            Reintentar guía
+                          </button>
+                          {retryMutation.isError && (
+                            <p role="alert" className="text-[12px] text-red-400/90">
+                              {retryShipmentErrorMessage(retryMutation.error)}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-3 border border-amber-400/25 bg-amber-400/5 rounded-md p-4">
+                          <p className="text-[13px] text-amber-100/70 leading-relaxed">
+                            Se generará la guía con la tarifa que el cliente ya
+                            pagó. <strong className="text-amber-200">Cada guía se cobra</strong>{" "}
+                            en tu cuenta de Skydropx.
+                          </p>
+
+                          {retryMutation.isError && (
+                            <p role="alert" className="text-[12px] text-red-400/90">
+                              {retryShipmentErrorMessage(retryMutation.error)}
+                            </p>
+                          )}
+
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              disabled={retryMutation.isPending}
+                              onClick={() => retryMutation.mutate(undefined)}
+                              className="border border-amber-400/60 text-amber-400 uppercase tracking-[0.2em] text-[10px] px-5 py-2.5 hover:bg-amber-400/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {retryMutation.isPending
+                                ? "Generando…"
+                                : "Generar guía"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={retryMutation.isPending}
+                              onClick={() => {
+                                setConfirmingRetry(null);
+                                retryMutation.reset();
+                              }}
+                              className="text-[10px] uppercase tracking-widest text-amber-100/40 hover:text-amber-100/70 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              Volver
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Guía cobrada con id conocido: existe y está pagada, así que
+                      NO se ofrece reintentar (generaría una segunda). Solo se
+                      dice dónde buscarla. */}
+                  {label.state === "unreconciled" && (
+                    <div
+                      role="alert"
+                      className="flex items-start gap-2.5 rounded-md border border-amber-400/40 bg-amber-400/5 px-4 py-3"
+                    >
+                      <span aria-hidden="true" className="shrink-0 leading-none">
+                        ⚠️
+                      </span>
+                      <p className="text-[13px] leading-relaxed text-amber-100/80">
+                        La guía de este pedido{" "}
+                        <strong className="text-amber-200">ya se generó y se cobró</strong>{" "}
+                        en Skydropx (
+                        <span className="font-mono text-amber-200">
+                          {label.shipmentId}
+                        </span>
+                        ), pero no se pudo guardar aquí. Búscala con ese id en el
+                        panel de Skydropx y captura su número más abajo, al marcar
+                        el pedido como enviado. No generes otra: se cobraría dos
+                        veces.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Skydropx no respondió al crear la guía: pudo cobrarla sin
+                      dejar rastro. Nadie puede decidirlo desde aquí, así que las
+                      dos salidas son explícitas y el `force` va con su propia
+                      confirmación. */}
+                  {label.state === "unreconciled-unknown" && (
+                    <div className="space-y-3 rounded-md border border-amber-400/40 bg-amber-400/5 px-4 py-3">
+                      <div className="flex items-start gap-2.5">
+                        <span aria-hidden="true" className="shrink-0 leading-none">
+                          ⚠️
+                        </span>
+                        <p className="text-[13px] leading-relaxed text-amber-100/80">
+                          Skydropx no respondió al generar la guía de este pedido,
+                          así que{" "}
+                          <strong className="text-amber-200">
+                            pudo haberla creado y cobrado
+                          </strong>{" "}
+                          sin que quedara registrada. Búscala en el panel de
+                          Skydropx por fecha y paquetería antes de decidir.
+                        </p>
+                      </div>
+
+                      {confirmingRetry !== "force" ? (
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => openShippingAction("shipped")}
+                            className="text-[11px] uppercase tracking-[0.2em] text-amber-400/90 border border-amber-400/40 px-4 py-2 hover:text-amber-300 hover:border-amber-400/70 transition-colors cursor-pointer"
+                          >
+                            Ya la encontré — capturar guía
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              retryMutation.reset();
+                              setConfirmingRetry("force");
+                            }}
+                            className="text-[11px] uppercase tracking-[0.2em] text-red-400/80 border border-red-400/30 px-4 py-2 hover:text-red-300 hover:border-red-400/60 transition-colors cursor-pointer"
+                          >
+                            No existe — generar de todos modos
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3 border border-red-400/30 bg-red-500/5 rounded-md p-4">
+                          <p className="text-[13px] text-red-300 leading-relaxed">
+                            Confirma que revisaste el panel de Skydropx y{" "}
+                            <strong>no existe ninguna guía</strong> para este
+                            pedido. Si sí existía, se generará una segunda y se
+                            cobrarán las dos.
+                          </p>
+
+                          {retryMutation.isError && (
+                            <p role="alert" className="text-[12px] text-red-400/90">
+                              {retryShipmentErrorMessage(retryMutation.error)}
+                            </p>
+                          )}
+
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              disabled={retryMutation.isPending}
+                              onClick={() => retryMutation.mutate(true)}
+                              className="bg-red-600/80 border border-red-500/80 text-amber-50 uppercase tracking-[0.2em] text-[10px] px-5 py-2.5 hover:bg-red-600 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {retryMutation.isPending
+                                ? "Generando…"
+                                : "Ya verifiqué, generar guía"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={retryMutation.isPending}
+                              onClick={() => {
+                                setConfirmingRetry(null);
+                                retryMutation.reset();
+                              }}
+                              className="text-[10px] uppercase tracking-widest text-amber-100/40 hover:text-amber-100/70 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              Volver
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </>
             )}

@@ -18,6 +18,7 @@ export default function robots(): MetadataRoute.Robots {
         "/login",
         "/forgot-password",
         "/checkout", // flujo transaccional, no es contenido
+        "/pedido", // el token de la URL es la credencial del pedido (Fase 17)
         "/api/",
       ],
     },

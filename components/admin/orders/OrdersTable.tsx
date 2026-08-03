@@ -2,6 +2,7 @@
 
 import type { AdminOrder } from "@/lib/api/adminOrders";
 import { formatPrice } from "@/lib/utils";
+import { canRetryShipment, needsShipmentReview } from "./shipmentLabel";
 import {
   OrderStatusBadge,
   PaymentStatusBadge,
@@ -34,6 +35,41 @@ function totalPiezas(order: AdminOrder): number {
 // proceso" sería engañoso (no hay envío que generar todavía).
 function canHaveLabel(order: AdminOrder): boolean {
   return order.status !== "pending" && order.status !== "cancelled";
+}
+
+// Qué decir en la columna "Envío" cuando todavía no hay PDF que descargar.
+// "Guía en proceso" era la única respuesta y en dos casos mentía (Fase 16): un
+// pedido pagado cuya guía falló no tiene nada en proceso, y uno con guía
+// cobrada sin registrar necesita que alguien la busque en el panel de Skydropx.
+// Sin esto, los dos son invisibles desde la lista: hay que abrir pedido por
+// pedido para encontrarlos.
+function labelNote(order: AdminOrder): { text: string; muted: boolean } | null {
+  if (needsShipmentReview(order))
+    return { text: "Guía por revisar", muted: false };
+  if (canRetryShipment(order)) return { text: "Sin guía", muted: false };
+  if (canHaveLabel(order)) return { text: "Guía en proceso", muted: true };
+  return null;
+}
+
+// Las dos vistas (cards y tabla) pintan la misma nota con distinto tamaño.
+function LabelNote({
+  order,
+  className,
+}: {
+  order: AdminOrder;
+  className: string;
+}) {
+  const note = labelNote(order);
+  if (!note) return null;
+  return (
+    <span
+      className={`${className} ${
+        note.muted ? "text-amber-100/30" : "text-amber-400/80"
+      }`}
+    >
+      {note.text}
+    </span>
+  );
 }
 
 const th =
@@ -99,7 +135,7 @@ export default function OrdersTable({
               </div>
               {(order.shippingRequiresDropoff ||
                 order.labelUrl ||
-                canHaveLabel(order)) && (
+                labelNote(order)) && (
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-[10px] tracking-[0.2em] uppercase text-amber-100/30">
                     Envío
@@ -117,11 +153,10 @@ export default function OrdersTable({
                         Guía
                       </a>
                     ) : (
-                      canHaveLabel(order) && (
-                        <span className="text-[9px] tracking-[0.2em] uppercase text-amber-100/30">
-                          Guía en proceso
-                        </span>
-                      )
+                      <LabelNote
+                        order={order}
+                        className="text-[9px] tracking-[0.2em] uppercase"
+                      />
                     )}
                   </div>
                 </div>
@@ -196,10 +231,11 @@ export default function OrdersTable({
                       >
                         Descargar guía
                       </a>
-                    ) : canHaveLabel(order) ? (
-                      <span className="text-[10px] tracking-[0.15em] uppercase text-amber-100/30">
-                        Guía en proceso
-                      </span>
+                    ) : labelNote(order) ? (
+                      <LabelNote
+                        order={order}
+                        className="text-[10px] tracking-[0.15em] uppercase"
+                      />
                     ) : (
                       !order.shippingRequiresDropoff && (
                         <span className="text-amber-100/20">—</span>
