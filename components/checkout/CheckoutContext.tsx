@@ -24,6 +24,26 @@ export interface PendingOrder {
   clientSecret: string;
 }
 
+/**
+ * Cupón validado por el backend y aplicado al carrito (Fase 19).
+ *
+ * Todo sale de `POST /api/coupons/validate` salvo `checkedEmail`, que es de quién
+ * era el correo con el que se validó. Importa porque el "un uso por cliente" solo
+ * se puede verificar CON correo, y el cupón se captura en el paso 0, antes de los
+ * datos de envío: mientras `checkedEmail` no sea el del cliente confirmado, ese
+ * límite sigue sin comprobarse (ver ShippingOptions).
+ */
+export interface AppliedCoupon {
+  /** Ya normalizado por el backend (trim + MAYÚSCULAS). */
+  code: string;
+  /** Descuento en pesos calculado por el servidor. Nunca se recalcula aquí. */
+  discount: number;
+  description: string | null;
+  oncePerCustomer: boolean;
+  perCustomerChecked: boolean;
+  checkedEmail: string | null;
+}
+
 /** Copia congelada del pedido, conservada después de vaciar el carrito. */
 export interface CompletedOrder {
   /** Nº de pedido real que devuelve el backend (order.id). */
@@ -32,6 +52,14 @@ export interface CompletedOrder {
   /** Totales autoritativos recalculados por el servidor. */
   totals: CartTotals;
   customer: ShippingData;
+  /**
+   * Cupón canjeado, tal como lo congeló el backend en el pedido (Fase 19). Los
+   * `totals` de arriba YA vienen con el descuento restado (son los del servidor),
+   * así que estos dos campos son lo que permite pintar la fila y explicar el
+   * faltante en vez de dejar un total que no cuadra.
+   */
+  couponCode: string | null;
+  couponDiscount: number;
   /**
    * Credencial de la página pública de seguimiento (Fase 17). Viene en el `201` del
    * checkout, así que se puede ofrecer el enlace sin esperar el correo. `null` si
@@ -62,6 +90,10 @@ interface CheckoutContextValue {
   confirmedCustomer: ShippingData | null;
   /** Guarda la dirección validada, invalida la tarifa elegida y avanza al paso de envío. */
   confirmShipping: (customer: ShippingData) => void;
+  /** Devuelve el cupón aplicado solo si corresponde al carrito actual (misma firma). */
+  getAppliedCoupon: (signature: string) => AppliedCoupon | null;
+  /** Guarda (o limpia, con `null`) el cupón aplicado junto a la firma del carrito. */
+  setAppliedCoupon: (signature: string, coupon: AppliedCoupon | null) => void;
   /** Devuelve la tarifa elegida solo si corresponde al carrito+cliente actual (misma firma). */
   getSelectedRate: (signature: string) => SelectedShippingRate | null;
   /** Cachea (o limpia, con `null`) la tarifa de envío elegida junto a su firma. */
@@ -156,6 +188,36 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
     null
   );
 
+  // Cupón aplicado en el paso 0, cacheado por firma como la tarifa y la orden
+  // pendiente — pero con una firma deliberadamente MÁS LAXA: solo el carrito
+  // (`cartLineSignature`), sin el cliente ni la tarifa. El descuento depende
+  // únicamente de la mercancía neta, así que corregir la dirección o cambiar de
+  // paquetería no debe tirar un cupón que sigue siendo válido; lo que sí lo
+  // invalida es cambiar el carrito, porque el monto y el mínimo de compra se
+  // calcularon sobre él.
+  //
+  // Es state (no ref) porque dos pasos re-renderizan con él: el total del
+  // resumen y el del envío.
+  const [appliedCouponEntry, setAppliedCouponEntry] = useState<{
+    signature: string;
+    coupon: AppliedCoupon;
+  } | null>(null);
+
+  const getAppliedCoupon = useCallback(
+    (signature: string): AppliedCoupon | null =>
+      appliedCouponEntry && appliedCouponEntry.signature === signature
+        ? appliedCouponEntry.coupon
+        : null,
+    [appliedCouponEntry]
+  );
+
+  const setAppliedCoupon = useCallback(
+    (signature: string, coupon: AppliedCoupon | null) => {
+      setAppliedCouponEntry(coupon ? { signature, coupon } : null);
+    },
+    []
+  );
+
   // Tarifa de envío elegida en ShippingOptions, cacheada por firma
   // (carrito+cliente) con el mismo criterio que `pendingOrderRef` de abajo,
   // pero como state: a diferencia de la orden pendiente, la selección debe
@@ -224,6 +286,8 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
           total: order.total,
         },
         customer,
+        couponCode: order.couponCode ?? null,
+        couponDiscount: order.couponDiscount ?? 0,
         publicToken: order.publicToken ?? null,
       });
       clearCart();
@@ -235,6 +299,12 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
       // arrepiente y pide otro par) se leyera como un reenvío y le devolviera el
       // pedido anterior en vez de crear el nuevo.
       idempotencyKeyRef.current = null;
+      // El cupón ya se canjeó en este pedido (el backend lo apartó de forma
+      // atómica). Conservarlo dejaría el descuento pintado sobre el carrito
+      // vacío y, peor, lo reaplicaría solo si el comprador arma otro carrito
+      // idéntico — cuando muchos cupones son de un uso por cliente y ese
+      // segundo intento chocaría contra un 409 al pagar.
+      setAppliedCouponEntry(null);
       visit(3);
     },
     [visit]
@@ -254,6 +324,8 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
       setShippingDraft,
       confirmedCustomer,
       confirmShipping,
+      getAppliedCoupon,
+      setAppliedCoupon,
       getSelectedRate,
       setSelectedRate,
       getIdempotencyKey,
@@ -274,6 +346,8 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
       setShippingDraft,
       confirmedCustomer,
       confirmShipping,
+      getAppliedCoupon,
+      setAppliedCoupon,
       getSelectedRate,
       setSelectedRate,
       getIdempotencyKey,

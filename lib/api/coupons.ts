@@ -99,6 +99,21 @@ export async function validateCoupon({
 }
 
 /**
+ * True cuando el backend **rechazó el cupón** (4xx), en oposición a "no pudimos
+ * preguntar" (red caída, timeout, 5xx).
+ *
+ * La distinción decide si se bloquea el pago: un 404/409 es un veredicto y seguir
+ * adelante solo llevaría al mismo error al cobrar, pero una red intermitente no
+ * dice nada sobre el cupón y bloquear por ella le quitaría un descuento válido a
+ * alguien que sí podía pagar. Un 429 tampoco es un rechazo: es "pregunta luego".
+ */
+export function isCouponRejection(error: unknown): boolean {
+  if (!axios.isAxiosError(error) || !error.response) return false;
+  const { status } = error.response;
+  return status >= 400 && status < 500 && status !== 429;
+}
+
+/**
  * Traduce un error de `validateCoupon` en copia para el comprador.
  *
  * Prefiere SIEMPRE el `message` del backend (mismo criterio que

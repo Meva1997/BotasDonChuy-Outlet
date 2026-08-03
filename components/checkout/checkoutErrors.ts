@@ -24,6 +24,24 @@ export const RATE_EXPIRED_HINT = "cotizaciones expiran";
 // con la misma clave da el mismo 409 para siempre: hay que rotarla.
 export const IDEMPOTENCY_CONFLICT_HINT = "clave de idempotencia";
 
+// Cuarto 409 de esta ruta (Fase 19): el cupón dejó de aplicar entre el visto
+// bueno de `/coupons/validate` y el pago. `/validate` NO reserva nada —el tope
+// global y el "un uso por cliente" se re-deciden atómicamente al crear el
+// pedido—, así que este caso es esperado, no un bug: el cupón se agotó, lo usó
+// otro carrito del mismo correo, o el descuento deja el total bajo el mínimo
+// cobrable de Stripe.
+//
+// La palabra basta para distinguirlo: ninguno de los otros tres 409 de
+// `POST /api/orders` (sin stock, cotización expirada, clave de idempotencia)
+// menciona el cupón, mientras que TODOS los mensajes de cupón lo hacen —
+// incluido el del mínimo cobrable, que solo lo nombra cuando hubo descuento.
+//
+// Reintentar sin quitarlo da el mismo 409 para siempre, pero quitarlo NO se hace
+// solo: cambiaría en silencio el precio que el comprador aceptó en pantalla. Se
+// pinta el mensaje del backend (que literalmente dice "quítalo del checkout") y
+// se le ofrece el botón.
+export const COUPON_HINT = "cupón";
+
 /** True si `error` es un 409 de axios cuyo `message` contiene `hint`. */
 function isConflictWithHint(error: unknown, hint: string): boolean {
   return (
@@ -40,6 +58,10 @@ export function isRateExpiredError(error: unknown): boolean {
 
 export function isIdempotencyKeyConflict(error: unknown): boolean {
   return isConflictWithHint(error, IDEMPOTENCY_CONFLICT_HINT);
+}
+
+export function isCouponError(error: unknown): boolean {
+  return isConflictWithHint(error, COUPON_HINT);
 }
 
 /** Traduce un error del flujo de pedido/pago en un mensaje para el usuario. */

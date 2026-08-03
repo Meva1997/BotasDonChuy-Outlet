@@ -3,7 +3,11 @@
 import { useEffect, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useCartStore } from "@/store/cartStore";
-import { computeTotals, shippingSignature } from "@/lib/domain/cart";
+import {
+  cartLineSignature,
+  computeTotals,
+  shippingSignature,
+} from "@/lib/domain/cart";
 import {
   getShippingRates,
   shippingKeys,
@@ -11,6 +15,12 @@ import {
   type ShippingRate,
   type SelectedShippingRate,
 } from "@/lib/api/shipping";
+import {
+  couponKeys,
+  isCouponRejection,
+  validateCoupon,
+  validateCouponErrorMessage,
+} from "@/lib/api/coupons";
 import { formatPrice } from "@/lib/utils";
 import { useCheckout } from "./CheckoutContext";
 import { usePlaceOrder } from "./usePlaceOrder";
@@ -196,11 +206,13 @@ export default function ShippingOptions() {
   const {
     confirmedCustomer,
     goToDetails,
+    getAppliedCoupon,
+    setAppliedCoupon,
     getSelectedRate,
     setSelectedRate,
     completeOrder,
   } = useCheckout();
-  const { status, error, placeOrder } = usePlaceOrder();
+  const { status, error, couponRejected, placeOrder } = usePlaceOrder();
   const isProcessing = status === "processing";
 
   const canQuote = !!confirmedCustomer && items.length > 0;
@@ -208,6 +220,11 @@ export default function ShippingOptions() {
     ? shippingSignature(items, confirmedCustomer)
     : "";
   const selected = confirmedCustomer ? getSelectedRate(signature) : null;
+
+  // El cupón se clavea solo con el carrito (ver CheckoutContext): el descuento no
+  // depende de la dirección ni de la paquetería.
+  const couponSignature = cartLineSignature(items);
+  const coupon = getAppliedCoupon(couponSignature);
 
   // Los hooks se llaman siempre, sin condicionar por `confirmedCustomer`
   // (Rules of Hooks) — `enabled` es lo que evita el fetch cuando falta.
@@ -220,6 +237,76 @@ export default function ShippingOptions() {
       enabled: canQuote,
     }
   );
+
+  // ── Revalidación del cupón con el correo confirmado (Fase 19) ──────────────
+  //
+  // Este es el ÚNICO momento del checkout en que `/coupons/validate` puede
+  // verificar el "un uso por cliente": el cupón se captura en el paso 0, antes de
+  // que exista un correo. Avisar aquí es bastante mejor que fallar al cobrar.
+  //
+  // Es un `useQuery` (y no la mutation del paso 0) porque aquí el dato SE
+  // necesita para poder pagar y nadie hizo clic en nada: lo dispara haber llegado
+  // a este paso.
+  const needsEmailCheck =
+    !!coupon && !!confirmedCustomer && coupon.checkedEmail !== confirmedCustomer.email;
+
+  const couponCheck = useQuery({
+    queryKey:
+      coupon && confirmedCustomer
+        ? couponKeys.validate(coupon.code, items, confirmedCustomer.email)
+        : ["coupons", "validate", "idle"],
+    queryFn: () =>
+      validateCoupon({
+        code: coupon!.code,
+        items,
+        email: confirmedCustomer!.email,
+      }),
+    enabled: needsEmailCheck,
+    // Un 404/409 es un veredicto, no un fallo transitorio: reintentarlo gasta
+    // tres de las 20 consultas/min de la ruta para llegar al mismo mensaje.
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!couponCheck.data || !confirmedCustomer) return;
+    const fresh = couponCheck.data;
+    // Se re-guarda con `checkedEmail` para que esto no vuelva a dispararse, y
+    // con el `discount` recién devuelto: el carrito no cambió, así que debería
+    // ser el mismo, pero el monto que se muestra siempre es el último que dijo
+    // el servidor y no una copia local que podría quedarse atrás.
+    if (
+      coupon &&
+      (coupon.checkedEmail !== confirmedCustomer.email ||
+        coupon.discount !== fresh.discount)
+    ) {
+      setAppliedCoupon(couponSignature, {
+        code: fresh.code,
+        discount: fresh.discount,
+        description: fresh.description,
+        oncePerCustomer: fresh.oncePerCustomer,
+        perCustomerChecked: fresh.perCustomerChecked,
+        checkedEmail: confirmedCustomer.email,
+      });
+    }
+  }, [
+    couponCheck.data,
+    confirmedCustomer,
+    coupon,
+    couponSignature,
+    setAppliedCoupon,
+  ]);
+
+  // Rechazo del backend (4xx): el cupón ya no aplica y pagar solo llevaría al
+  // mismo error. Un fallo de red o un 429 NO bloquean: no dicen nada sobre el
+  // cupón, y quitarle un descuento válido a quien sí podía pagar es peor.
+  //
+  // El `!!coupon` no es defensivo: al quitar el cupón la query se deshabilita
+  // pero TanStack Query CONSERVA el error de la última corrida, así que sin este
+  // guard el botón "Quitar cupón y continuar" dejaría el pago bloqueado para
+  // siempre — justo la salida que ese botón existe para dar.
+  const couponBlocked = !!coupon && isCouponRejection(couponCheck.error);
+
+  const removeCoupon = () => setAppliedCoupon(couponSignature, null);
 
   // Reconcilia la selección con la cotización VIGENTE cada vez que llegan
   // tarifas nuevas (primer fetch, refetch tras expirar, o re-cotización por
@@ -271,18 +358,23 @@ export default function ShippingOptions() {
   }
 
   const base = computeTotals(items); // solo se usan subtotal/savings de aquí
+  // Invariante: `total = subtotal − savings − couponDiscount + shipping`. El
+  // descuento se aplica sobre la mercancía neta y NUNCA sobre el envío, igual que
+  // en el backend y en el correo de confirmación. El monto sale de /validate: no
+  // se recalcula aquí.
+  const couponDiscount = coupon?.discount ?? 0;
   const totals = selected
     ? {
         subtotal: base.subtotal,
         savings: base.savings,
         shipping: selected.total,
-        total: base.subtotal - base.savings + selected.total,
+        total: base.subtotal - base.savings - couponDiscount + selected.total,
       }
     : null;
 
   const onSubmit = () => {
-    if (!selected) return;
-    placeOrder(items, confirmedCustomer, selected, (order) =>
+    if (!selected || couponBlocked) return;
+    placeOrder(items, confirmedCustomer, selected, coupon?.code ?? null, (order) =>
       completeOrder(confirmedCustomer, order)
     );
   };
@@ -387,26 +479,67 @@ export default function ShippingOptions() {
         <h3 className="font-serif text-lg text-amber-50">Tu pedido</h3>
 
         {totals ? (
-          <OrderTotals totals={totals} />
+          <OrderTotals
+            totals={totals}
+            discount={
+              coupon ? { code: coupon.code, amount: coupon.discount } : undefined
+            }
+          />
         ) : (
           <p className="text-xs text-amber-100/50 leading-relaxed">
             Elige una opción de envío para ver el total.
           </p>
         )}
 
-        {error && (
-          <p
+        {/* El cupón dejó de aplicar al verificarlo con el correo confirmado. El
+            `message` del backend va verbatim (dice la causa exacta) y el botón
+            existe porque quitar el cupón solo cambiaría en silencio el precio
+            que el comprador ya aceptó. */}
+        {couponBlocked && (
+          <div
             role="alert"
-            className="text-[12px] leading-relaxed text-red-400/90 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2"
+            className="space-y-2.5 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2.5"
           >
-            {error}
-          </p>
+            <p className="text-[12px] leading-relaxed text-red-400/90 wrap-break-word">
+              {validateCouponErrorMessage(couponCheck.error)}
+            </p>
+            <button
+              type="button"
+              onClick={removeCoupon}
+              className="text-[10px] tracking-[0.2em] uppercase text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+            >
+              Quitar cupón y continuar
+            </button>
+          </div>
+        )}
+
+        {error && (
+          <div
+            role="alert"
+            className="space-y-2.5 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2"
+          >
+            <p className="text-[12px] leading-relaxed text-red-400/90 wrap-break-word">
+              {error}
+            </p>
+            {/* El cupón se agotó (o lo usó otro carrito del mismo correo) entre
+                el visto bueno y el pago: /validate no reserva nada. Reintentar
+                con el mismo cupón da el mismo 409 para siempre. */}
+            {couponRejected && coupon && (
+              <button
+                type="button"
+                onClick={removeCoupon}
+                className="text-[10px] tracking-[0.2em] uppercase text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+              >
+                Quitar cupón y reintentar
+              </button>
+            )}
+          </div>
         )}
 
         <button
           type="button"
           onClick={onSubmit}
-          disabled={!selected || isProcessing}
+          disabled={!selected || isProcessing || couponBlocked}
           className="btn-shimmer w-full rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)] cursor-pointer disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isProcessing && (
