@@ -16,7 +16,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **sileo** — toast notifications (admin panel only)
 - **pnpm** as package manager
 
-> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). Specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen; see that folder's `README.md` for the layout — plus five pure modules: `lib/domain/__tests__/idempotency.test.ts`, `lib/domain/__tests__/publicOrderToken.test.ts`, `components/checkout/__tests__/checkoutErrors.test.ts`, `components/admin/orders/__tests__/shipmentLabel.test.ts` and `components/pedido/__tests__/orderTimeline.test.ts`.
+> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). Specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen; see that folder's `README.md` for the layout — plus seven pure modules: `lib/domain/__tests__/idempotency.test.ts`, `lib/domain/__tests__/publicOrderToken.test.ts`, `lib/domain/__tests__/catalogFilters.test.ts`, `components/checkout/__tests__/checkoutErrors.test.ts`, `components/admin/orders/__tests__/shipmentLabel.test.ts`, `components/admin/coupons/__tests__/couponStatus.test.ts` and `components/pedido/__tests__/orderTimeline.test.ts`.
 
 ## Commands
 
@@ -72,9 +72,12 @@ components/
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
   nosotros/       # AboutUs — static "About Us" page
   auth/           # AuthShell, LoginForm, ForgotPasswordForm (+ CodeInput/ResetCodeForm/NewPasswordForm), AdminGuard
-  admin/          # Sidebar, types.ts + sections/ (Marca, Productos, Importar, Pedidos, Datos, Reportes, Configuración)
+  admin/          # Sidebar, types.ts + sections/ (Marca, Productos, Importar, Cupones, Pedidos,
+                  #   Datos, Reportes, Configuración)
                   #   orders/ — orders table, pagination, detail modal (cancel/refund, manual
                   #   shipped/delivered, Skydropx label retry) + shipmentLabel.ts (pure, with specs)
+                  #   coupons/ — coupons table, form, status badge + couponStatus.ts (pure, with
+                  #   specs: derived state, labels, and the store-timezone date helper)
                   #   data/ — chart/table subcomponents (recharts)
                   #   reportes/ — SalesReport (historical) + ReplenishmentReport (forecast)
                   #   import/ — Excel import review screen: pure modules (types, rowInput, importReducer,
@@ -95,6 +98,7 @@ schemas/
   checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list
   auth.ts         # zod loginSchema + forgotPasswordSchema + resetPasswordSchema
   users.ts        # zod createUserSchema + updateAccountSchema (shared password complexity rules)
+  coupons.ts      # zod coupon form schema (mirrors the backend's cross-field rules) + payload mapping
 store/
   cartStore.ts    # Zustand cart store with localStorage persistence
   authStore.ts    # Zustand auth store (token + user) — admin session, persisted
@@ -186,11 +190,12 @@ Shipping is quoted **live** against Skydropx from checkout step 3 (see above) �
 
 ## Admin panel
 
-`/admin` has seven sections (`components/admin/sections/`), all connected to the real backend:
+`/admin` has eight sections (`components/admin/sections/`), all connected to the real backend:
 
 - **Marca** — brand identity/copy editor (autosaved).
 - **Productos** — catalog CRUD, including a Cloudinary-backed image gallery (up to 3 images per product).
 - **Importar** — bulk Excel import/restock: upload → preview (no writes) → review/edit → commit. Restock only ever adds stock and can't be undone from the app, so the review screen enforces several invariants (rows that already wrote lock for the session, dependent rows across the same file get flagged, etc.) — see `CLAUDE.md`'s "Importación por Excel" for the full list.
+- **Cupones** — discount coupons: the only way to run a promotion without repricing the catalog product by product (which is permanent). Table with value, validity window, usage against the global cap and derived status (`couponStatus.ts`, pure, with specs), plus a create/edit form. "Cancelar" is `active: false`, not a delete — the history of what was sold with the coupon is kept, and it can be reactivated. Deleting is the backend's call: a coupon that orders already used gets deactivated instead, and the notice says which of the two happened.
 - **Pedidos** — paginated order listing with a detail modal (includes cost/margin, admin-only). From the modal the owner can cancel/refund an order, and move it forward to shipped/delivered by hand — capturing the tracking number, URL and carrier when the order never went through Skydropx (a flat-rate order gets no label, so no webhook ever advances it).
 - **Datos** — KPIs, revenue chart, inventory and recent-sales tables (7/30/90-day windows).
 - **Reportes** — monthly sales history feeding an auto-scaling replenishment forecast (simple average → weighted+trend → Holt exponential smoothing, depending on history depth); both export to CSV.

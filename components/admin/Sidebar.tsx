@@ -12,6 +12,7 @@ const NAV_ITEMS: { id: AdminSection; label: string }[] = [
   { id: "reportes", label: "Reportes" },
   { id: "productos", label: "Productos" },
   { id: "importar", label: "Importar" },
+  { id: "cupones", label: "Cupones" },
   { id: "marca", label: "Marca" },
   { id: "configuracion", label: "Configuración" },
 ];
