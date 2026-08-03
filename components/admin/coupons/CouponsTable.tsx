@@ -1,5 +1,6 @@
 "use client";
 
+import { Pencil, RotateCcw, Trash2, XCircle } from "lucide-react";
 import type { AdminCoupon } from "@/lib/api/adminCoupons";
 import CouponStatusBadge from "./CouponStatusBadge";
 import {
@@ -64,9 +65,11 @@ function RowActions({
       <button
         type="button"
         onClick={() => onEdit(coupon)}
-        className="text-[10px] uppercase tracking-widest text-amber-100/40 hover:text-amber-400 transition-colors cursor-pointer"
+        aria-label="Editar cupón"
+        title="Editar"
+        className="text-amber-100/40 hover:text-blue-400 transition-colors cursor-pointer"
       >
-        Editar
+        <Pencil className="size-4" aria-hidden="true" />
       </button>
       {/* Cancelar = PUT { active: false }. No borra: el histórico de lo que se
           vendió con el cupón se conserva y se puede reactivar. */}
@@ -74,16 +77,24 @@ function RowActions({
         type="button"
         disabled={isBusy}
         onClick={() => onToggleActive(coupon)}
-        className="text-[10px] uppercase tracking-widest text-amber-100/40 hover:text-amber-400 transition-colors cursor-pointer disabled:opacity-50"
+        aria-label={coupon.active ? "Cancelar cupón" : "Reactivar cupón"}
+        title={coupon.active ? "Cancelar" : "Reactivar"}
+        className="text-amber-100/40 hover:text-amber-400 transition-colors cursor-pointer disabled:opacity-50"
       >
-        {coupon.active ? "Cancelar" : "Reactivar"}
+        {coupon.active ? (
+          <XCircle className="size-4" aria-hidden="true" />
+        ) : (
+          <RotateCcw className="size-4" aria-hidden="true" />
+        )}
       </button>
       <button
         type="button"
         onClick={() => onAskDelete(coupon.id)}
-        className="text-[10px] uppercase tracking-widest text-amber-100/40 hover:text-red-400 transition-colors cursor-pointer"
+        aria-label="Eliminar cupón"
+        title="Eliminar"
+        className="text-amber-100/40 hover:text-red-400 transition-colors cursor-pointer"
       >
-        Eliminar
+        <Trash2 className="size-4" aria-hidden="true" />
       </button>
     </span>
   );
@@ -142,7 +153,7 @@ export default function CouponsTable(props: CouponsTableProps) {
             {coupons.map((coupon) => (
               <tr key={coupon.id} className="border-b border-amber-400/10">
                 <td className={td}>
-                  <span className="text-amber-50 font-medium tracking-[0.1em]">
+                  <span className="text-amber-50 font-medium tracking-widest">
                     {coupon.code}
                   </span>
                   {coupon.description && (
@@ -189,7 +200,7 @@ export default function CouponsTable(props: CouponsTableProps) {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-amber-50 font-medium tracking-[0.1em] break-all">
+                <p className="text-amber-50 font-medium tracking-widest break-all">
                   {coupon.code}
                 </p>
                 <p className="text-amber-100/50 text-xs mt-1">

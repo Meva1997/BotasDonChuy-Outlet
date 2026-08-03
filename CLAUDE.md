@@ -361,7 +361,12 @@ components/
                   #     contrato NO acepta `null` en maxDiscount/minSubtotal/maxRedemptions/
                   #     startsAt/expiresAt, así que la clave simplemente no viaja y el valor
                   #     guardado se queda. Decirlo es mejor que dejar creer que se borró; la salida
-                  #     es desactivar el cupón y crear otro, igual que con un código mal escrito
+                  #     es desactivar el cupón y crear otro, igual que con un código mal escrito.
+                  #     Bajo "Mínimo de compra" muestra el rango de precios (min/max/promedio,
+                  #     `salePrice`) del catálogo COMPRABLE (visible + stock > 0) vía un `useQuery`
+                  #     sobre `adminProductKeys.all` (comparte cache con ProductSection, sin fetch
+                  #     extra si esa pestaña ya se visitó): sin esa referencia, el dueño está
+                  #     adivinando un mínimo en pesos sin memorizar el precio de cada pieza
                   #   data/ — subcomponentes de gráficas y tablas (recharts) + types.ts (contratos de datos del admin, también consumidos por lib/api/dashboard.ts, lib/api/reports.ts y reportes/)
                   #   reportes/ — SalesReport (histórico por mes) y ReplenishmentReport (forecast + pedido sugerido). YA conectados vía lib/api/reports (GET /api/admin/reports/*)
 lib/

@@ -2,12 +2,15 @@
 
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
 import type { AdminCoupon } from "@/lib/api/adminCoupons";
+import { adminProductKeys, getAdminProducts } from "@/lib/api/adminProducts";
 import {
   couponFormSchema,
   emptyCouponForm,
   type CouponFormData,
 } from "@/schemas/coupons";
+import { formatPrice } from "@/lib/utils";
 import { LABEL_BASE, inputCls, FieldError } from "../config/formUi";
 import { storeDayISO } from "./couponStatus";
 
@@ -89,6 +92,31 @@ export default function CouponForm({
           saved[field] !== "" && String(current[field] ?? "").trim() === ""
       ).map(([, label]) => label)
     : [];
+
+  // Rango de precios del catálogo, para no adivinar el mínimo de compra a
+  // ciegas: el dueño no memoriza el precio de cada pieza, y sin esta
+  // referencia un "$500" es un tiro al aire (¿excluye la mitad del outlet o
+  // casi nada?). Comparte cache con ProductSection (misma queryKey, sin
+  // fetch extra si ya se visitó esa pestaña). Solo cuenta lo comprable
+  // (visible + con stock): un producto agotado u oculto no es lo que el
+  // cliente va a ver en el checkout.
+  const { data: products } = useQuery({
+    queryKey: adminProductKeys.all,
+    queryFn: getAdminProducts,
+  });
+  const purchasablePrices = (products ?? [])
+    .filter((p) => p.visible && p.stock > 0)
+    .map((p) => p.salePrice);
+  const priceRange =
+    purchasablePrices.length > 0
+      ? {
+          min: Math.min(...purchasablePrices),
+          max: Math.max(...purchasablePrices),
+          avg:
+            purchasablePrices.reduce((sum, price) => sum + price, 0) /
+            purchasablePrices.length,
+        }
+      : null;
 
   return (
     <form
@@ -202,6 +230,13 @@ export default function CouponForm({
           <p className="mt-1.5 text-[11px] text-amber-100/30">
             Opcional. Se compara contra el precio outlet, no contra el original.
           </p>
+          {priceRange && (
+            <p className="mt-1 text-[11px] text-amber-100/40">
+              Catálogo hoy: de {formatPrice(priceRange.min)} a{" "}
+              {formatPrice(priceRange.max)} (promedio{" "}
+              {formatPrice(priceRange.avg)}).
+            </p>
+          )}
         </div>
 
         <div>

@@ -85,15 +85,6 @@ export default function CouponField() {
                   {applied.description}
                 </p>
               )}
-              {/* El "un uso por cliente" solo se puede verificar con correo, y
-                  aquí todavía no lo hay. Decirlo evita que el 409 del pago
-                  parezca un error de la tienda. */}
-              {applied.oncePerCustomer && !applied.perCustomerChecked && (
-                <p className="text-[11px] text-amber-100/40 mt-1 leading-relaxed">
-                  Es de un solo uso por cliente: lo verificamos cuando nos des tu
-                  correo.
-                </p>
-              )}
             </div>
           </div>
           <button
