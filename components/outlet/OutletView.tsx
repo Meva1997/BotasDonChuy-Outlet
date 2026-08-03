@@ -15,6 +15,15 @@ import {
   type ProductFilters,
 } from "@/lib/api/products";
 import { categoryPlural } from "@/lib/domain/categories";
+import {
+  hasActiveFilters,
+  isInvertedPriceRange,
+  parseOrdenParam,
+  parsePageParam,
+  parsePriceParam,
+  parseSearchParam,
+  parseTallaParam,
+} from "@/lib/domain/catalogFilters";
 
 const TRUST_SIGNALS = [
   "Piezas únicas · sin reposición",
@@ -34,14 +43,30 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
 
   const categoria =
     defaultCategoria ?? searchParams.get("categoria") ?? undefined;
-  const talla = searchParams.get("talla")
-    ? Number(searchParams.get("talla"))
-    : undefined;
-  const page = searchParams.get("pagina")
-    ? Number(searchParams.get("pagina"))
-    : 1;
+  const talla = parseTallaParam(searchParams.get("talla"));
+  const page = parsePageParam(searchParams.get("pagina"));
+  const orden = parseOrdenParam(searchParams.get("orden"));
 
-  const filters: ProductFilters = { categoria, talla, page };
+  // Texto crudo de los tres campos con debounce: es lo que se pinta en los
+  // inputs. La versión saneada (la de abajo) es la que viaja al backend y al
+  // queryKey — ver el comentario de `qText` en OutletFilters.
+  const qText = searchParams.get("q") ?? "";
+  const precioMinText = searchParams.get("precioMin") ?? "";
+  const precioMaxText = searchParams.get("precioMax") ?? "";
+
+  const q = parseSearchParam(qText);
+  const precioMin = parsePriceParam(precioMinText);
+  const precioMax = parsePriceParam(precioMaxText);
+
+  const filters: ProductFilters = {
+    categoria,
+    talla,
+    page,
+    q,
+    orden,
+    precioMin,
+    precioMax,
+  };
 
   const {
     data: result,
@@ -59,23 +84,91 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
     refetchOnWindowFocus: true,
   });
 
-  const updateParam = useCallback(
-    (key: string, value: string | null) => {
+  // Escribe varios params de una sola vez (los tres campos con debounce se
+  // comitean juntos, no en tres navegaciones encadenadas).
+  //
+  // `replace` es para esos campos de texto: con `push`, cada commit del debounce
+  // dejaría una entrada de historial y el botón «atrás» haría recorrer «b», «bo»,
+  // «bot»… Los controles que son un clic deliberado (categoría, talla, orden,
+  // página) sí empujan historial.
+  const updateParams = useCallback(
+    (entries: Record<string, string | null>, opts?: { replace?: boolean }) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (value === null) {
-        params.delete(key);
-      } else {
-        params.set(key, value);
+      for (const [key, value] of Object.entries(entries)) {
+        if (value === null) {
+          params.delete(key);
+        } else {
+          params.set(key, value);
+        }
       }
-      if (key !== "pagina") params.delete("pagina");
-      router.push(`?${params.toString()}`);
+      // Cambiar cualquier filtro vuelve a la página 1: la página actual puede no
+      // existir en el resultado nuevo y el backend la clampea sin avisar.
+      if (!("pagina" in entries)) params.delete("pagina");
+      const query = params.toString();
+      const url = query ? `?${query}` : window.location.pathname;
+      if (opts?.replace) {
+        router.replace(url);
+      } else {
+        router.push(url);
+      }
     },
     [router, searchParams],
   );
 
+  const updateParam = useCallback(
+    (key: string, value: string | null) => updateParams({ [key]: value }),
+    [updateParams],
+  );
+
+  // Los tres campos de texto llegan crudos desde el input: "" significa quitar
+  // el param. No se recortan ni se validan aquí — el saneo pasa al leer la URL,
+  // y trimear en el commit borraría el espacio que el comprador acaba de teclear
+  // en medio de una frase.
+  const commitTextFilters = useCallback(
+    (next: { q: string; precioMin: string; precioMax: string }) => {
+      updateParams(
+        {
+          q: next.q || null,
+          precioMin: next.precioMin || null,
+          precioMax: next.precioMax || null,
+        },
+        { replace: true },
+      );
+    },
+    [updateParams],
+  );
+
+  const filtersActive = hasActiveFilters(
+    { categoria, talla, q, orden, precioMin, precioMax },
+    { ignoreCategoria: !!defaultCategoria },
+  );
+
+  // En /botas, /sombreros y /ropa la categoría la fija la ruta: limpiar no debe
+  // sacar al comprador de la sección en la que entró.
+  const clearFilters = useCallback(() => {
+    updateParams({
+      q: null,
+      orden: null,
+      precioMin: null,
+      precioMax: null,
+      talla: null,
+      pagina: null,
+      ...(defaultCategoria ? {} : { categoria: null }),
+    });
+  }, [updateParams, defaultCategoria]);
+
   const title = categoria
     ? `Outlet — ${categoryPlural(categoria)}`
     : "Outlet — todo";
+
+  // Mensaje del estado vacío con filtros puestos. El rango invertido va primero
+  // porque es la causa que el comprador no vería de otro modo: el backend no lo
+  // corrige, devuelve cero resultados a propósito.
+  const emptyMessage = isInvertedPriceRange(precioMin, precioMax)
+    ? "El precio mínimo es mayor que el máximo, así que ninguna pieza puede entrar en ese rango."
+    : q
+      ? `Ninguna pieza coincide con «${q}» y los filtros que elegiste. Prueba con otro término o quita algún filtro.`
+      : "Ninguna pieza coincide con los filtros que elegiste. Prueba quitando alguno.";
 
   return (
     <section className="min-h-dvh bg-tobacco-950 px-6 md:p-10 py-6 md:py-12 my-4 md:my-20">
@@ -124,10 +217,22 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
         showTalla={!!categoria}
         selectedCategoria={categoria}
         selectedTalla={talla}
+        selectedOrden={orden}
+        qText={qText}
+        precioMinText={precioMinText}
+        precioMaxText={precioMaxText}
+        invertedPriceRange={isInvertedPriceRange(precioMin, precioMax)}
+        // availableSizes ya viene acotado por `q` y por el rango de precio desde
+        // el backend (pero no por la talla elegida): nunca ofrece una talla que
+        // daría cero resultados, así que aquí no se filtra nada.
         availableSizes={result?.availableSizes ?? []}
         total={result?.total}
+        filtersActive={filtersActive}
         onCategoriaChange={(val) => updateParam("categoria", val)}
         onTallaChange={(val) => updateParam("talla", val)}
+        onOrdenChange={(val) => updateParam("orden", val)}
+        onTextFiltersCommit={commitTextFilters}
+        onClearFilters={clearFilters}
       />
 
       {/* Loading state — only on first load, keepPreviousData covers subsequent fetches */}
@@ -167,14 +272,33 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
       {result && (
         <>
           {result.products.length === 0 ? (
-            <EmptyState
-              title="Sin productos disponibles"
-              message="No hay piezas en esta categoría por el momento. Vuelve pronto — el inventario cambia constantemente."
-            />
+            filtersActive ? (
+              // Con filtros activos el catálogo sí tiene piezas: lo que falla es
+              // la búsqueda. Sin la salida a limpiar, el comprador se queda
+              // atorado en un outlet aparentemente vacío.
+              <EmptyState
+                stamp="Sin resultados"
+                title="No encontramos nada"
+                message={emptyMessage}
+                action={
+                  <button
+                    onClick={clearFilters}
+                    className="mt-2 font-sans text-xs tracking-[0.2em] uppercase text-amber-400 border border-amber-400/40 px-5 py-2.5 hover:bg-amber-400/10 transition-colors duration-200"
+                  >
+                    Limpiar filtros
+                  </button>
+                }
+              />
+            ) : (
+              <EmptyState
+                title="Sin productos disponibles"
+                message="No hay piezas en esta categoría por el momento. Vuelve pronto — el inventario cambia constantemente."
+              />
+            )
           ) : (
             <AnimatePresence mode="wait">
               <motion.div
-                key={`${categoria ?? "all"}-${talla ?? "all"}-${page}`}
+                key={`${categoria ?? "all"}-${talla ?? "all"}-${q ?? ""}-${orden ?? ""}-${precioMin ?? ""}-${precioMax ?? ""}-${page}`}
                 initial="hidden"
                 animate="visible"
                 variants={staggerContainer}

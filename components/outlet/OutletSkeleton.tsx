@@ -25,6 +25,16 @@ export default function OutletSkeleton() {
         <div className="h-3 w-64 max-w-full bg-amber-100/5 rounded-sm animate-pulse" />
       </div>
 
+      {/* Barra de filtros (buscador + selects + rango de precio). Va aquí porque
+          es alta: sin reservarle el espacio, aparecería de golpe al hidratar y
+          empujaría la rejilla hacia abajo — justo lo que este esqueleto evita. */}
+      <div className="mb-10 max-w-7xl mx-auto flex flex-wrap items-center gap-3">
+        <div className="h-[42px] flex-1 min-w-[12rem] sm:min-w-[18rem] bg-stone-900/60 border border-amber-400/10 rounded-sm animate-pulse" />
+        <div className="h-[42px] w-44 bg-stone-900/60 border border-amber-400/10 rounded-sm animate-pulse" />
+        <div className="h-[42px] w-44 bg-stone-900/60 border border-amber-400/10 rounded-sm animate-pulse" />
+        <div className="h-[42px] w-52 bg-stone-900/60 border border-amber-400/10 rounded-sm animate-pulse" />
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 auto-rows-fr gap-5 max-w-6xl mx-auto">
         {Array.from({ length: 8 }).map((_, i) => (
           <div

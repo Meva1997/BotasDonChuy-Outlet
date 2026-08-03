@@ -11,7 +11,7 @@ migración.
 
 **Cómo está organizado este documento:** primero el mapa de endpoints ↔ consumidor
 (la vista por API), después las fases en **orden numérico estricto**, separadas en
-[completadas](#fases-completadas-) (1–17) y [pendientes](#fases-pendientes-) (18–20).
+[completadas](#fases-completadas-) (1–17) y [pendientes](#fases-pendientes-) (18–21).
 Las fases están numeradas por el orden en que se hicieron/se van a hacer, no por
 dependencia: esa se lee en la columna "Depende de" del índice.
 
@@ -98,9 +98,10 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | 15 | `Idempotency-Key` en el checkout | ✅ | 2 |
 | 16 | Admin: reintentar la guía de Skydropx | ✅ | 11 |
 | 17 | Página pública de seguimiento del pedido *(cara al cliente)* | ✅ | 2 |
-| 18 | Outlet: buscador, orden y rango de precio *(cara al cliente)* | 🔴 | — |
+| 18 | Outlet: buscador, orden y rango de precio *(cara al cliente)* | ✅ | — |
 | 19 | Cupones: campo en el checkout + sección en el panel | 🔴 | 2 |
 | 20 | Admin: gastos y suscripciones | 🔴 | — |
+| 21 | Seguimiento: el correo manda el código, no el enlace *(cara al cliente, solo copia)* | 🔴 | 17 |
 
 ---
 
@@ -950,31 +951,14 @@ estados por WhatsApp.
 
 ---
 
-# Fases pendientes 🔴
+## Fase 18 — Outlet: buscador, orden y rango de precio ✅ *(cara al cliente, no al admin)*
 
-Van en orden numérico, pero **no hay que hacerlas en ese orden**: son independientes entre sí.
-Cómo priorizarlas:
-
-- **Fase 18** es puramente aditiva: los params nuevos son opcionales y el catálogo sigue
-  funcionando igual sin mandarlos, así que se puede cablear por partes (primero el buscador,
-  después el orden y el rango) sin romper nada.
-- **Fase 19** es la única pendiente que **no** es aditiva: aunque nadie mande un `couponCode`, el
-  invariante de totales ya cambió a `subtotal − savings − couponDiscount + shipping` y
-  `couponDiscount` llega en `0`. Mientras no se cablee, la aritmética actual sigue dando el mismo
-  resultado; el riesgo aparece el día que se cree el primer cupón y algún componente siga sumando
-  con cuatro términos. Conviene hacer primero los puntos 1, 2 y 7 (contratos + fila de descuento)
-  aunque el campo del checkout llegue después.
-
----
-
-## Fase 18 — Outlet: buscador, orden y rango de precio 🔴 *(cara al cliente, no al admin)*
-
-> **Contexto.** El outlet solo sabe filtrar por categoría y talla, y siempre lista en el mismo
+> **Contexto.** El outlet solo sabía filtrar por categoría y talla, y siempre listaba en el mismo
 > orden. Con la importación masiva por Excel el catálogo crece en lotes de **hasta 500 filas por
-> archivo**, así que un listado de 9 productos por página sin buscador deja de ser navegable
-> rápido: el comprador no encuentra lo que ya está en la tienda. El backend agregó `q`, `orden`,
+> archivo**, así que un listado de 9 productos por página sin buscador dejaba de ser navegable
+> rápido: el comprador no encontraba lo que ya está en la tienda. El backend agregó `q`, `orden`,
 > `precioMin` y `precioMax` (Fase N.1 del `../backend/roadmap-operacion-y-negocio.md`) y **los
-> resuelve todos en SQL**; el front todavía manda solo `categoria`/`talla`/`page`.
+> resuelve todos en SQL**; el front mandaba solo `categoria`/`talla`/`page`.
 
 **Lo que el backend ya hace (referencia — no tocar):**
 - Cuatro query params nuevos en `GET /api/products`: **`q`** (busca en nombre y código, parcial y
@@ -995,23 +979,68 @@ Cómo priorizarlas:
   hay que filtrarlo del lado del cliente**.
 
 **Trabajo del frontend:**
-1. [ ] **Contrato:** extender `ProductFilters` en `lib/api/products.ts` con
-   `q?`/`orden?`/`precioMin?`/`precioMax?`. `productKeys.filtered` ya serializa el objeto completo,
-   así que la cache de TanStack Query se separa sola sin tocar las keys.
-2. [ ] **Buscador:** input de texto con **debounce (~300 ms)** en `OutletFilters.tsx`, sincronizado
-   a la URL con el helper `updateParam()` que ya existe en `OutletView.tsx`.
-3. [ ] **Selector de orden:** `<select>` con las tres opciones + el default, reusando el
-   `SELECT_CLASS` y el `ARROW_STYLE` que ya comparten los dos selects actuales.
-4. [ ] **Rango de precio:** dos campos (o un slider) que manden `precioMin`/`precioMax`.
-5. [ ] **Resetear `pagina` a 1 al cambiar cualquiera de los filtros nuevos** — `updateParam()` ya lo
-   hace para los existentes; hay que incluir los nuevos o se cae en la página clampeada.
-6. [ ] **Estado vacío:** "no encontramos nada para «…»" con una salida clara a limpiar filtros. Hoy
-   no existe: sin búsqueda, el catálogo nunca daba cero resultados.
-7. [ ] **Nada de filtrado en cliente.** Todo lo resuelve el backend en SQL y `total`/`totalPages` ya
-   reflejan los filtros; duplicarlo en el front rompería la paginación.
+1. [x] **Contrato:** `ProductFilters` (`lib/api/products.ts`) gana `q?`/`orden?`/`precioMin?`/
+   `precioMax?`. `productKeys` no se tocó: `filtered` ya serializa el objeto completo y el hash de
+   TanStack Query descarta las claves `undefined`, así que la caché se separa sola sin fragmentarse.
+2. [x] **Buscador:** `<input type="search">` con **debounce de 300 ms** en `OutletFilters.tsx`,
+   sincronizado a la URL vía el nuevo `updateParams()` de `OutletView.tsx`.
+3. [x] **Selector de orden:** `<select>` con las tres opciones + el default ("Orden del catálogo"),
+   reusando `SELECT_CLASS`/`ARROW_STYLE` y poblado desde `ORDEN_OPTIONS`.
+4. [x] **Rango de precio:** dos campos `type="text" inputMode="decimal"` (mín/máx), con el mismo
+   debounce. **No `type="number"`** — devuelve `""` ante basura, se traga la coma decimal y cambia
+   el valor al hacer scroll (mismo razonamiento que las celdas numéricas de la importación).
+5. [x] **`pagina` se resetea a 1** con cualquier filtro nuevo: la regla vive en `updateParams()`
+   (borra `pagina` salvo que la propia llamada la incluya), así que cubre los cuatro params de un
+   golpe.
+6. [x] **Estado vacío partido en dos:** sin filtros, el de siempre ("Agotado"); con filtros,
+   "No encontramos nada" + el término entre «» + botón **"Limpiar filtros"** (que conserva la
+   categoría en `/botas`, `/sombreros` y `/ropa`, donde la fija la ruta). `EmptyState` ganó dos
+   props opcionales (`stamp`, `action`) para eso.
+7. [x] **Nada de filtrado en cliente.** Todo lo resuelve el backend en SQL, `total`/`totalPages` ya
+   reflejan los filtros y `availableSizes` llega acotado.
+
+**Detalles de implementación que conviene no re-descubrir:**
+- **`lib/domain/catalogFilters.ts`** (módulo puro, con specs) es la única puerta de lectura de la
+  URL. No existe para validar —el backend ignora la basura en silencio— sino porque lo que se lee
+  de la URL entra al `queryKey`: sin colapsar los valores inválidos a `undefined`, `?orden=basura`
+  y `?orden=otracosa` serían dos entradas de caché con el mismo catálogo dentro.
+- **Se llama `catalogFilters` y no `outletFilters`**: un `outletFilters.ts` junto a
+  `OutletFilters.tsx` deja el import a merced del orden de extensiones del bundler en un FS
+  insensible a mayúsculas (macOS) — la misma trampa que separa `OrderStatusTimeline.tsx` de
+  `orderTimeline.ts`.
+- **A los inputs se les pasa el texto CRUDO de la URL, no el valor saneado.** Con el saneado,
+  teclear algo que todavía no es un precio lo borraría solo mientras se escribe (el saneo lo vuelve
+  `undefined` → input vacío). Un valor basura en la URL es inofensivo: el backend lo ignora.
+- **Los campos con debounce comitean con `router.replace`, no `push`.** Con `push`, cada commit
+  dejaría una entrada de historial y «atrás» haría recorrer «b», «bo», «bot»…. Categoría, talla,
+  orden y página sí empujan: son un clic deliberado.
+- **La re-siembra del borrador ante un cambio de URL va EN EL RENDER, no en un `useEffect`.** Es el
+  ajuste de estado por cambio de prop que documenta React; con efecto, el linter lo marca como
+  render en cascada y se pinta un frame con el borrador viejo.
+- **`precioMin > precioMax` se avisa, no se corrige** (aviso bajo los campos + mensaje propio en el
+  estado vacío). El backend responde 200 con cero resultados a propósito.
+- `OutletSkeleton` ganó una barra de filtros esqueleto: la barra real es bastante más alta que
+  antes y sin reservarle el espacio empujaba la rejilla al hidratar.
 
 **Salida:** el comprador encuentra por nombre o código y ordena por precio, con el catálogo
 creciendo por importación masiva.
+
+---
+
+# Fases pendientes 🔴
+
+Van en orden numérico, pero **no hay que hacerlas en ese orden**: son independientes entre sí.
+Cómo priorizarlas:
+
+- **Fase 19** es la única pendiente que **no** es aditiva: aunque nadie mande un `couponCode`, el
+  invariante de totales ya cambió a `subtotal − savings − couponDiscount + shipping` y
+  `couponDiscount` llega en `0`. Mientras no se cablee, la aritmética actual sigue dando el mismo
+  resultado; el riesgo aparece el día que se cree el primer cupón y algún componente siga sumando
+  con cuatro términos. Conviene hacer primero los puntos 1, 2 y 7 (contratos + fila de descuento)
+  aunque el campo del checkout llegue después.
+- **Fase 21** es la más barata de todas y la única que ya está *rota de cara al cliente*: el correo
+  cambió y manda el código, mientras el formulario sigue pidiendo el enlace. No toca lógica ni
+  contratos, solo copia, así que conviene despacharla antes que 19/20.
 
 ---
 
@@ -1162,6 +1191,53 @@ el descuento calculado y canjeado por el backend.
 
 **Salida:** el dueño ve cuánto tiene que apartar de sus ventas cada mes, con qué se le va, cuándo se
 le cobra y qué subió de precio — y la GANANCIA NETA del panel deja de restar un número inventado.
+
+---
+
+## Fase 21 — Seguimiento: el correo manda el código, no el enlace 🔴 *(cara al cliente, solo copia)*
+
+> **Contexto.** `OrderLookupForm` pide **pegar el enlace del correo**, pero en el correo ese enlace
+> solo existía dentro del `href` del botón "Ver el estado de mi pedido": para obtenerlo había que
+> saber hacer "copiar dirección del enlace" en el cliente de correo. El propio dueño no supo dónde
+> encontrarlo. El backend cambió el correo (ver *Emails / Resend* en `../backend/CLAUDE.md`): ahora,
+> además del botón, imprime **el código a la vista, en su caja, listo para seleccionar y copiar** —
+> que es justo lo que `GET /api/orders/lookup/:token` recibe. Falta que el formulario deje de pedir
+> un enlace y pida el código.
+>
+> De paso, los correos al cliente **dejaron de llevar el número de pedido** (`#20`) en el cuerpo y en
+> el asunto: `Order.id` es el consecutivo global de la tienda, no del comprador, y no le sirve de
+> referencia porque la consulta pública es por token. Si alguna pantalla del front le muestra al
+> comprador un `#<id>` como si fuera *su* número de pedido, conviene revisarla con el mismo criterio
+> (el `id` sigue viniendo en `PublicOrderSchema`; esto es una decisión de copia, no de contrato).
+
+**Lo que el backend ya hace (referencia — no tocar):**
+- **Ningún endpoint, parámetro ni forma de respuesta cambió.** Esta fase es 100% copia del front, así
+  que no hay fila nueva en el mapa de endpoints.
+- El correo (confirmación y "va en camino", que comparten plantilla) lleva **las dos rutas de
+  entrada**: el botón a `/pedido/<token>` y el **código** (`publicToken`) impreso aparte, en una caja
+  monoespaciada con `word-break`, acompañado de la URL de `/pedido` como destino donde pegarlo.
+- Esa caja **no es un `<a>`** a propósito: si lo fuera, tocarla en el móvil navegaría en vez de
+  permitir seleccionar el texto.
+- El `404` de un token inexistente, alterado o mal formado sigue siendo **el mismo con el mismo
+  `message`**, que es la copia de UI (regla anti-enumeración, sin cambios).
+
+**Trabajo del frontend (esta fase):**
+1. [ ] **`components/pedido/OrderLookupForm.tsx` — solo copia:** el label "Enlace de tu pedido" pasa a
+   "Código de tu pedido"; el texto de ayuda "Pega aquí el enlace que te enviamos por correo…" pasa a
+   pedir el **código**; el placeholder deja de ser `https://…/pedido/…` y pasa a ser un UUID de
+   ejemplo; y el error "Ese enlace no parece completo. Cópialo entero desde el correo de
+   confirmación." se reescribe en los mismos términos ("Ese código no parece completo…").
+2. [ ] **`inputMode="url"` → `inputMode="text"`**, para que el móvil deje de ofrecer el teclado de URL
+   en un campo que ya no recibe URLs.
+3. [ ] **`lib/domain/publicOrderToken.ts` NO se toca.** `extractPublicOrderToken` ya acepta las dos
+   formas (UUID pelón y URL completa) y **tiene que seguir aceptando las dos**: los correos ya
+   enviados llevan solo el link, y quien lo pegue desde uno viejo debe seguir entrando. Sus specs
+   quedan igual.
+4. [ ] **Nada de validar existencia en el cliente.** La frontera no se mueve: el front solo opina
+   sobre la *forma* del código; si el pedido existe lo dice el `404` del backend, con su copia.
+
+**Salida:** el comprador encuentra su código en el correo sin buscarlo, y el formulario le pide
+exactamente eso.
 
 ---
 

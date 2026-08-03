@@ -57,7 +57,8 @@ app/              # Next.js App Router
   forgot-password/      # Forgot password wizard
 components/
   home/           # Page sections (NavHeader, Hero, Footer, CategoryCard)
-  outlet/         # OutletView — product listing with category filters; OutletSkeleton (Suspense fallback)
+  outlet/         # OutletView — product listing; OutletFilters (search, category, size, sort,
+                  #   price range — all resolved server-side); OutletSkeleton (Suspense fallback)
   seo/            # JsonLd — renders a schema.org block into the HTML
   product/        # ProductInfo — product detail panel (gallery, size picker, add-to-cart)
   ui/             # Global primitives: Cart, CartProvider, FormControls, ImageCarousel
@@ -108,7 +109,7 @@ See `CLAUDE.md` for the full architecture reference (file-by-file responsibiliti
 | Route | Description |
 |-------|-------------|
 | `/` | Home page |
-| `/outlet` | Product listing with category filters |
+| `/outlet` | Product listing — search by name/code, category, size, sort and price range (every filter resolved by the backend in SQL) |
 | `/botas`, `/sombreros`, `/ropa` | Category listings (same `OutletView`, scoped) |
 | `/outlet/[slug]/producto` | Product detail |
 | `/checkout` | 4-step checkout wizard (incl. live shipping-rate selection) |
