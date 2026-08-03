@@ -313,10 +313,17 @@ export default function OrderDetailModal({
   // La guía solo puede existir una vez pagado el pedido; antes de eso "en
   // proceso" sería engañoso (no hay envío que generar todavía).
   const canHaveLabel = order.status !== "pending" && order.status !== "cancelled";
-  const totalMargin = order.items.reduce(
-    (s, i) => s + (i.unitSalePrice - i.unitCost) * i.quantity,
-    0
-  );
+  // El descuento del cupón (Fase 19) sale del bolsillo de la tienda, no del
+  // proveedor: es una reducción real del ingreso de esta venta, así que se resta
+  // del margen. Dejarlo fuera haría que una promoción se viera igual de rentable
+  // que una venta a precio de lista, que es justo lo que el dueño necesita poder
+  // comparar antes de repetirla.
+  const couponDiscount = order.couponDiscount ?? 0;
+  const totalMargin =
+    order.items.reduce(
+      (s, i) => s + (i.unitSalePrice - i.unitCost) * i.quantity,
+      0
+    ) - couponDiscount;
 
   return (
     <>
@@ -550,8 +557,15 @@ export default function OrderDetailModal({
 
             <div className="border-t border-stone-700/40" />
 
-            {/* Totales */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-5">
+            {/* Totales. El invariante es
+                `total = subtotal − savings − couponDiscount + shipping`, así que
+                la fila del cupón va ANTES de Envío: el descuento se aplica sobre
+                la mercancía neta y nunca toca el envío. */}
+            <div
+              className={`grid grid-cols-2 sm:grid-cols-3 gap-5 ${
+                couponDiscount > 0 ? "lg:grid-cols-6" : "lg:grid-cols-5"
+              }`}
+            >
               <Field label="Subtotal">
                 <span className="tabular-nums">
                   {formatPrice(order.subtotal)}
@@ -562,6 +576,13 @@ export default function OrderDetailModal({
                   {formatPrice(order.savings)}
                 </span>
               </Field>
+              {couponDiscount > 0 && (
+                <Field label={order.couponCode ? `Cupón ${order.couponCode}` : "Cupón"}>
+                  <span className="tabular-nums text-emerald-400">
+                    −{formatPrice(couponDiscount)}
+                  </span>
+                </Field>
+              )}
               <Field label="Envío">
                 <span className="tabular-nums">
                   {formatPrice(order.shipping)}
