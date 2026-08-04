@@ -28,8 +28,11 @@ export default function Success() {
     );
   }
 
-  const { orderId, items, totals, customer, couponCode, couponDiscount, publicToken } =
-    order;
+  // `orderId` se queda en el snapshot pero NO se pinta: `Order.id` es el consecutivo
+  // global de la tienda, no la referencia del comprador —la consulta pública es por
+  // token—, y los correos ya dejaron de mandarlo por lo mismo. Su referencia es el CTA
+  // de abajo, que lleva a /pedido/<publicToken>.
+  const { items, totals, customer, couponCode, couponDiscount, publicToken } = order;
 
   return (
     <div className="w-full max-w-lg mx-auto space-y-10 animate-fade-in-up">
@@ -58,9 +61,6 @@ export default function Success() {
         <h2 className="relative font-serif text-3xl text-amber-50">
           ¡Pago completado!
         </h2>
-        <p className="relative text-[11px] tracking-[0.25em] uppercase text-amber-400/90">
-          Pedido #{orderId}
-        </p>
         <p className="relative text-amber-100/60 text-sm leading-relaxed max-w-md mx-auto wrap-break-word">
           Gracias por tu compra, {customer.fullName.split(" ")[0]}. Tu pedido ya
           está en preparación y enviaremos la confirmación a{" "}

@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Check, Clock, ExternalLink, XCircle } from "lucide-react";
 import { fadeUp } from "@/lib/ui/motion";
 import { shipmentStatusLabel } from "@/lib/domain/shipmentStatus";
+import { isOwnOrderTrackingUrl } from "@/lib/domain/publicOrderToken";
 import type { PublicOrder } from "@/lib/api/orders";
 import { orderTimeline } from "./orderTimeline";
 
@@ -107,8 +108,18 @@ export default function OrderStatusTimeline({ order }: { order: PublicOrder }) {
 
   const { steps, currentIndex } = timeline;
   const current = steps[currentIndex];
+
+  // "Rastrear" promete el sitio de la paquetería. Un `trackingUrl` que apunta a
+  // nuestra propia página de seguimiento (dato viejo del formulario manual, ver
+  // `isOwnOrderTrackingUrl`) devolvería al comprador a donde ya está, así que no
+  // se pinta el botón: sin él, la guía y la paquetería siguen siendo lo que
+  // necesita para buscar por su cuenta.
+  const carrierTrackingUrl =
+    order.trackingUrl && !isOwnOrderTrackingUrl(order.trackingUrl)
+      ? order.trackingUrl
+      : null;
   const hasShippingInfo =
-    !!order.shippingCarrier || !!order.trackingNumber || !!order.trackingUrl;
+    !!order.shippingCarrier || !!order.trackingNumber || !!carrierTrackingUrl;
 
   return (
     <motion.div
@@ -212,9 +223,9 @@ export default function OrderStatusTimeline({ order }: { order: PublicOrder }) {
               </span>
             </p>
           )}
-          {order.trackingUrl && (
+          {carrierTrackingUrl && (
             <a
-              href={order.trackingUrl}
+              href={carrierTrackingUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 text-xs tracking-[0.2em] uppercase rounded-md border border-amber-500/40 text-amber-400 px-6 py-3 hover:bg-amber-500/10 transition-colors"

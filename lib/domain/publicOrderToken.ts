@@ -44,3 +44,27 @@ export function extractPublicOrderToken(input: string): string | null {
   const match = trimmed.match(EMBEDDED_TOKEN);
   return match ? match[0].toLowerCase() : null;
 }
+
+// `/pedido/<token>` (con o sin barra final, query o hash) o un `/pedido` pelón.
+// Exige el UUID justo para NO cazar el `/pedido/12345` que bien podría tener una
+// paquetería mexicana: lo que se descarta tiene que ser inequívocamente nuestro.
+// Sin host: en desarrollo el enlace es `localhost:3000` y en producción el dominio
+// real, y el dato pudo guardarse desde cualquiera de los dos.
+const OWN_TRACKING_URL =
+  /\/pedido(\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?\/?([?#]|$)/i;
+
+/**
+ * True si `value` apunta a **nuestra propia** página de seguimiento en vez de a
+ * la de la paquetería.
+ *
+ * `Order.trackingUrl` es el `tracking_url_provider` que manda el webhook de
+ * Skydropx — el sitio del carrier— pero hasta la Fase 21 el formulario manual del
+ * panel dejaba capturarlo a mano, y ahí se pegó el enlace de `/pedido/<token>`.
+ * Con ese dato guardado, el botón "Rastrear" de la página pública manda al
+ * comprador a la misma página en la que ya está, y encima disfrazado de enlace
+ * externo. El formulario ya no captura el campo, así que esto solo cubre lo que
+ * quedó en la BD (o lo que alguien vuelva a meter a mano).
+ */
+export function isOwnOrderTrackingUrl(value: string): boolean {
+  return OWN_TRACKING_URL.test(value.trim());
+}
