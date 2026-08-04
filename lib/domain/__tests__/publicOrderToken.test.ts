@@ -1,5 +1,6 @@
 import {
   extractPublicOrderToken,
+  isOwnOrderTrackingUrl,
   isPublicOrderToken,
 } from "../publicOrderToken";
 
@@ -84,5 +85,54 @@ describe("extractPublicOrderToken", () => {
     expect(extractPublicOrderToken("mi pedido de botas")).toBeNull();
     expect(extractPublicOrderToken("https://botasdonchuy.com/pedido/")).toBeNull();
     expect(extractPublicOrderToken("#128")).toBeNull();
+  });
+});
+
+// El botón "Rastrear" de /pedido/<token> promete el sitio de la paquetería. Lo
+// que este helper decide es qué NO es la paquetería: si se cuela nuestro propio
+// enlace, el comprador acaba en la página en la que ya estaba.
+describe("isOwnOrderTrackingUrl", () => {
+  it("reconoce nuestro enlace de seguimiento en desarrollo y en producción", () => {
+    expect(isOwnOrderTrackingUrl(`http://localhost:3000/pedido/${TOKEN}`)).toBe(
+      true
+    );
+    expect(
+      isOwnOrderTrackingUrl(`https://botasdonchuy.com/pedido/${TOKEN}`)
+    ).toBe(true);
+  });
+
+  it("tolera barra final, query y hash", () => {
+    expect(isOwnOrderTrackingUrl(`https://x.com/pedido/${TOKEN}/`)).toBe(true);
+    expect(isOwnOrderTrackingUrl(`https://x.com/pedido/${TOKEN}?ref=mail`)).toBe(
+      true
+    );
+    expect(isOwnOrderTrackingUrl(`https://x.com/pedido/${TOKEN}#resumen`)).toBe(
+      true
+    );
+  });
+
+  it("también reconoce el buscador sin token", () => {
+    expect(isOwnOrderTrackingUrl("https://botasdonchuy.com/pedido")).toBe(true);
+    expect(isOwnOrderTrackingUrl("https://botasdonchuy.com/pedido/")).toBe(true);
+  });
+
+  it("deja pasar el rastreo real de una paquetería", () => {
+    expect(
+      isOwnOrderTrackingUrl("https://www.estafeta.com/rastreo/42342309487238409")
+    ).toBe(false);
+    expect(
+      isOwnOrderTrackingUrl("https://www.fedex.com/fedextrack/?trknbr=7712")
+    ).toBe(false);
+  });
+
+  // El caso que obliga a exigir el UUID: una paquetería mexicana bien puede tener
+  // "pedido" en la ruta, y descartar su enlace dejaría al comprador sin rastreo.
+  it("no confunde un /pedido/<folio> ajeno con el nuestro", () => {
+    expect(isOwnOrderTrackingUrl("https://carrier.com/pedido/12345")).toBe(
+      false
+    );
+    expect(isOwnOrderTrackingUrl("https://carrier.com/pedido/ABC-99/estado")).toBe(
+      false
+    );
   });
 });

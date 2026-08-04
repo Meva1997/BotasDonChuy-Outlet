@@ -101,7 +101,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | 18 | Outlet: buscador, orden y rango de precio *(cara al cliente)* | ✅ | — |
 | 19 | Cupones: campo en el checkout + sección en el panel | ✅ | 2 |
 | 20 | Admin: gastos y suscripciones | ✅ | — |
-| 21 | Seguimiento: el correo manda el código, no el enlace *(cara al cliente, solo copia)* | 🔴 | 17 |
+| 21 | Seguimiento: el correo manda el código, no el enlace *(cara al cliente, solo copia)* | ✅ | 17 |
 
 ---
 
@@ -1243,23 +1243,15 @@ le cobra y qué subió de precio — y la GANANCIA NETA del panel deja de restar
 
 ---
 
-# Fases pendientes 🔴
+## Fase 21 — Seguimiento: el correo manda el código, no el enlace ✅ *(cara al cliente, solo copia)*
 
-Queda una sola, y es la más barata de todas: **la Fase 21** es la única que ya está *rota de cara
-al cliente* — el correo cambió y manda el código, mientras el formulario sigue pidiendo el enlace.
-No toca lógica ni contratos, solo copia.
-
----
-
-## Fase 21 — Seguimiento: el correo manda el código, no el enlace 🔴 *(cara al cliente, solo copia)*
-
-> **Contexto.** `OrderLookupForm` pide **pegar el enlace del correo**, pero en el correo ese enlace
+> **Contexto.** `OrderLookupForm` pedía **pegar el enlace del correo**, pero en el correo ese enlace
 > solo existía dentro del `href` del botón "Ver el estado de mi pedido": para obtenerlo había que
 > saber hacer "copiar dirección del enlace" en el cliente de correo. El propio dueño no supo dónde
 > encontrarlo. El backend cambió el correo (ver *Emails / Resend* en `../backend/CLAUDE.md`): ahora,
 > además del botón, imprime **el código a la vista, en su caja, listo para seleccionar y copiar** —
-> que es justo lo que `GET /api/orders/lookup/:token` recibe. Falta que el formulario deje de pedir
-> un enlace y pida el código.
+> que es justo lo que `GET /api/orders/lookup/:token` recibe. Faltaba que el formulario dejara de
+> pedir un enlace y pidiera el código.
 >
 > De paso, los correos al cliente **dejaron de llevar el número de pedido** (`#20`) en el cuerpo y en
 > el asunto: `Order.id` es el consecutivo global de la tienda, no del comprador, y no le sirve de
@@ -1279,22 +1271,36 @@ No toca lógica ni contratos, solo copia.
   `message`**, que es la copia de UI (regla anti-enumeración, sin cambios).
 
 **Trabajo del frontend (esta fase):**
-1. [ ] **`components/pedido/OrderLookupForm.tsx` — solo copia:** el label "Enlace de tu pedido" pasa a
+1. [x] **`components/pedido/OrderLookupForm.tsx` — solo copia:** el label "Enlace de tu pedido" pasa a
    "Código de tu pedido"; el texto de ayuda "Pega aquí el enlace que te enviamos por correo…" pasa a
-   pedir el **código**; el placeholder deja de ser `https://…/pedido/…` y pasa a ser un UUID de
-   ejemplo; y el error "Ese enlace no parece completo. Cópialo entero desde el correo de
+   pedir el **código de seguimiento** (la misma expresión que usa el correo, para que el comprador
+   reconozca lo que tiene enfrente); el placeholder deja de ser `https://…/pedido/…` y pasa a ser un
+   UUID de ejemplo; y el error "Ese enlace no parece completo. Cópialo entero desde el correo de
    confirmación." se reescribe en los mismos términos ("Ese código no parece completo…").
-2. [ ] **`inputMode="url"` → `inputMode="text"`**, para que el móvil deje de ofrecer el teclado de URL
+2. [x] **`inputMode="url"` → `inputMode="text"`**, para que el móvil deje de ofrecer el teclado de URL
    en un campo que ya no recibe URLs.
-3. [ ] **`lib/domain/publicOrderToken.ts` NO se toca.** `extractPublicOrderToken` ya acepta las dos
+3. [x] **`lib/domain/publicOrderToken.ts` NO se tocó.** `extractPublicOrderToken` ya acepta las dos
    formas (UUID pelón y URL completa) y **tiene que seguir aceptando las dos**: los correos ya
    enviados llevan solo el link, y quien lo pegue desde uno viejo debe seguir entrando. Sus specs
-   quedan igual.
-4. [ ] **Nada de validar existencia en el cliente.** La frontera no se mueve: el front solo opina
+   quedaron igual.
+4. [x] **Nada de validar existencia en el cliente.** La frontera no se movió: el front solo opina
    sobre la *forma* del código; si el pedido existe lo dice el `404` del backend, con su copia.
+5. [x] **El `#<id>` desapareció de las dos pantallas del comprador** (la nota del contexto):
+   `components/checkout/Success.tsx` (el campo `orderId` sigue en el snapshot del `CheckoutContext`,
+   solo dejó de pintarse — la referencia del comprador es el CTA a `/pedido/<publicToken>`) y
+   `components/pedido/OrderTracking.tsx` (el eyebrow pasó a "Seguimiento de pedido", para no dejar un
+   hueco en el header). Los `#<id>` del **panel** (`OrdersTable`, `OrderDetailModal`,
+   `OrdersSection`) no se tocaron: ahí el consecutivo global sí es la referencia correcta y es la
+   única forma que tiene el dueño de nombrar un pedido.
 
 **Salida:** el comprador encuentra su código en el correo sin buscarlo, y el formulario le pide
 exactamente eso.
+
+---
+
+# Fases pendientes
+
+**Ninguna.** La 21 era la última del roadmap.
 
 ---
 
@@ -1311,5 +1317,4 @@ exactamente eso.
   vivo `POST /api/shipping/rates`, guía automática al pagar y webhook de estado —
   `../backend/roadmaps-completados/roadmap-skydropx.md` Fases 8.1–8.6). El checkout ya cotiza en vivo (ver "Shipping"
   en `CLAUDE.md`) y el panel de pedidos ya muestra guía/rastreo (**Fase 11** ✅).
-- **Prioridad de lo pendiente:** ver la introducción de [Fases pendientes](#fases-pendientes-)
-  — queda solo la 21 (solo copia, pero ya está rota de cara al cliente).
+- **Prioridad de lo pendiente:** ya no queda ninguna fase del roadmap — la 21 fue la última.

@@ -104,8 +104,13 @@ export default function OrderTracking({ token }: { token: string }) {
     <div className="max-w-2xl mx-auto px-6 py-14 sm:py-20 space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1.5">
+          {/* Aquí NO va el `#<id>` del pedido: es el consecutivo global de la
+              tienda, no la referencia del comprador (la consulta pública es por
+              token, justamente porque un id secuencial sería enumerable). En el
+              panel sí se muestra — ahí es la forma en que el dueño nombra un
+              pedido. */}
           <p className="text-[10px] tracking-[0.25em] uppercase text-amber-400/90">
-            Pedido #{order.id}
+            Seguimiento de pedido
           </p>
           <h1 className="font-serif text-3xl text-amber-50">
             Hola, {order.customerName.split(" ")[0]}

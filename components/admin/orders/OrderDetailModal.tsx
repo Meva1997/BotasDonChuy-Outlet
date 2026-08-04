@@ -45,7 +45,6 @@ const REASON_MAX = 200;
 // Mismos topes que `orderStatusUpdateSchema` en el backend: recortar aquí evita
 // un 400 por longitud que el dueño solo descubriría al enviar.
 const TRACKING_NUMBER_MAX = 100;
-const TRACKING_URL_MAX = 500;
 const CARRIER_MAX = 80;
 
 // 409 (estado no cancelable) y 502 (falló el reembolso en Stripe) traen un
@@ -89,18 +88,6 @@ function statusUpdateErrorMessage(error: unknown): string {
     if (error.response?.status === 404) return "El pedido ya no existe.";
   }
   return "No pudimos actualizar el pedido. Inténtalo de nuevo.";
-}
-
-// El backend valida `trackingUrl` con `z.url()`. Comprobarlo antes de mandar
-// ahorra el único 400 que el dueño puede prevenir tecleando; el resto de las
-// reglas se dejan al backend, cuyo mensaje ya dice qué campo corregir.
-function isValidTrackingUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 function formatDate(iso?: string): string | null {
@@ -158,9 +145,7 @@ export default function OrderDetailModal({
   const [cancelReason, setCancelReason] = useState("");
   const [shippingAction, setShippingAction] = useState<ShippingAction>(null);
   const [trackingNumber, setTrackingNumber] = useState("");
-  const [trackingUrl, setTrackingUrl] = useState("");
   const [shippingCarrier, setShippingCarrier] = useState("");
-  const [urlError, setUrlError] = useState<string | null>(null);
   // Cada guía se cobra, así que ninguna de las dos ramas del reintento dispara
   // la petición al primer clic: las dos piden una confirmación explícita.
   const [confirmingRetry, setConfirmingRetry] = useState<null | "normal" | "force">(
@@ -204,9 +189,10 @@ export default function OrderDetailModal({
         status,
         // La confirmación de "entregado" no captura guía: mandar los campos del
         // otro formulario ahí escribiría datos que el dueño no está viendo.
-        ...(status === "shipped"
-          ? { trackingNumber, trackingUrl, shippingCarrier }
-          : {}),
+        // `trackingUrl` no viaja nunca desde aquí (ver el formulario abajo): la
+        // clave ausente significa "no toques ese campo", así que la URL que haya
+        // puesto el webhook de Skydropx se conserva intacta.
+        ...(status === "shipped" ? { trackingNumber, shippingCarrier } : {}),
       }),
     onSuccess: (updated) => {
       // Avanzar el estado no toca stock (a diferencia de la cancelación), así
@@ -214,9 +200,7 @@ export default function OrderDetailModal({
       queryClient.invalidateQueries({ queryKey: adminOrderKeys.all });
       setShippingAction(null);
       setTrackingNumber("");
-      setTrackingUrl("");
       setShippingCarrier("");
-      setUrlError(null);
       onOrderUpdated?.(updated);
     },
   });
@@ -239,27 +223,14 @@ export default function OrderDetailModal({
 
   const openShippingAction = (action: Exclude<ShippingAction, null>) => {
     statusMutation.reset();
-    setUrlError(null);
     setShippingAction(action);
   };
 
   const closeShippingForm = () => {
     setShippingAction(null);
     setTrackingNumber("");
-    setTrackingUrl("");
     setShippingCarrier("");
-    setUrlError(null);
     statusMutation.reset();
-  };
-
-  const submitShipped = () => {
-    const url = trackingUrl.trim();
-    if (url && !isValidTrackingUrl(url)) {
-      setUrlError("Escribe una URL completa, por ejemplo https://…");
-      return;
-    }
-    setUrlError(null);
-    statusMutation.mutate("shipped");
   };
 
   // Escape para cerrar + trampa de foco (Tab/Shift+Tab cicla dentro del diálogo)
@@ -859,8 +830,8 @@ export default function OrderDetailModal({
                     <div className="space-y-3 border border-amber-400/25 bg-amber-400/5 rounded-md p-4">
                       <p className="text-[13px] text-amber-100/70 leading-relaxed">
                         {canAddTracking
-                          ? "Captura la guía de este pedido. Los tres campos son opcionales."
-                          : "El pedido quedará marcado como enviado. Los tres campos son opcionales."}
+                          ? "Captura la guía de este pedido. Los dos campos son opcionales."
+                          : "El pedido quedará marcado como enviado. Los dos campos son opcionales."}
                       </p>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -912,44 +883,24 @@ export default function OrderDetailModal({
                           />
                         </div>
 
-                        <div className="sm:col-span-2">
-                          <label htmlFor="tracking-url" className={labelCls}>
-                            URL de rastreo
-                          </label>
-                          <input
-                            id="tracking-url"
-                            type="url"
-                            inputMode="url"
-                            value={trackingUrl}
-                            onChange={(e) => {
-                              setTrackingUrl(
-                                e.target.value.slice(0, TRACKING_URL_MAX)
-                              );
-                              setUrlError(null);
-                            }}
-                            maxLength={TRACKING_URL_MAX}
-                            aria-invalid={urlError ? true : undefined}
-                            placeholder="https://…"
-                            className="w-full bg-stone-900 border border-amber-400/20 text-amber-50 text-sm font-sans px-3 py-2 rounded hover:border-amber-400/40 focus-visible:border-amber-400/60 transition-colors"
-                          />
-                          {urlError && (
-                            <p
-                              role="alert"
-                              className="text-[12px] text-red-400/90 mt-1"
-                            >
-                              {urlError}
-                            </p>
-                          )}
-                        </div>
                       </div>
 
+                      {/* Aquí NO se captura la "URL de rastreo": ese campo es el
+                          enlace de la PAQUETERÍA y lo llena solo el webhook de
+                          Skydropx —este formulario existe justo para los pedidos
+                          que nunca pasaron por Skydropx, donde no hay tal URL—.
+                          El seguimiento propio de la tienda ya viaja en TODOS los
+                          correos (botón "Ver el estado de mi pedido" + el código
+                          copiable, ver `sendOrderEmail` en el backend), así que
+                          pegarlo aquí solo duplicaría el botón. Al no mandar la
+                          clave, la URL que sí haya puesto el webhook se conserva. */}
                       {/* El correo de rastreo sale exactamente una vez por
                           pedido (guard atómico en el backend, compartido con el
                           webhook de Skydropx): capturar la guía es visible para
                           el cliente y no se puede deshacer. */}
                       <p className="text-[12px] leading-relaxed text-amber-100/60">
                         {trackingNumber.trim()
-                          ? "Se enviará al cliente el correo de rastreo con esta guía. No se puede deshacer."
+                          ? "Se enviará al cliente el correo de rastreo con esta guía, junto con su código de seguimiento. No se puede deshacer."
                           : "Sin número de guía no se manda el correo de rastreo; puedes agregarla después."}
                       </p>
 
@@ -963,7 +914,7 @@ export default function OrderDetailModal({
                         <button
                           type="button"
                           disabled={statusMutation.isPending}
-                          onClick={submitShipped}
+                          onClick={() => statusMutation.mutate("shipped")}
                           className="border border-amber-400/60 text-amber-400 uppercase tracking-[0.2em] text-[10px] px-5 py-2.5 hover:bg-amber-400/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {statusMutation.isPending
