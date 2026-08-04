@@ -2,6 +2,7 @@ import type {
   Expense,
   ExpenseCategory,
   ExpenseFrequency,
+  ExpenseSummary,
 } from "@/lib/api/adminExpenses";
 
 /**
@@ -98,6 +99,55 @@ export function dayLabelShort(iso: string | null): string {
     month: "short",
     timeZone: "UTC",
   });
+}
+
+/**
+ * Rango de la ventana de "próximos cargos": `"3 ago – 1 oct"`, de hoy a
+ * `hoy + (days - 1)`. Existe porque "próximos 60 días" por sí solo no dice qué
+ * fechas cubre — y es lo que explica que un gasto mensual (un cobro por mes)
+ * aparezca DOS veces en la lista cuando la ventana cruza dos fechas de cobro:
+ * no es el mismo cargo repetido, son dos cargos reales en dos fechas distintas.
+ */
+export function upcomingWindowRangeLabel(days: number, today: string = todayISO()): string {
+  const start = new Date(`${today}T00:00:00Z`);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + Math.max(days - 1, 0));
+  const format = (date: Date) =>
+    date.toLocaleDateString("es-MX", {
+      day: "numeric",
+      month: "short",
+      timeZone: "UTC",
+    });
+  return `${format(start)} – ${format(end)}`;
+}
+
+export interface UpcomingChargeGroup {
+  date: string;
+  charges: ExpenseSummary["upcomingCharges"];
+  total: number;
+}
+
+/**
+ * Agrupa `upcomingCharges` (ya viene ordenado por fecha del backend) en un bloque por
+ * día de calendario. Existe para que la tarjeta de resumen pinte "una fila por fecha"
+ * en vez de "una fila por cargo" — con varias suscripciones cayendo el mismo día, listar
+ * cada una suelta con su fecha repetida es lo que hoy hace ilegible el panel. Depende del
+ * orden que ya garantiza `buildSummary` en el backend: no reordena nada aquí.
+ */
+export function groupUpcomingChargesByDate(
+  charges: ExpenseSummary["upcomingCharges"]
+): UpcomingChargeGroup[] {
+  const groups: UpcomingChargeGroup[] = [];
+  for (const charge of charges) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === charge.date) {
+      last.charges.push(charge);
+      last.total += charge.amount;
+    } else {
+      groups.push({ date: charge.date, charges: [charge], total: charge.amount });
+    }
+  }
+  return groups;
 }
 
 /** `"2026-08"` → `"ago 26"`, para las etiquetas del eje X de la gráfica. */

@@ -1,12 +1,14 @@
-import type { Expense } from "@/lib/api/adminExpenses";
+import type { Expense, ExpenseSummary } from "@/lib/api/adminExpenses";
 import {
   countsTowardRunRate,
   dayLabel,
   dayLabelShort,
   expenseState,
+  groupUpcomingChargesByDate,
   monthLabelShort,
   priceChangeDelta,
   priceChangeLabel,
+  upcomingWindowRangeLabel,
 } from "../expenseStatus";
 
 // "¿este gasto sigue costando?" sale de cuatro campos (active, startsAt, endsAt y
@@ -184,5 +186,74 @@ describe("etiquetas de fecha", () => {
   it("monthLabelShort formatea el mes del historial", () => {
     expect(monthLabelShort("2026-08")).toBe("ago 26");
     expect(monthLabelShort("basura")).toBe("basura");
+  });
+
+  it("upcomingWindowRangeLabel cubre de hoy a hoy + (days - 1)", () => {
+    // 60 días desde el 3 de agosto de 2026 terminan el 1 de octubre — es lo que
+    // explica que un gasto mensual (un cobro por mes) aparezca dos veces en la
+    // ventana: hay dos fechas de cobro reales dentro de ese rango, no un
+    // duplicado.
+    expect(upcomingWindowRangeLabel(60, "2026-08-03")).toBe("3 ago – 1 oct");
+  });
+
+  it("upcomingWindowRangeLabel con 1 día es un solo punto", () => {
+    expect(upcomingWindowRangeLabel(1, "2026-08-03")).toBe("3 ago – 3 ago");
+  });
+});
+
+function upcomingCharge(
+  overrides: Partial<ExpenseSummary["upcomingCharges"][number]> = {}
+): ExpenseSummary["upcomingCharges"][number] {
+  return {
+    expenseId: 1,
+    concept: "Render — Web Service",
+    vendor: "Render",
+    category: "infraestructura",
+    frequency: "monthly",
+    date: "2026-08-15",
+    amount: 290,
+    ...overrides,
+  };
+}
+
+describe("groupUpcomingChargesByDate", () => {
+  it("agrupa cargos consecutivos de la misma fecha en un solo bloque", () => {
+    // El caso que hace ilegible la lista plana: dos suscripciones distintas cobrando el
+    // mismo día se leían como dos filas sueltas con la misma fecha repetida.
+    const charges = [
+      upcomingCharge({ expenseId: 1, date: "2026-08-01", amount: 290 }),
+      upcomingCharge({ expenseId: 2, date: "2026-08-01", amount: 150 }),
+      upcomingCharge({ expenseId: 3, date: "2026-08-15", amount: 80 }),
+    ];
+
+    const groups = groupUpcomingChargesByDate(charges);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toEqual({
+      date: "2026-08-01",
+      charges: [charges[0], charges[1]],
+      total: 440,
+    });
+    expect(groups[1]).toEqual({
+      date: "2026-08-15",
+      charges: [charges[2]],
+      total: 80,
+    });
+  });
+
+  it("un cargo por fecha da un grupo por cargo", () => {
+    const charges = [
+      upcomingCharge({ expenseId: 1, date: "2026-08-01" }),
+      upcomingCharge({ expenseId: 2, date: "2026-08-08" }),
+    ];
+
+    expect(groupUpcomingChargesByDate(charges)).toEqual([
+      { date: "2026-08-01", charges: [charges[0]], total: 290 },
+      { date: "2026-08-08", charges: [charges[1]], total: 290 },
+    ]);
+  });
+
+  it("una lista vacía da cero grupos", () => {
+    expect(groupUpcomingChargesByDate([])).toEqual([]);
   });
 });

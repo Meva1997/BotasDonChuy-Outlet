@@ -1163,7 +1163,7 @@ el descuento calculado y canjeado por el backend.
   mes en curso trae `partial: true`, igual que el reporte mensual de ventas.
 - **`/summary` responde "cuánto tengo que retirar"**: `monthlyRunRate` (la suma de los recurrentes
   llevados a su equivalente mensual — anual ÷ 12, semanal × 52/12), `annualRunRate`, `byCategory`,
-  `byFrequency` y `upcomingCharges` (qué se cobra, de cuánto y en qué fecha, próximos 60 días).
+  `byFrequency` y `upcomingCharges` (qué se cobra, de cuánto y en qué fecha, próximos 30 días).
 - **Los gastos de única vez (`frequency: "once"`) no entran en la carga mensual**: cuentan completos
   en su mes.
 - **Todo en pesos.** No hay divisas: si Render cobra en USD, se captura lo que cobró la tarjeta.
