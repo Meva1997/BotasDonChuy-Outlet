@@ -10,6 +10,9 @@ const NAV_ITEMS: { id: AdminSection; label: string }[] = [
   { id: "datos", label: "Datos" },
   { id: "pedidos", label: "Pedidos" },
   { id: "reportes", label: "Reportes" },
+  // Junto a Datos y Reportes a propósito: es la contraparte de gasto de las tres
+  // pantallas de ingreso, y de aquí sale el KPI que las convierte en ganancia.
+  { id: "gastos", label: "Gastos" },
   { id: "productos", label: "Productos" },
   { id: "importar", label: "Importar" },
   { id: "cupones", label: "Cupones" },

@@ -16,7 +16,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **sileo** — toast notifications (admin panel only)
 - **pnpm** as package manager
 
-> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). Specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen; see that folder's `README.md` for the layout — plus seven pure modules: `lib/domain/__tests__/idempotency.test.ts`, `lib/domain/__tests__/publicOrderToken.test.ts`, `lib/domain/__tests__/catalogFilters.test.ts`, `components/checkout/__tests__/checkoutErrors.test.ts`, `components/admin/orders/__tests__/shipmentLabel.test.ts`, `components/admin/coupons/__tests__/couponStatus.test.ts` and `components/pedido/__tests__/orderTimeline.test.ts`.
+> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). Specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen; see that folder's `README.md` for the layout — plus eight pure modules: `lib/domain/__tests__/idempotency.test.ts`, `lib/domain/__tests__/publicOrderToken.test.ts`, `lib/domain/__tests__/catalogFilters.test.ts`, `components/checkout/__tests__/checkoutErrors.test.ts`, `components/admin/orders/__tests__/shipmentLabel.test.ts`, `components/admin/coupons/__tests__/couponStatus.test.ts`, `components/admin/expenses/__tests__/expenseStatus.test.ts` and `components/pedido/__tests__/orderTimeline.test.ts`.
 
 ## Commands
 
@@ -73,7 +73,7 @@ components/
   nosotros/       # AboutUs — static "About Us" page
   auth/           # AuthShell, LoginForm, ForgotPasswordForm (+ CodeInput/ResetCodeForm/NewPasswordForm), AdminGuard
   admin/          # Sidebar, types.ts + sections/ (Marca, Productos, Importar, Cupones, Pedidos,
-                  #   Datos, Reportes, Configuración)
+                  #   Datos, Reportes, Gastos, Configuración)
                   #   orders/ — orders table, pagination, detail modal (cancel/refund, manual
                   #   shipped/delivered, Skydropx label retry) + shipmentLabel.ts (pure, with specs)
                   #   coupons/ — coupons table, form, status badge + couponStatus.ts (pure, with
@@ -87,7 +87,8 @@ lib/
   api/            # axios client + per-domain contracts (Zod schemas + fetchers + query keys):
                   #   auth, products, adminProducts, adminProductImport, adminOrders, adminUsers, account,
                   #   dashboard, reports, brand, orders, shipping (live Skydropx rate quotes),
-                  #   coupons (public validate) + adminCoupons (CRUD)
+                  #   coupons (public validate) + adminCoupons (CRUD), adminExpenses (CRUD +
+                  #   summary + history)
   domain/         # pure business logic: cart.ts (totals + shared item/signature helpers),
                   #   brand.ts (fallback identity), categories.ts
   seo/            # site.ts (SITE_URL/absoluteUrl/keywords) + jsonLd.ts (schema.org builders)
@@ -125,7 +126,7 @@ See `CLAUDE.md` for the full architecture reference (file-by-file responsibiliti
 | `/privacidad` | Privacy Policy |
 | `/envios` | Shipping Policy |
 | `/nosotros` | About Us |
-| `/admin` | Admin panel (brand, products, orders, data, reports, config) |
+| `/admin` | Admin panel (brand, products, orders, data, reports, expenses, config) |
 | `/login` | Login form |
 | `/forgot-password` | Password recovery wizard (email → 5-digit code → new password) |
 
@@ -190,7 +191,7 @@ Shipping is quoted **live** against Skydropx from checkout step 3 (see above) �
 
 ## Admin panel
 
-`/admin` has eight sections (`components/admin/sections/`), all connected to the real backend:
+`/admin` has nine sections (`components/admin/sections/`), all connected to the real backend:
 
 - **Marca** — brand identity/copy editor (autosaved).
 - **Productos** — catalog CRUD, including a Cloudinary-backed image gallery (up to 3 images per product).
@@ -199,6 +200,7 @@ Shipping is quoted **live** against Skydropx from checkout step 3 (see above) �
 - **Pedidos** — paginated order listing with a detail modal (includes cost/margin, admin-only). From the modal the owner can cancel/refund an order, and move it forward to shipped/delivered by hand — capturing the tracking number, URL and carrier when the order never went through Skydropx (a flat-rate order gets no label, so no webhook ever advances it).
 - **Datos** — KPIs, revenue chart, inventory and recent-sales tables (7/30/90-day windows).
 - **Reportes** — monthly sales history feeding an auto-scaling replenishment forecast (simple average → weighted+trend → Holt exponential smoothing, depending on history depth); both export to CSV.
+- **Gastos** — expenses and subscriptions: what it costs to keep the shop open (hosting, domain, database, rent, shipping), and the source of the panel's `GASTOS` / `GANANCIA OPERATIVA` KPI, which used to subtract a hardcoded constant. A summary card answers "how much to set aside each month" (with the next 60 days of charges), a table lists each expense with its current amount, monthly run rate and next charge, and a history tab shows a per-month bar chart plus the price changes that took effect that month. **Changing an amount is a separate form from editing the expense** — the backend versions amounts by effective date, so a new price never rewrites what the expense cost in past months, and folding it into the edit form would let a typo fix reprice a subscription.
 - **Configuración** — own account settings + admin user management, and logout.
 
 See `CLAUDE.md` for the full breakdown of each section's subcomponents and API contracts.
