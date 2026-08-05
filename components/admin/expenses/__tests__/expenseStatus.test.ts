@@ -8,6 +8,7 @@ import {
   monthLabelShort,
   priceChangeDelta,
   priceChangeLabel,
+  shippingWindowLabel,
   upcomingWindowRangeLabel,
 } from "../expenseStatus";
 
@@ -198,6 +199,40 @@ describe("etiquetas de fecha", () => {
 
   it("upcomingWindowRangeLabel con 1 día es un solo punto", () => {
     expect(upcomingWindowRangeLabel(1, "2026-08-03")).toBe("3 ago – 3 ago");
+  });
+});
+
+describe("shippingWindowLabel", () => {
+  it("un mes cerrado se rotula con su rango completo y sin sufijo", () => {
+    expect(shippingWindowLabel("2026-07-01", "2026-07-31", false)).toBe(
+      "del 1 al 31 de julio"
+    );
+  });
+
+  it("el mes en curso avisa que la ventana no terminó", () => {
+    // Sin el "· a la fecha", $640 acumulados en cuatro días se leen contra un
+    // run-rate de mes completo como si el envío saliera baratísimo.
+    expect(shippingWindowLabel("2026-08-01", "2026-08-04", true)).toBe(
+      "del 1 al 4 de agosto · a la fecha"
+    );
+  });
+
+  it("una ventana de un solo día no dice 'del 1 al 1'", () => {
+    expect(shippingWindowLabel("2026-08-01", "2026-08-01", true)).toBe(
+      "el 1 de agosto · a la fecha"
+    );
+  });
+
+  it("no rueda el día en hosts al oeste de UTC", () => {
+    // Mismo pin a UTC que dayLabel: sin él, "del 1 al 31 de julio" se pintaría
+    // como "del 30 al 30 de junio" en America/Mexico_City.
+    expect(shippingWindowLabel("2026-08-01", "2026-08-31", false)).toBe(
+      "del 1 al 31 de agosto"
+    );
+  });
+
+  it("devuelve un guion ante fechas basura", () => {
+    expect(shippingWindowLabel("no-es-fecha", "2026-08-04", true)).toBe("—");
   });
 });
 

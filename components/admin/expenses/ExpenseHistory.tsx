@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { adminExpenseKeys, getExpenseHistory } from "@/lib/api/adminExpenses";
 import { formatPrice } from "@/lib/utils";
+import ShippingCostNote from "./ShippingCostNote";
 import {
   EXPENSE_CATEGORY_LABEL,
   EXPENSE_FREQUENCY_LABEL,
@@ -296,6 +297,11 @@ export default function ExpenseHistory() {
                 ))}
               </ul>
             )}
+
+            {/* Fuera de `byCategory` y del total del mes a propósito: el dashboard
+                ya lo resta en la ganancia bruta. La gráfica de arriba sigue
+                pintando `month.total` sin este monto. */}
+            <ShippingCostNote shippingCost={activeMonth.shippingCost} />
           </div>
 
           {/* Por gasto */}

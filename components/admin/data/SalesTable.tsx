@@ -151,7 +151,7 @@ export default function SalesTable({ sales }: { sales: SaleRow[] }) {
           {/* Mobile: cards */}
           <div className="flex flex-col gap-3 xl:hidden">
             {pageItems.map((row) => {
-              const ganancia = row.total - row.costoTotal;
+              const ganancia = row.total - row.shipping - row.costoTotal;
               const margen = Math.round((ganancia / row.total) * 100);
               return (
                 <div
@@ -176,6 +176,11 @@ export default function SalesTable({ sales }: { sales: SaleRow[] }) {
                       </p>
                       <p className="text-amber-400 font-semibold font-sans">
                         {formatMXN(row.total)}
+                      </p>
+                      {/* Bajo el Total y no como tercera columna: una rejilla de 3
+                          aprieta los montos en pantallas chicas. */}
+                      <p className="text-[10px] text-amber-100/40 font-sans mt-0.5">
+                        Envío {formatMXN(row.shipping)}
                       </p>
                     </div>
                     <div className="text-right">
@@ -206,13 +211,20 @@ export default function SalesTable({ sales }: { sales: SaleRow[] }) {
                   <th className={thR}>Piezas</th>
                   <th className={th}>Artículos</th>
                   <th className={thR}>Ahorro otorgado</th>
+                  {/* Va antes del Total porque es un componente suyo: el envío
+                      cobrado ya está sumado ahí dentro. */}
+                  <th className={thR}>Envío</th>
                   <th className={thR}>Total</th>
                   <th className={thR}>Ganancia</th>
                 </tr>
               </thead>
               <tbody>
                 {pageItems.map((row) => {
-                  const ganancia = row.total - row.costoTotal;
+                  // El envío es costo de venta: se paga una guía por pedido, igual
+                  // que el costo unitario de cada pieza (`costoTotal` es solo
+                  // producto). Sin restarlo, una venta de $2,000 con $160 de guía
+                  // se leía como si los $2,000 cargaran margen.
+                  const ganancia = row.total - row.shipping - row.costoTotal;
                   const margen = Math.round((ganancia / row.total) * 100);
                   return (
                     <tr
@@ -232,6 +244,9 @@ export default function SalesTable({ sales }: { sales: SaleRow[] }) {
                       </td>
                       <td className={`${tdR} text-amber-100/60`}>
                         {formatMXN(row.savings)}
+                      </td>
+                      <td className={`${tdR} text-amber-100/60`}>
+                        {formatMXN(row.shipping)}
                       </td>
                       <td className={`${tdR} font-semibold text-amber-400`}>
                         {formatMXN(row.total)}

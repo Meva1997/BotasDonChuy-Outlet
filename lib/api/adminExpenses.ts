@@ -97,6 +97,48 @@ export type Expense = z.infer<typeof ExpenseSchema>;
 
 export const ExpenseListSchema = z.array(ExpenseSchema);
 
+/**
+ * Envío pagado a la paquetería en una ventana (Fase 22). Lo devuelven `/summary`
+ * (mes en curso a la fecha) y cada mes de `/history`.
+ *
+ * **Es una línea DERIVADA de los pedidos: no hay fila de gasto detrás.** No se
+ * edita, no se borra y no sale en `GET /api/admin/expenses` — de ahí los tres
+ * literales, que son invariantes del contrato y no datos que puedan variar.
+ *
+ * **La regla que ordena toda la fase: va FUERA de `total`, `byCategory`,
+ * `byExpense`, `monthlyRunRate`, `annualRunRate` y `activeCount`.** El dashboard ya
+ * lo resta en GANANCIA BRUTA (es costo de venta: se paga una guía por pedido, igual
+ * que el `unitCost` de cada pieza), y como `OPERATIVA = BRUTA − GASTOS`, sumarlo
+ * también a los totales de gastos lo restaría **dos veces**. Sale aparte
+ * precisamente para poder pintarlo sin ensuciar los totales.
+ *
+ * `from`/`to`/`partial` no son decoración: en el mes en curso la ventana llega
+ * hasta HOY, y un acumulado a media quincena junto a un `monthlyRunRate` de mes
+ * completo se lee como si el envío saliera baratísimo. Rotularlo es obligatorio
+ * (`shippingWindowLabel` en `components/admin/expenses/expenseStatus.ts`).
+ *
+ * ⚠️ Cajas y empaque **sí** van como gasto de categoría `paqueteria`; **las guías
+ * no**, ya están aquí.
+ */
+export const DerivedShippingCostSchema = z.object({
+  category: z.literal("paqueteria"),
+  /** Siempre `true`: derivado de los pedidos, sin fila editable detrás. */
+  derived: z.literal(true),
+  /** Siempre `true`: ya restado en GANANCIA BRUTA. No volver a restarlo. */
+  includedInGrossProfit: z.literal(true),
+  /** Ventana cubierta, días de calendario UTC, ambos inclusive. */
+  from: z.string(),
+  to: z.string(),
+  /** La ventana no ha terminado: el monto puede crecer. */
+  partial: z.boolean(),
+  amount: z.number(),
+  /** Pedidos pagados que lo generaron. Sin esto, un `amount` raro no se puede
+   *  sanity-checkear. */
+  orders: z.number(),
+});
+
+export type DerivedShippingCost = z.infer<typeof DerivedShippingCostSchema>;
+
 /** GET /api/admin/expenses/summary — "¿cuánto tengo que retirar de lo que vendí?" */
 export const ExpenseSummarySchema = z.object({
   /** Suma de los recurrentes llevados a su equivalente mensual. Sin los `once`. */
@@ -135,6 +177,12 @@ export const ExpenseSummarySchema = z.object({
       amount: z.number(),
     })
   ),
+  /**
+   * Envío del mes en curso a la fecha. **Requerido, no opcional**: mismo precedente
+   * que `packageCount` en la Fase 23 — así un backend viejo falla ruidoso en vez de
+   * pintar "$0 de guías" sobre un mes que sí tuvo envíos.
+   */
+  shippingCost: DerivedShippingCostSchema,
 });
 
 export type ExpenseSummary = z.infer<typeof ExpenseSummarySchema>;
@@ -183,6 +231,9 @@ export const ExpenseMonthSchema = z.object({
       note: z.string().nullable(),
     })
   ),
+  /** Envío pagado ese mes. **Fuera de `total`, `byCategory` y `byExpense`** — ver
+   *  `DerivedShippingCostSchema`. */
+  shippingCost: DerivedShippingCostSchema,
 });
 
 export type ExpenseMonth = z.infer<typeof ExpenseMonthSchema>;

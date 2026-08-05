@@ -121,6 +121,39 @@ export function upcomingWindowRangeLabel(days: number, today: string = todayISO(
   return `${format(start)} – ${format(end)}`;
 }
 
+/**
+ * Rótulo de la ventana de la línea derivada de envío (`DerivedShippingCost`, Fase 22):
+ * `"del 1 al 4 de agosto · a la fecha"` · `"del 1 al 31 de julio"` · `"el 1 de agosto"`.
+ *
+ * **No es decoración.** En el mes en curso la ventana llega hasta HOY, no hasta fin
+ * de mes: un acumulado a media quincena puesto junto a un `monthlyRunRate` de mes
+ * completo se lee como si el envío saliera baratísimo. El `· a la fecha` de
+ * `partial` es lo que evita esa lectura.
+ *
+ * `from` y `to` del backend siempre caen en el mismo mes (`shippingLine` los arma
+ * desde un `isoMonth`), así que el mes se nombra una sola vez, al final.
+ */
+export function shippingWindowLabel(
+  from: string,
+  to: string,
+  partial: boolean
+): string {
+  const start = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "—";
+
+  const month = end.toLocaleDateString("es-MX", {
+    month: "long",
+    timeZone: "UTC",
+  });
+  const suffix = partial ? " · a la fecha" : "";
+  // Día 1 del mes en curso: "del 1 al 1 de agosto" se lee como un error de copia.
+  if (from === to) {
+    return `el ${start.getUTCDate()} de ${month}${suffix}`;
+  }
+  return `del ${start.getUTCDate()} al ${end.getUTCDate()} de ${month}${suffix}`;
+}
+
 export interface UpcomingChargeGroup {
   date: string;
   charges: ExpenseSummary["upcomingCharges"];
