@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { ExpenseSummary } from "@/lib/api/adminExpenses";
 import { formatPrice } from "@/lib/utils";
+import ShippingCostNote from "./ShippingCostNote";
 import {
   EXPENSE_CATEGORY_LABEL,
   EXPENSE_FREQUENCY_LABEL,
@@ -113,6 +114,12 @@ export default function ExpenseSummaryCard({
               ))}
             </ul>
           )}
+
+          {/* Va DEBAJO de las categorías (donde aparece "Paquetería" cuando hay
+              gastos capturados de esa categoría) y separada por un borde: son dos
+              cosas distintas. Su monto no entra en ninguno de los números de
+              arriba — ver DerivedShippingCostSchema. */}
+          <ShippingCostNote shippingCost={summary.shippingCost} />
         </div>
 
         {/* ── Próximos cargos ── */}

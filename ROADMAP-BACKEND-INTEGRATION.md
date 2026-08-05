@@ -1365,19 +1365,20 @@ el dueño deja de pagar de su bolsa las guías de los pedidos grandes.
 
 ---
 
-# Fases pendientes
+## Fase 22 — Panel: el envío como costo de venta ✅ *(solo panel, no toca la tienda)*
 
-## Fase 22 — Panel: el envío como costo de venta 🔴 Pendiente
+> Va después de la 23 en este archivo porque ése fue el orden en que se cerraron: la 23 iba primero
+> por ser la que le mentía al cliente sobre el precio.
 
 > **Contexto.** El panel venía inflando la ganancia. El total de cada pedido ya trae sumado el envío
 > que pagó el cliente (`total = subtotal − ahorro − cupón + envío`), así que INGRESOS siempre lo
 > incluyó — pero el único costo que se restaba era el del producto. Resultado: **una venta de $2,000
 > con $160 de guía se leía como si los $2,000 cargaran margen**, cuando esos $160 salen casi
-> completos hacia la paquetería. El backend ya lo corrigió: el envío es costo de venta y se
-> descuenta en la GANANCIA BRUTA. Falta que el panel lo muestre, y sobre todo que **no lo cuente
-> dos veces**.
+> completos hacia la paquetería. El backend ya lo había corregido —el envío es costo de venta y se
+> descuenta en la GANANCIA BRUTA—; el frontend era el que iba atrasado, y lo delicado no era
+> mostrarlo sino **no contarlo dos veces**.
 
-**Lo que hace el backend (referencia — no tocar):**
+**Lo que hace el backend (referencia — no se tocó):**
 
 - **`GANANCIA BRUTA = INGRESOS − costo de producto − COSTO DE ENVÍO`** y `GANANCIA OPERATIVA =
   BRUTA − GASTOS`. El envío **no** está dentro de `GASTOS`: ese KPI sigue siendo solo los gastos
@@ -1397,22 +1398,25 @@ el dueño deja de pagar de su bolsa las guías de los pedidos grandes.
 
 **Trabajo del frontend:**
 
-1. [ ] `lib/api/dashboard.ts`: agregar `shipping: z.number()` a `SaleRowSchema`. `KpiDataSchema` y
-       `profitKpisByPeriod` **no cambian** — `KpiGrid` pinta los KPIs genéricamente por `label`, así
-       que `COSTO DE ENVÍO` aparece solo (igual que pasó con `GASTOS` en la Fase 20).
-2. [ ] `SalesTable`: columna **"Envío"** y, donde se muestre la ganancia de la fila, cambiar
-       `total − costoTotal` por **`total − shipping − costoTotal`**.
-3. [ ] `lib/api/adminExpenses.ts`: agregar `shippingCost` a los schemas de `ExpenseSummary` y
-       `ExpenseMonth`.
-4. [ ] `ExpenseSummaryCard.tsx` y `ExpenseHistory.tsx`: pintar `shippingCost` como fila **no
-       editable** bajo Paquetería, visualmente separada de los gastos capturados, con este copy:
-       *"Envíos (guías): $X — ya restado en la ganancia bruta del panel. No lo captures como gasto:
-       se contaría dos veces."*
-5. [ ] **Nunca** sumar `shippingCost.amount` al total de gastos que se muestra, ni a la gráfica de
+1. [x] `lib/api/dashboard.ts`: agregar `shipping: z.number()` a `SaleRowSchema` (y a la interfaz
+       `SaleRow` de `components/admin/data/types.ts`). `KpiDataSchema` y `profitKpisByPeriod` **no
+       cambiaron** — `KpiGrid` pinta los KPIs genéricamente por `label`, así que `COSTO DE ENVÍO`
+       apareció solo (igual que pasó con `GASTOS` en la Fase 20).
+2. [x] `SalesTable`: columna **"Envío"** (escritorio, antes de "Total") + línea tenue bajo el Total
+       en la tarjeta móvil, y la ganancia de la fila pasó a **`total − shipping − costoTotal`** en
+       los dos renders. El margen sigue dividiendo entre `total`.
+3. [x] `lib/api/adminExpenses.ts`: `DerivedShippingCostSchema` exportado + `shippingCost` requerido
+       en `ExpenseSummarySchema` y `ExpenseMonthSchema`.
+4. [x] `ExpenseSummaryCard.tsx` y `ExpenseHistory.tsx`: pintan `shippingCost` con el copy pedido, vía
+       **`ShippingCostNote.tsx`** — un componente compartido, no copia pegada en dos lugares (mismo
+       motivo que `notices.ts` en `admin/products/`: las dos pantallas tienen que decir exactamente
+       lo mismo, porque esa copia es la que evita el doble conteo).
+5. [x] **Nunca** sumar `shippingCost.amount` al total de gastos que se muestra, ni a la gráfica de
        barras del historial, ni al desglose por categoría.
-6. [ ] Usar `partial` / `from` / `to` de la línea para rotularla ("del 1 al 4 de agosto"): un
-       acumulado a media quincena junto a un `monthlyRunRate` de mes completo se lee como si el
-       envío saliera baratísimo.
+6. [x] `shippingWindowLabel(from, to, partial)` en `expenseStatus.ts` (puro, con specs): "del 1 al 4
+       de agosto · a la fecha" · "del 1 al 31 de julio" · "el 1 de agosto" cuando la ventana es de un
+       solo día. Un acumulado a media quincena junto a un `monthlyRunRate` de mes completo se lee
+       como si el envío saliera baratísimo.
 
 **Detalles de implementación que conviene no re-descubrir:**
 
@@ -1448,8 +1452,6 @@ descuente dos veces.
   en `CLAUDE.md`) y el panel de pedidos ya muestra guía/rastreo (**Fase 11** ✅). Desde la **Fase 23**
   ✅ el envío se cotiza y se cobra **por caja**, y `lib/domain/cart.ts` ya no calcula envío: el front
   no debe volver a estimarlo por su cuenta.
-- **Lo único pendiente es la Fase 22** (solo panel, nadie más la ve): el envío como costo de venta en
-  el dashboard y en la sección de Gastos. La Fase 23 —que iba primero por ser la que le mentía al
-  cliente sobre el precio— ya está cerrada. Nota para cuando se retome: en la tarjeta móvil de
-  `SalesTable` el envío va como una línea tenue **bajo el Total**, no como una tercera columna (ya
-  decidido; una rejilla de 3 aprieta los montos en pantallas chicas).
+- **No quedan fases pendientes.** Las dos últimas cerraron el mismo problema desde sus dos lados: la
+  Fase 23 (el envío que se le **cobra** al cliente, por caja) y la Fase 22 (el envío como **costo de
+  venta** en el panel). En las dos el backend ya estaba correcto y el front era el que iba atrasado.

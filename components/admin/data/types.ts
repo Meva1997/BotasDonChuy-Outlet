@@ -20,6 +20,10 @@ export interface SaleRow {
   items: string;
   savings: number;
   total: number;
+  /** Envío cobrado en el pedido, YA sumado dentro de `total`. Es costo de venta:
+   *  la ganancia real de la fila es `total − shipping − costoTotal`. */
+  shipping: number;
+  /** Solo costo de producto. El envío va aparte, en `shipping`. */
   costoTotal: number;
 }
 
