@@ -15,6 +15,19 @@ export const ShippingRateSchema = z.object({
   amount: z.number(),
   total: z.number(),
   days: z.number().nullable(),
+  /**
+   * Cuántos bultos ampara esta tarifa (Fase 23). El backend acomoda el carrito en
+   * su catálogo de cajas y cotiza **un bulto por caja**: es la explicación de por
+   * qué el envío sube cuando el pedido ya no cabe en una.
+   *
+   * **Requerido, no opcional**: el backend lo manda en las DOS ramas del
+   * controlador — la cotización viva (`normalizeRate`) y la tarifa plana de
+   * respaldo (`packageCount: boxes.length`), las dos desde el mismo `packOrder`,
+   * porque caer al respaldo cambia el precio del bulto y nunca cuántos bultos son.
+   * Declararlo requerido hace que un backend viejo falle ruidoso en vez de que la
+   * UI pinte "una caja" en silencio sobre un pedido de cuatro.
+   */
+  packageCount: z.number().int().positive(),
 });
 
 export type ShippingRate = z.infer<typeof ShippingRateSchema>;

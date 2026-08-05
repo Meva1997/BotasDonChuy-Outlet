@@ -4,29 +4,31 @@ import type { ShippingData } from "@/schemas/checkout";
 export interface CartTotals {
   subtotal: number;
   savings: number;
-  shipping: number;
+  /**
+   * `null` = todavía no hay cotización (paso 0 del checkout, antes de la dirección).
+   * El único envío legítimo es el que devuelve el backend: POST /api/shipping/rates
+   * en el paso 3, o el `order.shipping` que ya cobró.
+   */
+  shipping: number | null;
+  /**
+   * Con `shipping: null` esto es la **mercancía neta** (`subtotal − savings`), no el
+   * total a pagar: falta el envío. Quien lo pinte tiene que decirlo (ver OrderTotals).
+   */
   total: number;
 }
 
-// Tarifa fija por tipo de producto (el tipo más caro del carrito determina el costo).
-// Bota: caja grande y pesada. Sombrero: voluminoso. Ropa: ligera.
-// ⚠️ Duplicado a propósito con backend/src/services/cart.ts (el backend es la
-// autoridad de precios). Si cambias una tarifa, cámbiala también allí o el
-// formulario mostrará un envío y la confirmación otro.
-const SHIPPING_BY_TYPE: Record<string, number> = {
-  bota: 160,
-  sombrero: 130,
-  ropa: 100,
-};
-const SHIPPING_FALLBACK = 150;
-
-export function computeShipping(items: CartItem[]): number {
-  if (items.length === 0) return 0;
-  return Math.max(
-    ...items.map((item) => SHIPPING_BY_TYPE[item.product.type] ?? SHIPPING_FALLBACK)
-  );
-}
-
+/**
+ * Subtotal y ahorro outlet del carrito. **No calcula envío a propósito** (Fase 23).
+ *
+ * Antes había aquí una copia de la tarifa plana del backend (`SHIPPING_BY_TYPE` +
+ * `Math.max`) que cobraba UNA guía por pedido. Desde que el backend acomoda el
+ * carrito en cajas reales y cotiza un bulto por caja, esa copia le prometía al
+ * comprador un envío más barato del que se le iba a cobrar: 3 botas + 1 sombrero
+ * mostraban $160, lo mismo que una sola bota. Portar el acomodo de cajas al front
+ * habría dejado dos implementaciones que se desincronizan a la primera vez que el
+ * dueño mida sus cajas de nuevo, así que se eliminó: **el backend es la autoridad**,
+ * igual que con precios y cupones.
+ */
 export function computeTotals(items: CartItem[]): CartTotals {
   const subtotal = items.reduce(
     (acc, item) => acc + item.product.originalPrice * item.quantity,
@@ -37,9 +39,8 @@ export function computeTotals(items: CartItem[]): CartTotals {
       acc + (item.product.originalPrice - item.product.salePrice) * item.quantity,
     0
   );
-  const shipping = computeShipping(items);
 
-  return { subtotal, savings, shipping, total: subtotal - savings + shipping };
+  return { subtotal, savings, shipping: null, total: subtotal - savings };
 }
 
 export interface OrderItemPayload {

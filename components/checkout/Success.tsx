@@ -32,7 +32,15 @@ export default function Success() {
   // global de la tienda, no la referencia del comprador —la consulta pública es por
   // token—, y los correos ya dejaron de mandarlo por lo mismo. Su referencia es el CTA
   // de abajo, que lleva a /pedido/<publicToken>.
-  const { items, totals, customer, couponCode, couponDiscount, publicToken } = order;
+  const {
+    items,
+    totals,
+    customer,
+    couponCode,
+    couponDiscount,
+    packageCount,
+    publicToken,
+  } = order;
 
   return (
     <div className="w-full max-w-lg mx-auto space-y-10 animate-fade-in-up">
@@ -87,6 +95,7 @@ export default function Success() {
           <OrderTotals
             totals={totals}
             discount={{ code: couponCode, amount: couponDiscount }}
+            packageCount={packageCount}
           />
         </div>
 

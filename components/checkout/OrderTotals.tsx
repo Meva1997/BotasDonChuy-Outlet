@@ -10,11 +10,26 @@ interface OrderTotalsProps {
    * menor que `subtotal − savings + shipping` sin explicación visible.
    */
   discount?: { code: string | null; amount: number };
+  /**
+   * En cuántos bultos va el pedido (Fase 23). Con más de uno se dice explícitamente:
+   * la paquetería cobra una guía POR CAJA, así que sin esta línea el comprador que
+   * agrega la cuarta bota ve el envío duplicarse sin motivo aparente.
+   */
+  packageCount?: number | null;
 }
 
-export default function OrderTotals({ totals, discount }: OrderTotalsProps) {
+export default function OrderTotals({
+  totals,
+  discount,
+  packageCount,
+}: OrderTotalsProps) {
   const outletPrice = totals.subtotal - totals.savings;
   const hasDiscount = !!discount && discount.amount > 0;
+  // `null` = todavía no se cotiza (paso 0, antes de la dirección). Ni $0 ni esconder
+  // la fila: un envío que no se nombra se lee como envío gratis, y el total de aquí
+  // no es el que se va a cobrar.
+  const shipping = totals.shipping;
+  const multiBox = typeof packageCount === "number" && packageCount > 1;
 
   return (
     <div className="space-y-2">
@@ -41,12 +56,26 @@ export default function OrderTotals({ totals, discount }: OrderTotalsProps) {
           <span>−{formatPrice(discount.amount)}</span>
         </div>
       )}
-      <div className="flex justify-between text-xs text-amber-50/70">
-        <span className="tracking-wide">Envío</span>
-        <span className="text-amber-50/70">{formatPrice(totals.shipping)}</span>
+      <div className="flex justify-between gap-3 text-xs text-amber-50/70">
+        <span className="tracking-wide shrink-0">Envío</span>
+        {shipping !== null ? (
+          <span className="text-amber-50/70">{formatPrice(shipping)}</span>
+        ) : (
+          <span className="text-amber-100/45 text-right">
+            Se calcula con tu dirección
+          </span>
+        )}
       </div>
+      {multiBox && (
+        <p className="text-[11px] leading-relaxed text-amber-100/40">
+          Tu pedido va en {packageCount} cajas
+          {shipping !== null ? " · cada caja paga su propia guía" : ""}.
+        </p>
+      )}
       <div className="flex justify-between items-baseline pt-3 mt-1 border-t border-amber-600/30">
-        <span className="font-serif text-2xl text-amber-50">Total</span>
+        <span className="font-serif text-2xl text-amber-50">
+          {shipping !== null ? "Total" : "Total sin envío"}
+        </span>
         <span className="font-medium text-lg bg-linear-to-r from-amber-300 to-amber-500 bg-clip-text text-transparent">
           {formatPrice(totals.total)}
         </span>

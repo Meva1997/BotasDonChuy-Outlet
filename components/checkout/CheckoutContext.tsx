@@ -61,6 +61,13 @@ export interface CompletedOrder {
   couponCode: string | null;
   couponDiscount: number;
   /**
+   * En cuántos bultos se cobró el envío (Fase 23). `null` con la tarifa plana de
+   * respaldo. Cierra el círculo con el paso 3: la confirmación repite las mismas
+   * cajas que el comprador vio al elegir paquetería, en vez de dejar un envío alto
+   * sin explicación en la única pantalla que se queda mirando.
+   */
+  packageCount: number | null;
+  /**
    * Credencial de la página pública de seguimiento (Fase 17). Viene en el `201` del
    * checkout, así que se puede ofrecer el enlace sin esperar el correo. `null` si
    * el backend no lo mandó (pedido anterior a la columna).
@@ -288,6 +295,7 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
         customer,
         couponCode: order.couponCode ?? null,
         couponDiscount: order.couponDiscount ?? 0,
+        packageCount: order.packageCount ?? null,
         publicToken: order.publicToken ?? null,
       });
       clearCart();

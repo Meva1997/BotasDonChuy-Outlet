@@ -444,12 +444,30 @@ export default function ShippingOptions() {
                 canCompare && deliveryDays.length
                   ? Math.min(...deliveryDays)
                   : null;
+              // Del MÁXIMO y no de `rates[0]`: hoy todas las tarifas salen del
+              // mismo acomodo de cajas del backend y traen el mismo número, pero
+              // leer la primera es apostarle a eso. Va aquí arriba, no solo en el
+              // sidebar, porque es donde el comprador está comparando precios y
+              // preguntándose por qué son más altos de lo que esperaba.
+              const packageCount = Math.max(
+                ...data.rates.map((r) => r.packageCount)
+              );
               return (
                 <div
                   role="radiogroup"
                   aria-label="Método de envío"
                   className="space-y-3"
                 >
+                  {packageCount > 1 && (
+                    <p className="rounded-md border border-amber-600/25 bg-amber-500/5 px-4 py-3 text-[12px] leading-relaxed text-amber-100/60">
+                      Tu pedido va en{" "}
+                      <span className="text-amber-200/90 font-medium">
+                        {packageCount} cajas
+                      </span>
+                      : no cabe en una sola. La paquetería cobra una guía por caja,
+                      así que las tarifas de abajo ya incluyen las {packageCount}.
+                    </p>
+                  )}
                   {data.rates.map((rate) => (
                     <RateCard
                       key={`${rate.rateId ?? "flat"}-${rate.service}`}
@@ -484,6 +502,7 @@ export default function ShippingOptions() {
             discount={
               coupon ? { code: coupon.code, amount: coupon.discount } : undefined
             }
+            packageCount={selected?.packageCount}
           />
         ) : (
           <p className="text-xs text-amber-100/50 leading-relaxed">
