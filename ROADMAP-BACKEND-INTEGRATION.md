@@ -39,6 +39,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | `POST /api/orders` → header `Idempotency-Key` | `components/checkout/usePlaceOrder.ts` pide la clave al `CheckoutContext` (`getIdempotencyKey(signature)`) y `createOrder()` de `lib/api/orders.ts` la manda como header; la respuesta expone `replayed` leyendo `Idempotency-Replayed` | ✅ | 15 |
 | `POST /api/orders` → `order.publicToken` | `lib/api/orders.ts` lo declara en `OrderResponseSchema` → `CheckoutContext.completeOrder()` lo congela en el snapshot → `Success.tsx` ofrece "Ver el estado de mi pedido" sin esperar el correo | ✅ | 17 |
 | `GET /api/orders/lookup/:token` | `components/pedido/OrderTracking.tsx` → `lookupOrder()` de `lib/api/orders.ts` (`useQuery` + `PublicOrderSchema`), montado en `app/(public)/pedido/[token]/page.tsx` — la ruta a la que apunta el link del correo | ✅ | 17 |
+| `POST /api/shipping/rates` → `rates[].packageCount` | `lib/api/shipping.ts` (schema del rate) y el resumen del checkout — mostrar "Tu pedido va en N cajas" cuando `> 1`; **`lib/domain/cart.ts` sigue con el `Math.max` viejo y promete un envío más barato del que se cobra** | 🔴 | 23 — el backend acomoda el pedido en cajas reales y cobra por bulto |
 | `GET /api/admin/products` | `components/admin/ProductSection.tsx` → `getAdminProducts()` de `lib/api/adminProducts.ts` (`useQuery`) | ✅ | 3 |
 | `POST /api/admin/products` | `components/admin/ProductForm.tsx` → `createProduct()` (`useMutation` + invalidación) | ✅ | 3 |
 | `PUT /api/admin/products/:id` | `components/admin/ProductForm.tsx` → `updateProduct()` (`useMutation`) | ✅ | 3 |
@@ -49,6 +50,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | `POST /api/admin/products/import` | `ImportSection.tsx` → `commitProductImport()` (`useMutation` + invalidación de `adminProductKeys`/`productKeys`) | ✅ | 13 |
 | `GET /api/admin/dashboard` | `components/admin/DataSection.tsx` → `getAdminDashboard()` de `lib/api/dashboard.ts` (`useQuery`) | ✅ | 3 |
 | `GET /api/admin/dashboard` → KPI `GASTOS` | `components/admin/sections/DataSection.tsx` → `KpiGrid` (ya lo pinta genérico) | ✅ | El label cambió de `GASTOS FIJOS` a `GASTOS` y ahora sale de gastos reales; el front no requiere cambios |
+| `GET /api/admin/dashboard` → KPI `COSTO DE ENVÍO` + `recentSales[].shipping` | `DataSection.tsx` → `KpiGrid` (genérico, sin cambios) y `SalesTable` (columna "Envío") | 🔴 | 22 — la GANANCIA BRUTA ya descuenta el envío; `SaleRowSchema` necesita el campo nuevo |
 | `GET /api/admin/reports/monthly` | `components/admin/ReportesSection.tsx` → `getMonthlyReport()` de `lib/api/reports.ts` (`useQuery`); pasa `reports` a `SalesReport` | ✅ | 4 |
 | `GET /api/admin/reports/replenishment` | `components/admin/reportes/ReplenishmentReport.tsx` → `getReplenishmentReport()` (`useQuery`) | ✅ | 4 |
 | `GET /api/admin/brand` | `components/providers/BrandProvider.tsx` → `getBrandSettings()` de `lib/api/brand.ts` (`useQuery`); `useBrand()` alimenta `Hero`/`Footer`/`NavHeader`/`Cart`. `BRAND` = fallback SSR | ✅ | 5 |
@@ -73,6 +75,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | `GET /api/admin/expenses` | `components/admin/sections/ExpensesSection.tsx` → `getAdminExpenses()` de `lib/api/adminExpenses.ts` (`useQuery`) | ✅ | 20 |
 | `GET /api/admin/expenses/summary` | `components/admin/expenses/ExpenseSummaryCard.tsx` → `getExpenseSummary()` (`useQuery` de `ExpensesSection`; "hay que apartar al mes" + próximos cargos) | ✅ | 20 |
 | `GET /api/admin/expenses/history` | `components/admin/expenses/ExpenseHistory.tsx` → `getExpenseHistory()` (`useQuery` propia, lazy al abrir la pestaña; gráfica de barras + `changes` resaltados) | ✅ | 20 |
+| `/summary` y `/history` → `shippingCost` | `ExpenseSummaryCard.tsx` / `ExpenseHistory.tsx` — fila **no editable** de Paquetería, fuera del total | 🔴 | 22 — línea derivada de `Order.shipping`; **nunca** sumarla al total ni a la gráfica: ya está restada en la GANANCIA BRUTA |
 | `POST /api/admin/expenses` | `components/admin/expenses/ExpenseForm.tsx` → `createExpense()` (`useMutation` + invalidación de `adminExpenseKeys`/`dashboardKeys`) | ✅ | 20 |
 | `PUT /api/admin/expenses/:id` | `ExpenseForm.tsx` (edición, SIN `amount`), `ExpenseAmountForm.tsx` (cambio de precio: `amount` + `amountEffectiveFrom` + `amountNote`) y `ExpensesTable.tsx` (baja/reactivación = `{ active }` a secas) → `updateExpense()` | ✅ | 20 |
 | `DELETE /api/admin/expenses/:id` | `components/admin/expenses/ExpensesTable.tsx` → `deleteExpense()` con confirmación inline; el aviso distingue `deactivated: true` (ya generó cargos) de un borrado real | ✅ | 20 |
@@ -102,6 +105,8 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | 19 | Cupones: campo en el checkout + sección en el panel | ✅ | 2 |
 | 20 | Admin: gastos y suscripciones | ✅ | — |
 | 21 | Seguimiento: el correo manda el código, no el enlace *(cara al cliente, solo copia)* | ✅ | 17 |
+| 22 | Panel: el envío como costo de venta *(solo panel, no toca la tienda)* | 🔴 | 3, 20 |
+| 23 | Checkout: el envío se cobra por caja *(cara al cliente)* | ✅ | 2 |
 
 ---
 
@@ -1298,9 +1303,133 @@ exactamente eso.
 
 ---
 
+## Fase 23 — Checkout: el envío se cobra por caja ✅ *(cara al cliente)*
+
+> **Contexto.** El envío se calculaba asumiendo **un solo bulto**, sin importar cuánto llevara el
+> carrito. La tarifa plana era el tipo más caro del carrito y **ya**: 3 botas + 1 sombrero cobraba
+> $160, exactamente lo mismo que una sola bota, y 50 piezas de ropa cobraban $100. Como la
+> paquetería cobra una guía **por bulto**, cada caja extra salía de la utilidad del dueño. El
+> backend ya lo había corregido; el frontend era el que iba atrasado, con una copia de la lógica
+> vieja en `lib/domain/cart.ts` que le prometía al cliente un envío más barato del que se le iba a
+> cobrar al pagar.
+
+**Lo que hace el backend (referencia — no se tocó):**
+
+- `POST /api/shipping/rates` acomoda el carrito en un catálogo de cajas (chica 40×35×25, mediana
+  55×40×35, grande 60×45×50) y cotiza **un bulto por caja**. Un pedido de una pieza sigue yendo en
+  la caja chica: no se sobrecobra el caso mayoritario.
+- **Cada rate trae `packageCount`** (entero ≥ 1). Viene también en la tarifa plana de respaldo, con
+  el mismo acomodo — caer al respaldo cambia el precio del bulto, nunca cuántos bultos son.
+- La tarifa plana suma, **por caja**, la tarifa del tipo más caro que esa caja lleva. Los montos por
+  tipo no cambiaron ($160 bota / $130 sombrero / $100 ropa).
+- `POST /api/orders` sigue recibiendo `quotationId`/`rateId` y **jamás un monto**; la respuesta trae
+  `order.packageCount` (`null` con la tarifa plana).
+
+**Trabajo del frontend:**
+
+1. [x] **`lib/domain/cart.ts`** — se tomó el camino **(b)**: dejar de calcular el envío en el front.
+       Se eliminaron `SHIPPING_BY_TYPE`, `SHIPPING_FALLBACK` y `computeShipping()`. Portar `packOrder`
+       (camino (a)) habría dejado dos implementaciones del acomodo de cajas que se desincronizan la
+       primera vez que el dueño mida sus cajas de nuevo. `CartTotals.shipping` pasó a `number | null`
+       — `null` = *todavía no hay cotización*, y con `null` el `total` es la **mercancía neta**. Ese
+       cambio de tipo es lo que hizo que el compilador señalara todos los consumidores.
+2. [x] `lib/api/shipping.ts`: `packageCount: z.number().int().positive()` en `ShippingRateSchema`,
+       **requerido y no opcional** — el backend lo manda en las dos ramas del controlador, así que
+       un backend viejo debe fallar ruidoso en vez de dejar la UI pintando "una caja" en silencio
+       sobre un pedido de cuatro.
+3. [x] El número de cajas se muestra en **dos lugares** del paso 3, no uno: un aviso ARRIBA de la
+       lista de tarifas (que es donde el comprador está comparando precios y preguntándose por qué
+       son más altos de lo que esperaba) y la línea del sidebar vía la prop nueva `packageCount` de
+       `OrderTotals`. Se deriva del **máximo** de `data.rates`, no de `rates[0]`: hoy todas las
+       tarifas salen del mismo `packOrder` y coinciden, pero leer la primera es apostarle a eso.
+4. [x] `lib/api/orders.ts`: `packageCount: z.number().nullable().optional()` en
+       `OrderResponseSchema`. `CheckoutContext.completeOrder` lo congela en el snapshot y `Success`
+       lo pinta, para no dejar un envío alto sin explicación en la única pantalla que el comprador
+       se queda mirando. `PublicOrderSchema` **no** lo trae: el backend no lo proyecta ahí.
+
+**Detalles de implementación que conviene no re-descubrir:**
+
+- **El paso 0 ya no muestra un monto de envío**, y eso obligó a una decisión de copy: con
+  `shipping: null`, `OrderTotals` pinta "Se calcula con tu dirección" y rotula el total como
+  **"Total sin envío"**. Ni `$0` ni esconder la fila — un envío que no se nombra se lee como envío
+  gratis, y el total de ese paso no es el que se va a cobrar. La copia se alineó con la que ya
+  existía en `UserDetails` ("El costo de envío se calcula en el siguiente paso").
+- **El salto de precio es real y es la corrección**, no un bug: el pedido de 8 botas pasa de $160 a
+  $320 porque siempre costó $320 de guías. Conviene avisarle al dueño antes de desplegar.
+- Un pedido de **una sola pieza no cambia de precio**, y son la mayoría de las ventas.
+- `packageCount` es informativo para el comprador; **no se manda de vuelta** en `POST /api/orders`
+  (el backend lo ignora — el que se guarda sale de su re-consulta autoritativa).
+
+**Salida:** lo que el carrito promete y lo que el checkout cobra volvieron a ser el mismo número, y
+el dueño deja de pagar de su bolsa las guías de los pedidos grandes.
+
+---
+
 # Fases pendientes
 
-**Ninguna.** La 21 era la última del roadmap.
+## Fase 22 — Panel: el envío como costo de venta 🔴 Pendiente
+
+> **Contexto.** El panel venía inflando la ganancia. El total de cada pedido ya trae sumado el envío
+> que pagó el cliente (`total = subtotal − ahorro − cupón + envío`), así que INGRESOS siempre lo
+> incluyó — pero el único costo que se restaba era el del producto. Resultado: **una venta de $2,000
+> con $160 de guía se leía como si los $2,000 cargaran margen**, cuando esos $160 salen casi
+> completos hacia la paquetería. El backend ya lo corrigió: el envío es costo de venta y se
+> descuenta en la GANANCIA BRUTA. Falta que el panel lo muestre, y sobre todo que **no lo cuente
+> dos veces**.
+
+**Lo que hace el backend (referencia — no tocar):**
+
+- **`GANANCIA BRUTA = INGRESOS − costo de producto − COSTO DE ENVÍO`** y `GANANCIA OPERATIVA =
+  BRUTA − GASTOS`. El envío **no** está dentro de `GASTOS`: ese KPI sigue siendo solo los gastos
+  capturados en la sección de Gastos.
+- **KPI nuevo `COSTO DE ENVÍO`** en `profitKpisByPeriod`, con `subtitle` "guías pagadas a la
+  paquetería · ya restado en la ganancia bruta" y su `trend` contra la ventana previa.
+- **`recentSales[].shipping`** nuevo: el envío cobrado en ese pedido. La ganancia real de la fila es
+  `total − shipping − costoTotal` (`costoTotal` es solo producto).
+- **`MARGEN BRUTO` cambió de significado**: ahora es `(INGRESOS − producto − envío) / INGRESOS`, y su
+  subtítulo pasó de "sobre precio de venta outlet" a **"después de producto y envío"**.
+- **`shippingCost`** nuevo en `GET /api/admin/expenses/summary` (mes en curso a la fecha) y en cada
+  mes de `/history`. Es una línea **derivada** de los pedidos: `{ category: "paqueteria", derived:
+  true, includedInGrossProfit: true, from, to, partial, amount, orders }`. **No hay fila de gasto
+  detrás**: no se edita, no se borra y no sale en `GET /api/admin/expenses`.
+- Esa línea va **fuera** de `total`, `byCategory`, `byExpense`, `monthlyRunRate`, `annualRunRate` y
+  `activeCount`. Sale aparte precisamente para que se pueda pintar sin ensuciar los totales.
+
+**Trabajo del frontend:**
+
+1. [ ] `lib/api/dashboard.ts`: agregar `shipping: z.number()` a `SaleRowSchema`. `KpiDataSchema` y
+       `profitKpisByPeriod` **no cambian** — `KpiGrid` pinta los KPIs genéricamente por `label`, así
+       que `COSTO DE ENVÍO` aparece solo (igual que pasó con `GASTOS` en la Fase 20).
+2. [ ] `SalesTable`: columna **"Envío"** y, donde se muestre la ganancia de la fila, cambiar
+       `total − costoTotal` por **`total − shipping − costoTotal`**.
+3. [ ] `lib/api/adminExpenses.ts`: agregar `shippingCost` a los schemas de `ExpenseSummary` y
+       `ExpenseMonth`.
+4. [ ] `ExpenseSummaryCard.tsx` y `ExpenseHistory.tsx`: pintar `shippingCost` como fila **no
+       editable** bajo Paquetería, visualmente separada de los gastos capturados, con este copy:
+       *"Envíos (guías): $X — ya restado en la ganancia bruta del panel. No lo captures como gasto:
+       se contaría dos veces."*
+5. [ ] **Nunca** sumar `shippingCost.amount` al total de gastos que se muestra, ni a la gráfica de
+       barras del historial, ni al desglose por categoría.
+6. [ ] Usar `partial` / `from` / `to` de la línea para rotularla ("del 1 al 4 de agosto"): un
+       acumulado a media quincena junto a un `monthlyRunRate` de mes completo se lee como si el
+       envío saliera baratísimo.
+
+**Detalles de implementación que conviene no re-descubrir:**
+
+- **El `trend` de `COSTO DE ENVÍO` viene invertido a propósito**: `positive: true` significa que el
+  costo **bajó**. Si se pintara con la regla normal, "el envío subió 40%" saldría en verde. No hace
+  falta lógica especial en el front — basta con seguir pintando por `positive`, como siempre.
+- **`MARGEN BRUTO` va a bajar el día del deploy** (con datos de prueba, de 38% a 31%). Es la
+  corrección, no una regresión ni una mala semana: conviene avisarle al dueño antes de desplegar.
+- El backend usa el envío **cobrado** (`Order.shipping`) como proxy del pagado. Con cotización viva
+  de Skydropx es el monto exacto; en los casos de tarifa plana o guía manual **subestima**, nunca
+  infla. O sea: el costo real de paquetería es igual o mayor al que muestra el panel.
+- Un pedido reembolsado sale de la cuenta aunque su guía ya se haya pagado — misma regla que ya
+  aplica a ingresos y a costo de producto.
+
+**Salida:** el dueño ve de una vez cuánto se le va en guías, la ganancia que muestra el panel es la
+que de verdad le queda, y la sección de Gastos enseña el envío sin que nadie lo capture a mano ni se
+descuente dos veces.
 
 ---
 
@@ -1316,5 +1445,11 @@ exactamente eso.
 - **Envíos (Skydropx):** el backend **ya integra Skydropx de punta a punta** (cotización en
   vivo `POST /api/shipping/rates`, guía automática al pagar y webhook de estado —
   `../backend/roadmaps-completados/roadmap-skydropx.md` Fases 8.1–8.6). El checkout ya cotiza en vivo (ver "Shipping"
-  en `CLAUDE.md`) y el panel de pedidos ya muestra guía/rastreo (**Fase 11** ✅).
-- **Prioridad de lo pendiente:** ya no queda ninguna fase del roadmap — la 21 fue la última.
+  en `CLAUDE.md`) y el panel de pedidos ya muestra guía/rastreo (**Fase 11** ✅). Desde la **Fase 23**
+  ✅ el envío se cotiza y se cobra **por caja**, y `lib/domain/cart.ts` ya no calcula envío: el front
+  no debe volver a estimarlo por su cuenta.
+- **Lo único pendiente es la Fase 22** (solo panel, nadie más la ve): el envío como costo de venta en
+  el dashboard y en la sección de Gastos. La Fase 23 —que iba primero por ser la que le mentía al
+  cliente sobre el precio— ya está cerrada. Nota para cuando se retome: en la tarjeta móvil de
+  `SalesTable` el envío va como una línea tenue **bajo el Total**, no como una tercera columna (ya
+  decidido; una rejilla de 3 aprieta los montos en pantallas chicas).

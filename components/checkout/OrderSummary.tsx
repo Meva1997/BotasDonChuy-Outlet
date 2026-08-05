@@ -34,9 +34,11 @@ export default function OrderSummary() {
     );
   }
 
-  // El envío de aquí es un ESTIMADO de tarifa plana (todavía no hay dirección que
-  // cotizar) y nunca se cobra este número. El descuento del cupón, en cambio, sí
-  // sale del servidor: se resta del total en vez de recalcularlo.
+  // `computeTotals` ya NO estima el envío (Fase 23): aquí todavía no hay dirección
+  // que cotizar, y la copia local de la tarifa plana prometía menos de lo que el
+  // backend cobra en cuanto el pedido pasa de una caja. `shipping` viene en `null` y
+  // OrderTotals lo pinta como "se calcula con tu dirección". El descuento del cupón
+  // sí sale del servidor: se resta del total en vez de recalcularlo.
   const base = computeTotals(items);
   const coupon = getAppliedCoupon(cartLineSignature(items));
   const totals = coupon

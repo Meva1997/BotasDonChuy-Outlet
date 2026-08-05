@@ -55,6 +55,12 @@ export const OrderResponseSchema = z.object({
   postalCode: z.string(),
   references: z.string().nullable().optional(),
   shippingCarrier: z.string().nullable().optional(),
+  // En cuántos bultos se cotizó y se cobró el envío (Fase 23). `null` cuando se usó
+  // la tarifa plana de respaldo. Es informativo para el comprador: NO se manda de
+  // vuelta en el payload de creación (el backend lo ignora — el que se guarda sale
+  // de su re-consulta autoritativa a Skydropx). Mismo patrón que `couponCode` y
+  // `publicToken`: el backend ya lo mandaba y Zod lo descartaría sin declararlo.
+  packageCount: z.number().nullable().optional(),
   // Credencial de la consulta pública (Fase 17): el backend la genera junto con la
   // orden y la devuelve aquí, así que el checkout puede mandar al comprador a
   // /pedido/<token> sin esperar el correo. `nullable` por los pedidos anteriores a
@@ -97,7 +103,8 @@ export interface CreateOrderResult extends CreateOrderResponse {
 // ShippingOptions (Fase 8.4): van juntos o ninguno (igual que
 // createOrderSchema.refine() en el backend). Cuando vienen, el servidor
 // RE-CONSULTA Skydropx por el total autoritativo de esa tarifa; si no, cae a
-// su propia tarifa plana (computeShipping).
+// su propia tarifa plana (`computeShipping` del BACKEND — el front ya no tiene
+// copia de esa tabla desde la Fase 23; ver lib/domain/cart.ts).
 export interface CreateOrderPayload {
   items: Array<{ productId: number; size: number; quantity: number }>;
   customer: ShippingData;
