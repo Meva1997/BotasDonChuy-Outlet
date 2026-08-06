@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repo.
 
 ## Standing rules
 
-Before every git commit, proactively check if `README.md` and `CLAUDE.md` are up to date with the changes being committed. Update them if needed — do not wait for the user to ask.
+Before every git commit, check if `README.md` and `CLAUDE.md` need updating for the changes being committed — don't wait to be asked.
 
 ## Commands
 
@@ -15,910 +15,492 @@ pnpm lint       # ESLint
 pnpm test       # Jest (--passWithNoTests; no specs yet)
 ```
 
-Package manager is **pnpm** (not npm/yarn). Use `pnpm add` to install dependencies.
+Package manager is **pnpm**. Use `pnpm add` to install.
 
 ## Stack
 
-- **Next.js 16** with App Router (all pages in `app/`)
-- **React 19**, **TypeScript**
-- **Tailwind CSS v4** — configured via `@import "tailwindcss"` in `globals.css`, not a `tailwind.config.*` file. Custom theme tokens (fonts, `tobacco-*` color scale) live in a `@theme {}` block in `globals.css`.
-- **Testing** — **Jest + React Testing Library + @testing-library/user-event** (`jest.config.ts` usa `next/jest`; `jest.setup.ts` carga `@testing-library/jest-dom` **y stubea `window.matchMedia`**, que jsdom no implementa y framer-motion llama desde `useReducedMotion()`). `jest.config.ts` acota `testMatch` a `**/*.test.{ts,tsx}` en vez del default de Jest —que trata como suite **cualquier** archivo bajo un `__tests__/`— para poder tener fixtures y helpers compartidos ahí dentro. Las specs cubren **solo módulos puros y la pantalla de importación**: las de la importación por Excel (`components/admin/import/__tests__/`), que cubren tanto los módulos **puros** como **todos** los componentes de esa pantalla, más dos módulos puros del checkout (`lib/domain/__tests__/idempotency.test.ts` y `components/checkout/__tests__/checkoutErrors.test.ts`, Fase 15), uno del admin (`components/admin/orders/__tests__/shipmentLabel.test.ts`, Fase 16), dos del seguimiento público (`lib/domain/__tests__/publicOrderToken.test.ts` y `components/pedido/__tests__/orderTimeline.test.ts`, Fase 17), uno del catálogo (`lib/domain/__tests__/catalogFilters.test.ts`, Fase 18), uno de los cupones (`components/admin/coupons/__tests__/couponStatus.test.ts`, Fase 19) y uno de los gastos (`components/admin/expenses/__tests__/expenseStatus.test.ts`, Fase 20) — sin specs de componentes ni de hooks del checkout, ni de los pedidos, ni de la barra de filtros del outlet, ni de las secciones de cupones y gastos. Están agrupadas por fase del flujo (`pure/`, `intake/`, `review/`, `editing/`, `presentation/`, `commit/`) + `helpers/` (fixtures del contrato y utilidades de montaje, **no** son suites); un archivo por módulo, con su mismo nombre. El mapa completo y las convenciones están en `components/admin/import/__tests__/README.md` — leerlo antes de agregar specs ahí. Sin snapshots a propósito (cambiarían con cada ajuste de Tailwind sin decir nada). Playwright se eliminó (nunca tuvo config ni specs); no reintroducir e2e sin pedirlo.
-- **Sileo** — librería de toasts (physics-based). Solo se usa en `/admin` (`<Toaster />` montado en `app/admin/layout.tsx`, no en el root layout, para no cargarla en el storefront público). Hoy su único consumidor es el polling de `OrdersSection` (ver abajo). `theme="light"` + `position="top-center"` + `options={{ fill: "#000000" }}` (píldora negra; `theme="light"` es lo que hace que Sileo pinte el texto claro — su CSS interno asume pill oscura en ese theme) + `styles: { description: "text-white/75!" }` (sube la opacidad del texto de descripción sobre el default blanco/50%). Tamaño de píldora y tipografía agrandados, y acento "info" ajustado al ámbar de marca — en `globals.css` con `!important` (necesario: `sileo/styles.css` se importa después y empata en especificidad con nuestros overrides).
+- **Next.js 16** (App Router, all pages in `app/`), **React 19**, **TypeScript**
+- **Tailwind CSS v4** — `@import "tailwindcss"` in `globals.css`, no `tailwind.config.*`. Theme tokens (fonts, `tobacco-*` scale) live in a `@theme {}` block there.
+- **Testing** — Jest + React Testing Library + user-event (`next/jest`; `jest.setup.ts` stubs `window.matchMedia`, needed by framer-motion's `useReducedMotion()`). `testMatch` is scoped to `**/*.test.{ts,tsx}` (not "anything under `__tests__/`") so fixtures/helpers can live alongside specs. Coverage today: **pure modules only, plus the full Excel-import screen** (`components/admin/import/__tests__/` — the only place with component specs) and a handful of pure modules elsewhere: `lib/domain/__tests__/idempotency.test.ts`, `checkoutErrors.test.ts`, `orders/__tests__/shipmentLabel.test.ts`, `publicOrderToken.test.ts`, `orderTimeline.test.ts`, `catalogFilters.test.ts`, `couponStatus.test.ts`, `expenseStatus.test.ts`. No specs for checkout/orders components or hooks, the outlet filter bar, or the coupons/expenses sections. Import tests are grouped by pipeline phase (`pure/`, `intake/`, `review/`, `editing/`, `presentation/`, `commit/` + `helpers/`) — see `components/admin/import/__tests__/README.md` before adding more. No snapshots (would break on every Tailwind tweak). No Playwright/e2e — don't reintroduce without being asked.
+- **Sileo** — physics-based toast library, admin-only (`<Toaster />` in `app/admin/layout.tsx`, not root). Only consumer today is `OrdersSection`'s polling toast. Styled black pill via `globals.css` `!important` overrides (needed because `sileo/styles.css` loads after and ties on specificity).
 
 ## Architecture
 
 ```
 app/              # Next.js App Router
-  layout.tsx      # Root layout: fonts, base classes, QueryProvider + CartProvider + la metadata
-                  #   global de SEO (metadataBase, title.template, OG/Twitter, robots) — ver "SEO"
-  page.tsx        # Home page — composes NavHeader + Hero + Footer (+ JSON-LD de ClothingStore)
-  sitemap.ts      # /sitemap.xml — rutas estáticas + un <url> por producto (recorre el catálogo
-                  #   paginado). `revalidate = 3600`. Si el backend no responde, loguea y emite
-                  #   solo las estáticas (no revienta el deploy)
-  robots.ts       # /robots.txt — disallow de /admin, /login, /forgot-password, /checkout, /api/
-  opengraph-image.tsx # Imagen de compartir 1200x630 generada con next/og en build. Al vivir en la
-                  #   raíz la heredan todas las rutas que no definan la suya. Playfair se baja de
-                  #   Google Fonts con fallback a serif del sistema (una fuente fea > un build roto)
-  global-error.tsx # Boundary de último recurso: el ÚNICO que atrapa errores del layout raíz (el
-                  #   hueco que error.tsx no cubre). Trae su propio <html>/<body> porque el layout
-                  #   que heredaría es justo el que falló → aquí NO existen QueryProvider/
-                  #   BrandProvider/CartProvider. Por eso NO reusa NavHeader/Footer: pintaría un
-                  #   botón de carrito cuyo drawer no está montado. Todo sale de BRAND (estático).
-                  #   Solo se ve en producción (en dev gana el overlay de Next)
-  not-found.tsx   # 404 a la medida (root, cubre toda la app) — importa NavHeader/Footer directo
-                  #   (no los hereda del layout raíz, igual que page.tsx), reusa el patrón de
-                  #   stamp de EmptyState + links a categorías vía CATEGORIES
-  error.tsx       # Frontera de error raíz (client component) — cubre cualquier throw de un RSC
-                  #   (p. ej. backend caído → ECONNREFUSED en getProductById) y reemplaza el
-                  #   overlay crudo de Next con la estética del sitio. "Reintentar" NO usa el prop
-                  #   de retry de Next: lo recompone con API estable — startTransition(() => {
-                  #   router.refresh(); reset(); }) — porque el nombre del prop es inestable
-                  #   (`unstable_retry` en 16.2, `retry` en canary). Es equivalente exacto al
-                  #   built-in (error-boundary.js hace lo mismo sobre AppRouterContext, el mismo
-                  #   contexto que lee useRouter). `reset()` solo NO basta: limpia el estado sin
-                  #   re-fetchear → no recupera errores de Server Component; el refresh() previo
-                  #   es lo que pide datos nuevos. Muestra `error.digest` como referencia de log.
-                  #   No cubre errores del layout raíz: de eso se encarga global-error.tsx (arriba).
+  layout.tsx      # Root layout: fonts, QueryProvider + CartProvider, global SEO metadata (see "SEO")
+  page.tsx        # Home — NavHeader + Hero + Footer + ClothingStore JSON-LD
+  sitemap.ts      # Static routes + one <url> per product. revalidate=3600; backend-down → static only
+  robots.ts       # Disallows /admin, /login, /forgot-password, /checkout, /api/
+  opengraph-image.tsx # Generated 1200x630 share image, inherited by routes without their own openGraph
+  global-error.tsx # Last-resort boundary for root-layout errors only. Own <html>/<body> — no
+                  #   QueryProvider/BrandProvider/CartProvider available, so it can't reuse
+                  #   NavHeader/Footer (cart drawer wouldn't be mounted). Prod-only (dev uses Next overlay)
+  not-found.tsx   # Custom 404, imports NavHeader/Footer directly (not inherited)
+  error.tsx       # Root error boundary (client). Catches RSC throws (e.g. backend down). "Reintentar"
+                  #   = startTransition(() => { router.refresh(); reset() }) — reset() alone doesn't
+                  #   re-fetch, so it can't recover a failed Server Component on its own
   admin/
-    layout.tsx    # Admin layout: AdminGuard (route protection) + full-height tobacco-950 shell +
-                  #   `robots: noindex` para TODO /admin/* (va en el layout, no por página, para que
-                  #   cualquier sección futura lo herede sin acordarse)
-    page.tsx      # Admin dashboard — Sidebar + section routing (AdminSection type)
+    layout.tsx    # AdminGuard + shell + `robots: noindex` for all of /admin/* (set once, here)
+    page.tsx      # Sidebar + section routing (AdminSection type)
   (public)/
-    outlet/
-      [slug]/
-        producto/ # Product detail page (async RSC → ProductInfo client component).
-                  #   generateMetadata: título/description/canonical + OG con la FOTO REAL del
-                  #   producto, y JSON-LD de Product + BreadcrumbList. Comparte el producto con la
-                  #   página vía React `cache()` (si no, serían 2 GET idénticos: axios no deduplica
-                  #   como fetch()). SIN loading.tsx a propósito (soft 404) — ver "Estados de carga"
+    outlet/[slug]/producto/ # Product detail (async RSC). generateMetadata with real product OG image +
+                  #   Product/BreadcrumbList JSON-LD. Shares fetch with the page via React cache().
+                  #   NO loading.tsx on purpose — see "Estados de carga"
     pedido/
-      page.tsx    # /pedido — entrada al seguimiento sin token → OrderLookupForm. Es lo que
-                  #   enlaza el Footer. `robots: noindex`
-      [token]/    # /pedido/<token> — seguimiento público del pedido (Fase 17) → OrderTracking.
-                  #   El path tiene que ser EXACTAMENTE ése: lo construye `publicOrderUrl` en
-                  #   ../backend/src/services/payment.service.ts para el correo de confirmación.
-                  #   Server component fino (await params, Next 16) + `robots: noindex` (el token
-                  #   ES la credencial). SIN loading.tsx: al ser noindex no hay status que cuidar
-                  #   (a diferencia de producto) y el estado de carga lo pinta la propia query
-    terminos/     # Terms & Conditions page → TermsConditions component
-    privacidad/   # Privacy Policy page → PrivacyPolicy component
-    envios/       # Shipping Policy page → ShippingInfo component
-    nosotros/     # About Us page → AboutUs component (components/nosotros/)
-  login/          # Login page → AuthShell + LoginForm
-  forgot-password/ # Forgot password page → AuthShell + ForgotPasswordForm
+      page.tsx    # /pedido — token-less entry (OrderLookupForm), linked from Footer. noindex
+      [token]/    # /pedido/<token> — public order tracking. Path is fixed by the backend's
+                  #   publicOrderUrl (payment.service.ts) for the confirmation email. noindex
+                  #   (the token IS the credential). No loading.tsx needed (query owns its own state)
+    terminos/ privacidad/ envios/ nosotros/  # static legal/about pages
+  login/ forgot-password/  # AuthShell + LoginForm / ForgotPasswordForm
 components/
-  home/           # Page-level sections (NavHeader, Hero, Footer) + CategoryCard (tile usado por Hero). Hero pide el conteo real de piezas por categoría vía getProducts({ categoria, perPage: 1 }) (lib/api/products) — solo usa el total, no la lista
-  outlet/         # OutletView — listado del catálogo; OutletCard + EmptyState (único consumidor: OutletView).
-                  #   OutletSkeleton — fallback del <Suspense> de las 4 rutas de listado (ver "Estados de carga")
-                  #   OutletFilters (Fase 18) — buscador + categoría + talla + orden + rango de precio.
-                  #   TODO lo resuelve el backend en SQL y `total`/`totalPages` ya vienen acotados por
-                  #   los filtros: el front NUNCA filtra, ordena ni recorta availableSizes en cliente
-                  #   (hacerlo rompería la paginación). La URL es la fuente de verdad; los valores se
-                  #   sanean al leerla con lib/domain/catalogFilters.ts. Buscador y los dos campos de
-                  #   precio comparten UN borrador local con debounce de 300 ms que comitea los tres
-                  #   juntos vía `updateParams(..., { replace: true })` de OutletView: con `push`, cada
-                  #   commit dejaría una entrada de historial y «atrás» recorrería «b», «bo», «bot»…
-                  #   (categoría/talla/orden/página sí empujan — son un clic deliberado). A esos inputs
-                  #   se les pasa el texto CRUDO de la URL, no el valor saneado: con el saneado, teclear
-                  #   algo que aún no es un precio lo borraría solo mientras se escribe. Un valor basura
-                  #   en la URL es inofensivo (el backend lo ignora en silencio, nunca da 400) y el
-                  #   saneo lo vuelve `undefined` antes del queryKey. La re-siembra del borrador ante un
-                  #   cambio de URL (atrás/adelante, "Limpiar filtros") va EN EL RENDER, no en un
-                  #   useEffect — es el ajuste de estado por cambio de prop de React, y con efecto el
-                  #   linter marca render en cascada. La barra lleva su propio botón "Limpiar filtros"
-                  #   (visible solo con `filtersActive`, la MISMA señal `hasActiveFilters` que elige el
-                  #   estado vacío — con dos criterios se contradirían) en un renglón aparte junto al
-                  #   conteo: a mano habría que vaciar hasta seis controles. Layout: una columna en
-                  #   móvil (cada control a ancho completo), los tres selects en `grid-cols-2` hasta sm,
-                  #   y una sola fila que envuelve a partir de lg — los campos de precio son `flex-1
-                  #   min-w-0` abajo y `w-24` fijos arriba. Estado vacío partido en dos: sin filtros, el
-                  #   de siempre ("Agotado"); con filtros, "No encontramos nada" + el término entre «» +
-                  #   botón "Limpiar filtros" (que conserva la categoría en /botas, /sombreros y /ropa).
-                  #   EmptyState ganó `stamp` y `action` para eso — el sello "Agotado" mentiría sobre un
-                  #   catálogo que sí tiene piezas. `precioMin > precioMax` da cero resultados a
-                  #   propósito (el backend no invierte el rango): se avisa en la UI, no es validación
-  seo/            # JsonLd — pinta un bloque schema.org como <script type="application/ld+json">.
-                  #   Escapa `<` (un `</script>` en una cadena cerraría la etiqueta antes de tiempo)
-  product/        # ProductInfo — panel de detalle de producto (galería vía ImageCarousel + size picker + add-to-cart), consumido por la página de producto. La galería sale de product.images (Cloudinary, hasta 3), con fallback a imageSrc o placeholder. Fase 24: con product.hasSizes:false no pinta el size picker — agrega directo con size 0 (el centinela sin talla, ver "Productos sin tallas")
-  ui/             # Primitivas realmente globales: Cart, CartProvider (drawer montado en root layout), FormControls (TextField/SelectField, compartido por checkout/ y auth/), ImageCarousel (carousel reutilizable: flechas + puntos, framer-motion + next/image, respeta reduced-motion; consumido por ProductInfo)
-  checkout/       # Checkout flow de 4 pasos (see "Checkout flow" below). ShippingOptions —
-                  #   paso 3, cotización de envío en vivo vía lib/api/shipping.ts.
-                  #   CouponField — paso 0, captura del cupón (Fase 19). Es un useMutation y NO un
-                  #   useQuery a propósito: aplicar un cupón es un clic deliberado, no un dato que
-                  #   la pantalla necesite, y con una query cada tecla mal escrita gastaría una de
-                  #   las 20 consultas/min de la ruta. (La revalidación del paso 3 sí es query: ahí
-                  #   el dato SE necesita para poder pagar y no lo dispara un clic.) No calcula
-                  #   nada: el monto siempre sale de /validate, que comparte la función de
-                  #   descuento con el checkout — duplicar la fórmula garantiza que un día diverja
-                  #   del cobro. El `message` del backend se pinta VERBATIM (distingue la causa:
-                  #   no existe · venció · se agotó · cuánto falta para el mínimo)
-                  #   checkoutErrors.ts — módulo PURO (con specs) con el mapeo de errores del
-                  #   pedido/pago: placeOrderErrorMessage + los detectores de los TRES 409 que
-                  #   devuelve POST /api/orders (sin stock · cotización expirada · clave de
-                  #   idempotencia reusada). Vive aparte de usePlaceOrder porque esos tres solo
-                  #   se distinguen por el `message` y cada uno pide una recuperación distinta:
-                  #   confundir dos deja al comprador reintentando en bucle contra el mismo error.
-                  #   Fase 19: `isCouponError` es el CUARTO 409 (el cupón dejó de aplicar entre el
-                  #   visto bueno de /validate y el pago: se agotó, lo usó otro carrito del mismo
-                  #   correo, o el descuento deja el total bajo el mínimo cobrable de Stripe). La
-                  #   palabra "cupón" basta para distinguirlo: ninguno de los otros tres la
-                  #   menciona y TODOS los de cupón sí. El cupón NO se quita solo — cambiaría en
-                  #   silencio el precio que el comprador aceptó — se ofrece el botón
-  pedido/         # Seguimiento público del pedido (Fase 17) — la ÚNICA pantalla del proyecto
-                  #   cuyo consumidor es el comprador, no el dueño. OrderTracking (dueño de la
-                  #   query: useQuery sobre orderKeys.lookup(token) + botón "Actualizar" manual;
-                  #   SIN refetchInterval — el estado cambia en horas y el backend limita la ruta
-                  #   a 30 req/min pidiendo que cualquier polling sea de ≥1 min, así que solo hay
-                  #   refetchOnWindowFocus + refresh manual; `retry: false` porque un 404 es
-                  #   definitivo y reintentarlo gasta tres consultas para el mismo mensaje),
-                  #   OrderStatusTimeline, TrackedOrderItems, OrderLookupForm.
-                  #   OrderLookupForm pide el CÓDIGO DE SEGUIMIENTO, no el enlace (Fase 21): el
-                  #   correo lo imprime a la vista en una caja copiable, mientras que el enlace solo
-                  #   existía dentro del href del botón y para sacarlo había que saber usar "copiar
-                  #   dirección del enlace" — ni el dueño lo encontró. Usa la MISMA expresión que el
-                  #   correo ("código de seguimiento") a propósito. `extractPublicOrderToken` sigue
-                  #   aceptando las dos formas y no se toca: los correos ya enviados llevan solo el
-                  #   link. inputMode="text" (no "url"): el campo ya no recibe URLs.
-                  #   NINGUNA de las dos pantallas del comprador (esta y checkout/Success) muestra ya
-                  #   "Pedido #<id>": Order.id es el consecutivo GLOBAL de la tienda, no la
-                  #   referencia del comprador —la consulta pública es por token justamente porque un
-                  #   id secuencial sería enumerable— y los correos ya dejaron de mandarlo. En el
-                  #   PANEL sí se sigue mostrando: ahí es la única forma que tiene el dueño de nombrar
-                  #   un pedido. `orderId` se queda en el snapshot del CheckoutContext, solo no se
-                  #   pinta.
-                  #   orderTimeline.ts — módulo PURO (con specs) que deriva status/paymentStatus a
-                  #   la línea de tiempo. Vive aparte del componente porque DOS estados no caben en
-                  #   la línea de 4 pasos y pintarlos ahí mentiría: `pending` (el pago aún no se
-                  #   confirma; el barrido del backend puede reciclar el pedido) y `cancelled` (la
-                  #   línea se rompe, y "cancelado" ≠ "reembolsado" — prometer una devolución que
-                  #   no existe genera justo la llamada que esta fase vino a evitar).
-                  #   OrderStatusTimeline se llama distinto que orderTimeline.ts a propósito: en un
-                  #   FS insensible a mayúsculas (macOS) un `OrderTimeline.tsx` dejaría el import
-                  #   del módulo puro a merced del orden de extensiones del bundler.
-                  #   TrackedOrderItems NO reutiliza checkout/OrderItems (ése recibe CartItem[] con
-                  #   el Product vivo; aquí solo llega el nameSnapshot y los precios congelados —
-                  #   correcto: el producto pudo cambiar de precio o salir del catálogo).
-                  #   Los totales SÍ reutilizan checkout/OrderTotals, que ganó una prop opcional
-                  #   `discount` para la fila de cupón (ver lib/api/orders.ts). Desde la Fase 19
-                  #   se la pasan también OrderSummary, ShippingOptions y Success
-  legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal content pages
-  nosotros/       # AboutUs — página estática "Sobre nosotros" (historia, marcas, qué es el outlet). Enlazada desde el footer ("Sobre nosotros")
-  auth/           # AuthShell (split-panel layout) + LoginForm — react-hook-form + zod (schemas/auth.ts) + TanStack Query (useMutation), YA conectados al backend vía lib/api/auth. AdminGuard — protege /admin y valida el token contra GET /auth/me (ver "Auth & data fetching"). ForgotPasswordForm es un wizard de 3 pasos (Fase 10): email → código de 5 dígitos → nueva contraseña → /login. Estado local (no persistido). Subcomponentes: CodeInput (primitivo OTP de 5 casillas: auto-avance, backspace, pegar; estética de FormControls), ResetCodeForm (verifyResetCode + enlace "Reenviar código" que rellama forgotPassword) y NewPasswordForm (resetPassword + redirect a /login)
-  providers/      # QueryProvider — QueryClientProvider de TanStack Query (montado en root layout)
-                  # BrandProvider — hidrata la marca desde GET /api/admin/brand (público) y la
-                  #   expone vía useBrand(); BRAND (lib/domain/brand.ts) es el fallback SSR (montado en root layout)
-  admin/          # Panel de administración — Sidebar (nav) + types.ts (AdminSection, fuente única del tipo,
-                  #   ambos en la raíz por ser transversales a todo el panel) + sections/ (las 8 pestañas
-                  #   que app/admin/page.tsx renderiza por AdminSection) + una carpeta de subcomponentes
-                  #   por pestaña (config/, coupons/, data/, orders/, products/, reportes/):
-                  #   sections/MarcaSection — editor de identidad de marca (logo + copy). YA conectado vía
-                  #     lib/api/brand (useQuery carga + useMutation autosave con debounce). El logo es
-                  #     preview local (blob:), no se persiste — subida real = trabajo futuro
-                  #   sections/ProductSection — gestión de catálogo. YA conectado al backend vía lib/api/adminProducts (useQuery lista + useMutation CRUD). Subcomponentes en components/admin/products/: ProductForm, ProductCategoryView, ProductDetailModal, notices.ts. ProductForm gestiona una galería de hasta 3 imágenes (preview + quitar por imagen): al guardar corre createProduct/updateProduct (JSON, sin imágenes) y luego, con el id, deleteProductImage() por cada quitada + addProductImages() con los nuevos File (Cloudinary). Confirmaciones: ProductForm no navega en silencio — su prop `onBack(notice?)` devuelve a ProductCategoryView el aviso de lo que pasó (guardar/eliminar), que la lista pinta en su banner `role="status"`; salir sin aviso (cancelar) lo limpia. La copy vive en notices.ts (deleteNotice/saveNotice) porque el borrado se dispara desde dos lugares (la tabla y el form) y ambos deben decir lo mismo. Fase 24: toggle "Maneja tallas" que cambia el input de tallas por un numérico "Cantidad en existencia" (`stockQuantity`) — ver "Productos sin tallas"
-                  #   sections/ImportSection — importación/restock masivo por Excel (Fase 13).
-                  #     YA conectado vía lib/api/adminProductImport (dos useMutation: preview + commit).
-                  #     Es una SECCIÓN propia del Sidebar ("Importar") porque la tabla de revisión
-                  #     necesita todo el ancho; ProductSection tiene además un botón "Importar Excel"
-                  #     que navega a ?seccion=importar. Ver "Importación por Excel" abajo — tiene
-                  #     invariantes que no se pueden romper sin duplicar stock del catálogo real
-                  #   sections/OrdersSection — listado de pedidos (Fase 7). YA conectado vía lib/api/adminOrders
-                  #     (useQuery paginado, GET /api/admin/orders). Lectura + dos acciones (Fase 12,
-                  #     cancelación/reembolso; Fase 14, avance manual de estado — ver OrderDetailModal
-                  #     abajo, las dos viven ahí): tabla (desktop) / cards
-                  #     (mobile) + OrderDetailModal (diálogo con trampa de foco). Dueño de un filtro de
-                  #     fecha (`<input type="date">`, mismo patrón que SalesTable) — a diferencia de
-                  #     SalesTable (filtra en cliente sobre datos ya cargados), aquí el filtro viaja al
-                  #     backend (`date` en getAdminOrders/adminGetOrders) porque los pedidos están
-                  #     paginados en servidor: filtrar solo la página cargada daría resultados
-                  #     incompletos. También decide el tamaño de página según viewport
-                  #     (`useSyncExternalStore` sobre `matchMedia("(min-width: 1280px)")`, mismo corte
-                  #     que OrdersTable): 20 en desktop, 5 en mobile (menos scroll en las cards).
-                  #     Subcomponentes en components/admin/orders/: OrdersTable, OrdersPagination (ventana + elipsis),
-                  #     OrderDetailModal, StatusBadges (fuente única de color de status/paymentStatus —
-                  #     campos INDEPENDIENTES — más DropoffBadge y ShipmentStatusBadge). Los hues de
-                  #     STATUS_META y PAYMENT_META son DISJUNTOS: los dos badges se pintan uno junto al
-                  #     otro (columnas "Estado"/"Pago" y encabezado del modal), así que compartir color
-                  #     obliga a leer el texto para distinguirlos. STATUS se queda con la rampa del ciclo
-                  #     de vida (ámbar/sky/violeta/esmeralda + rojo de cancelado) y PAYMENT usa
-                  #     familias que STATUS no toca (stone/cian/lima/fucsia/naranja). SHIPMENT_STATUS_META
-                  #     sí reusa los hues de STATUS a propósito (mismo ciclo contado por la paquetería, y
-                  #     nunca se pinta al lado del badge de status). El modal muestra
-                  #     unitCost + margen (dato sensible, solo /admin/*). Fase 19: la fila "Cupón"
-                  #     va ARRIBA de Envío (el descuento se aplica sobre la mercancía neta y nunca
-                  #     toca el envío) y solo aparece con `couponDiscount > 0`; el margen total le
-                  #     RESTA el descuento, que sale del bolsillo de la tienda — sin restarlo, una
-                  #     promoción se vería igual de rentable que una venta a precio de lista, que
-                  #     es justo lo que el dueño necesita comparar antes de repetirla.
-                  #     `shippingRequiresDropoff` (bandera
-                  #     operativa de Skydropx, ver "Shipping" — el dueño debe llevar el paquete a la
-                  #     sucursal, esa paquetería no recoge a domicilio) se pinta como DropoffBadge en la
-                  #     tabla (columna "Envío", desktop y mobile) y como aviso ⚠️ en el modal junto a
-                  #     "Paquetería": es dato admin-only (excluido de la respuesta pública del checkout) y
-                  #     de perderse de vista significa que el pedido nunca sale de la tienda. Guía/rastreo
-                  #     Skydropx (Fase 11, poblados por el webhook `POST /api/webhooks/skydropx`, nacen
-                  #     `null`): la misma columna "Envío" enlaza "Descargar guía" cuando `labelUrl` existe
-                  #     (si no, "Guía en proceso" — solo para pedidos ya pagados, vía `canHaveLabel`); el
-                  #     modal agrega los campos "Guía" / "Rastreo" (enlazado a `trackingUrl`) / "Estado del
-                  #     envío" junto a "Paquetería". `shipmentStatus` es el string crudo del carrier (no un
-                  #     enum cerrado) — `ShipmentStatusBadge`/`SHIPMENT_STATUS_META` lo traduce con
-                  #     fallback legible para valores no mapeados. `order.status` (`shipped`/`delivered`)
-                  #     ya lo pinta `OrderStatusBadge` sin cambios: el backend lo avanza vía el mismo webhook,
-                  #     o a mano desde el propio modal (Fase 14, abajo).
-                  #     Polling cada 30 min (`refetchInterval`, TanStack Query) para enterarse de cambios del
-                  #     webhook sin recargar la pestaña, más un botón de refresh manual (ícono `RefreshCw` de
-                  #     lucide-react, gira mientras `isFetching`) para no depender del intervalo. Un
-                  #     `useEffect` guarda por vista (página+perPage+día) una firma `status|paymentStatus|
-                  #     shipmentStatus|labelUrl|trackingNumber` por pedido; si el refetch automático (no el
-                  #     manual, ni la primera carga de una vista nueva) trae una firma distinta para algún
-                  #     pedido ya visto, dispara un toast de Sileo (`sileo.info`, ver "Stack") — así no avisa
-                  #     al cambiar de página/filtro ni al usar el botón manual, solo cuando el polling
-                  #     realmente trajo algo nuevo. Cancelación/reembolso manual (Fase 12): OrderDetailModal
-                  #     tiene un botón "Cancelar / reembolsar pedido" (visible solo si status es pending/paid
-                  #     — el backend rechaza shipped/delivered/cancelled con 409) que abre una confirmación
-                  #     inline (irreversible) con un textarea opcional de motivo (reason, máx. 200) y llama
-                  #     cancelAdminOrder() (lib/api/adminOrders.ts, POST /:id/cancel) vía useMutation. Al
-                  #     éxito invalida adminOrderKeys.all + adminProductKeys.all + productKeys.all (el
-                  #     restock cambia el stock del catálogo admin y del outlet público) y notifica a
-                  #     OrdersSection vía la prop onOrderUpdated para que sincronice su `viewing` (el modal no
-                  #     se cierra solo — sigue mostrando el pedido ya cancelado/reembolsado) marcando el
-                  #     refresh como manual (isManualRefreshRef) para no disparar el toast de polling de
-                  #     arriba. refundId/refundedAt (nuevos en el contrato) se muestran en el modal cuando
-                  #     existen. 409 (estado no cancelable) y 502 (falló el reembolso en Stripe) se
-                  #     muestran inline con el message del backend; StatusBadges ya pinta
-                  #     paymentStatus: "refunded" ("Reembolsado", acento naranja).
-                  #     Avance manual del estado de envío (Fase 14): sección "Estado del envío" del mismo
-                  #     modal, arriba de la de cancelación — existe porque un pedido cobrado con la tarifa
-                  #     plana nunca pasa por Skydropx (sin guía → sin webhook) y se quedaría en `paid` para
-                  #     siempre. "Marcar como enviado" (solo en paid) abre un form inline con guía /
-                  #     paquetería, LOS DOS OPCIONALES; "Marcar como entregado" (paid/shipped) es
-                  #     una confirmación sin form; en pending/cancelled/delivered no se ofrece nada (son los
-                  #     409 del backend). Un pedido shipped SIN trackingNumber ofrece "Agregar guía" con el
-                  #     mismo form (el backend acepta repetir status: "shipped" justo para eso). El correo
-                  #     "tu pedido va en camino" sale UNA sola vez por pedido —guard atómico compartido con
-                  #     el webhook— así que el form avisa la consecuencia según haya guía o no. Llama
-                  #     updateAdminOrderStatus() vía useMutation e invalida SOLO adminOrderKeys.all (avanzar
-                  #     el estado no toca stock) + el mismo onOrderUpdated de arriba (obligatorio: status y
-                  #     trackingNumber están en orderSignature, sin la marca manual el refetch avisaría de un
-                  #     cambio que hizo el propio dueño). 409/400 se muestran inline con el message del
-                  #     backend sin cerrar el modal ni perder lo capturado.
-                  #     El form NO captura la "URL de rastreo" (se quitó en la Fase 21): ese campo es el
-                  #     enlace de la PAQUETERÍA y solo lo llena el webhook de Skydropx — este formulario
-                  #     existe justo para los pedidos que nunca pasaron por Skydropx, donde esa URL no
-                  #     existe. El seguimiento propio de la tienda ya viaja en TODOS los correos (botón
-                  #     "Ver el estado de mi pedido" + el código copiable, `sendOrderEmail` en el
-                  #     backend), así que pegarlo ahí duplicaba el botón del correo — que fue justo lo
-                  #     que hizo el dueño la primera vez que usó el form. Al no mandar la clave, la URL
-                  #     que sí haya puesto el webhook se conserva (campos "último gana", clave ausente =
-                  #     "no toques ese campo"). `updateAdminOrderStatus` sigue aceptando `trackingUrl`
-                  #     en el contrato (el backend no cambió); simplemente ya nadie se la manda.
-                  #     Reintento de la guía de Skydropx (Fase 16): sección "Guía de Skydropx" del mismo
-                  #     modal, ARRIBA de "Estado del envío" (generar la guía precede a marcar enviado).
-                  #     La guía se crea sola al confirmarse el pago; si esa única llamada falla, el pedido
-                  #     queda pagado y sin guía y NINGÚN webhook llega por una guía que nunca existió.
-                  #     Todas las ramas salen de shipmentLabel.ts (módulo PURO, con specs — ver abajo):
-                  #     falta la guía y se puede generar (canRetryShipment) → botón "Reintentar guía" con
-                  #     confirmación inline que dice que CADA GUÍA SE COBRA; "unreconciled:<id>" → aviso
-                  #     SIN botón (esa guía existe y está pagada: se busca por ese id en el panel de
-                  #     Skydropx y se captura con el form de la Fase 14, justo abajo); "unreconciled:
-                  #     desconocido" → aviso con DOS salidas — "ya la encontré" abre ese mismo form, y
-                  #     "no existe, generar de todos modos" es el ÚNICO lugar de la app que manda
-                  #     force: true, con su propia confirmación (si la guía sí existía, se paga otra).
-                  #     Llama retryAdminOrderShipment() vía useMutation; al éxito invalida SOLO
-                  #     adminOrderKeys.all (generar la guía no toca stock) + onOrderUpdated. Al ERROR
-                  #     llama la prop nueva onRequestRefresh (cableada al refresh manual de OrdersSection):
-                  #     un reintento fallido igual escribió — un 502 puede dejar el pedido en
-                  #     "unreconciled:*" y force limpia el marcador antes de intentar—, así que la tabla
-                  #     mentiría; el snapshot del modal se queda un momento viejo a propósito (el message
-                  #     del backend es la verdad de ese instante). 409/502/404/400 inline vía
-                  #     retryShipmentErrorMessage. El campo "Guía" del modal y la columna "Envío" de
-                  #     OrdersTable dejan de decir "Guía en proceso" en los dos casos donde mentía:
-                  #     "Sin guía" (pagado, reintentable) y "Guía por revisar" (unreconciled) — sin eso,
-                  #     un pedido atorado es invisible desde la lista. `skydropxShipmentId` entró además
-                  #     a orderSignature: el barrido automático del backend corre en paralelo y ese campo
-                  #     es lo primero que cambia, mucho antes del labelUrl del webhook
-                  #   orders/shipmentLabel.ts — módulo PURO (sin React, con specs en orders/__tests__/).
-                  #     `skydropxShipmentId` NO es "un id o null": el backend guarda ahí "creating"
-                  #     (creación en vuelo, o centinela huérfano de un proceso caído), "unreconciled:<id>"
-                  #     (Skydropx la creó y COBRÓ pero no se guardó su id) y "unreconciled:desconocido"
-                  #     (Skydropx no respondió: pudo cobrarla sin dejar rastro). shipmentLabelState()
-                  #     clasifica los cinco casos; canRetryShipment() espeja los cuatro guards de
-                  #     retryShipmentForOrder (pagado + quotationId + rateId + sin guía) para no ofrecer
-                  #     un botón que solo puede devolver 409; needsShipmentReview() marca los dos que
-                  #     necesitan un humano; retryShipmentErrorMessage() prefiere siempre el message del
-                  #     backend (dice qué buscar en Skydropx y si conviene insistir). Vive aparte del
-                  #     modal por el mismo motivo que checkoutErrors.ts: cada guía se cobra, y confundir
-                  #     dos estados significa pagar una de más o dejar el pedido atorado para siempre
-                  #   sections/CouponsSection — cupones de descuento (Fase 19). YA conectado vía
-                  #     lib/api/adminCoupons (useQuery lista + tres useMutation: guardar, cancelar/
-                  #     reactivar y borrar). Es la única forma de lanzar una promoción sin repreciar
-                  #     producto por producto (lo cual es permanente y toca el catálogo). Invalida
-                  #     SOLO adminCouponKeys.all: un cupón no toca stock ni pedidos.
-                  #     "Cancelar" es un PUT { active: false } y NO un borrado: el histórico de lo
-                  #     que se vendió con el cupón se conserva y se puede reactivar. El DELETE lo
-                  #     decide el backend (`deactivated: true` = ya hay pedidos que lo usaron, así
-                  #     que se desactivó en vez de borrarse) y el aviso dice cuál de las dos pasó —
-                  #     "eliminado" sobre un cupón que sigue en la lista parecería un bug.
-                  #     Subcomponentes en components/admin/coupons/: CouponsTable, CouponForm,
-                  #     CouponStatusBadge, couponStatus.ts (ver abajo)
-                  #   sections/DataSection — métricas y estadísticas (KpiGrid, RevenueChart, InventoryTable, SalesTable). YA conectado vía lib/api/dashboard (GET /api/admin/dashboard). Dueño de un selector 7/30/90 días (mismo Period que RevenueChart) que indexa kpisByPeriod/profitKpisByPeriod antes de pasarlos a los dos KpiGrid (Ventas / Rentabilidad); KpiGrid sigue siendo puramente presentacional (recibe kpis: KpiData[] ya resuelto). SalesTable es stateful: pagina las ventas de 5 en 5 (reutiliza orders/OrdersPagination) y filtra por día vía un `<input type="date">` (sin día = todas; con día = solo ese, paginado). El date picker se acota al rango [minDay, maxDay] presente en los datos; un día sin ventas muestra un estado vacío con buen UX ("Ver todas las ventas"). Filtra por SaleRow.day (clave ISO UTC).
-                  #     Fase 22: el envío es COSTO DE VENTA, así que la ganancia de la fila es
-                  #     `total − shipping − costoTotal` (costoTotal es solo producto) — antes se
-                  #     omitía el envío y una venta de $2,000 con $160 de guía se leía como si los
-                  #     $2,000 cargaran margen. El margen sigue dividiendo entre `total`. En
-                  #     escritorio hay columna "Envío" antes de "Total" (es un componente suyo: ya
-                  #     va sumado ahí dentro); en la tarjeta móvil va como línea tenue BAJO el Total
-                  #     y no como tercera columna — una rejilla de 3 aprieta los montos en pantallas
-                  #     chicas. El KPI nuevo `COSTO DE ENVÍO` no necesitó código: KpiGrid pinta por
-                  #     `label` (ver lib/api/dashboard.ts)
-                  #   sections/ReportesSection — análisis mensual con pestañas Ventas / Reposición + selector de mes
-                  #   sections/ExpensesSection — gastos y suscripciones (Fase 20). YA conectado vía
-                  #     lib/api/adminExpenses (dos useQuery: lista + summary; cuatro useMutation:
-                  #     guardar, cambiar precio, dar de baja/reactivar y borrar). Es la pantalla que
-                  #     llena el KPI GASTOS / GANANCIA OPERATIVA del dashboard, que antes restaba
-                  #     $2,000 hardcodeados. Layout: tarjeta de resumen SIEMPRE visible arriba +
-                  #     pestañas Gastos / Historial (patrón de ReportesSection); la query del
-                  #     historial vive en ExpenseHistory para montarse lazy al abrir su pestaña.
-                  #     **Invalida adminExpenseKeys.all Y dashboardKeys.all** — al revés que los
-                  #     cupones: un gasto SÍ mueve el KPI del panel, y dejar DataSection con el
-                  #     número viejo es justo la incoherencia que la fase vino a cerrar.
-                  #     "Dar de baja" es un PUT { active: false } y NO un borrado (el backend le fija
-                  #     endsAt en hoy solo, y reactivarlo lo limpia: la UI solo manda `active`). El
-                  #     DELETE lo decide el backend (`deactivated: true` = ya generó cargos, así que
-                  #     se desactivó en vez de borrarse) y el aviso dice cuál de las dos pasó, mismo
-                  #     contrato que el DELETE de cupones.
-                  #     El aviso del cambio de precio se redacta sobre el `currentAmount` que
-                  #     DEVOLVIÓ el backend, no sobre lo que se tecleó: si el monto vigente en esa
-                  #     fecha ya era el mismo, el backend no escribe nada y decir "precio
-                  #     actualizado" sería mentir.
-                  #     Fase 22: las DOS pantallas (resumen e historial) pintan `shippingCost`, la
-                  #     línea DERIVADA de los pedidos con el envío pagado a la paquetería. No hay
-                  #     fila de gasto detrás: no se edita, no se borra y no sale en el listado del
-                  #     CRUD. **Su monto NUNCA se suma al total de gastos, ni a la gráfica de barras
-                  #     del historial, ni al desglose por categoría** — el dashboard ya lo resta en
-                  #     GANANCIA BRUTA, y como OPERATIVA = BRUTA − GASTOS, sumarlo aquí lo restaría
-                  #     dos veces (que es exactamente lo que la copia le advierte al dueño).
-                  #     Subcomponentes en components/admin/expenses/: ExpenseSummaryCard,
-                  #     ExpensesTable, ExpenseForm, ExpenseAmountForm, ExpenseHistory,
-                  #     ExpenseStateBadge, ShippingCostNote, expenseStatus.ts (ver abajo)
-                  #   sections/ConfigSection — usuarios del panel + cuenta propia. YA conectado (Fase 6):
-                  #     tarjeta "Mi cuenta" (react-hook-form + updateAccountSchema, un solo form que
-                  #     exige contraseña actual) vía lib/api/account; tarjeta "Administradores"
-                  #     (lista useQuery + alta/baja useMutation, confirmación inline) vía
-                  #     lib/api/adminUsers. Gestión de usuarios visible a todos los admins. Logout
-                  #     desde el botón "Cerrar Sesión". ConfigSection es solo el shell; las tarjetas
-                  #     viven en components/admin/config/ (AccountCard, AdminsCard, formUi = estilos/FieldError compartidos)
-                  #   import/ — subcomponentes de ImportSection. Módulos PUROS (sin React, testeados):
-                  #     types.ts (Cell/RowEdit/ImportState + EDITABLE_FIELDS con el `satisfies` que
-                  #     protege del .strict() del backend), rowInput.ts (ingest/serialize/coerce/
-                  #     validate + parseSizesSpec espejo del backend), importReducer.ts (reducer +
-                  #     selectores), dependencies.ts (dependencias entre filas), labels.ts (copy es-MX).
-                  #     Componentes: ImportDropzone, ImportFormatHelp, ImportWarnings, ImportToolbar,
-                  #     ImportRowList, ImportRow, ImportRowDetail, ImportDiff, ImportSizeDiff,
-                  #     ImportRowEditor, EditableCell, ImportActionBadge, ImportConfirmBar, ImportResults.
-                  #     __tests__/ — TODO lo de esta carpeta (puros y componentes) tiene specs, agrupadas
-                  #     por fase del flujo; ver su README.md y el bullet "Testing" del Stack
-                  #   coupons/ — subcomponentes de CouponsSection. couponStatus.ts es un módulo
-                  #     PURO (sin React, con specs en coupons/__tests__/): "¿este cupón está vivo?"
-                  #     no es un solo campo, sale de cinco, y el ORDEN en que se evalúan cambia lo
-                  #     que el dueño lee. La precedencia de couponState() es cancelado (acción
-                  #     deliberada del dueño; gana aunque además esté vencido y agotado) → agotado
-                  #     (antes que vencido: dice que la promoción se consumió, no que se le pasó la
-                  #     fecha) → vencido → programado → activo, y el vencimiento usa `<=` para
-                  #     espejar el guard del backend (con `<` el panel diría "activo" justo cuando
-                  #     la tienda ya lo rechaza). hasRedemptionDivergence marca cuando redeemedCount
-                  #     ≠ activeRedemptions (alguien tocó la BD a mano; a partir de ahí el tope
-                  #     global deja de contar lo que el dueño cree).
-                  #     **storeDayISO() es obligatorio para sembrar los `<input type="date">`**: el
-                  #     backend guarda "31 de agosto" como 2026-08-31T23:59:59.999-06:00, que en UTC
-                  #     es 2026-09-01T05:59Z, así que un `iso.slice(0, 10)` sembraría el 1 de
-                  #     septiembre — abrir un cupón para cambiarle otra cosa le correría la vigencia
-                  #     un día, y otro más en cada guardado.
-                  #     Se llama couponStatus.ts y el badge CouponStatusBadge.tsx a propósito: un
-                  #     `CouponStatus.tsx` al lado dejaría el import a merced del orden de
-                  #     extensiones del bundler en un FS insensible a mayúsculas (macOS), la misma
-                  #     trampa que separa orderTimeline.ts de OrderStatusTimeline.tsx.
-                  #     CouponForm avisa cuando se vacía un campo opcional en la edición: el
-                  #     contrato NO acepta `null` en maxDiscount/minSubtotal/maxRedemptions/
-                  #     startsAt/expiresAt, así que la clave simplemente no viaja y el valor
-                  #     guardado se queda. Decirlo es mejor que dejar creer que se borró; la salida
-                  #     es desactivar el cupón y crear otro, igual que con un código mal escrito.
-                  #     Bajo "Mínimo de compra" muestra el rango de precios (min/max/promedio,
-                  #     `salePrice`) del catálogo COMPRABLE (visible + stock > 0) vía un `useQuery`
-                  #     sobre `adminProductKeys.all` (comparte cache con ProductSection, sin fetch
-                  #     extra si esa pestaña ya se visitó): sin esa referencia, el dueño está
-                  #     adivinando un mínimo en pesos sin memorizar el precio de cada pieza
-                  #   expenses/ — subcomponentes de ExpensesSection. expenseStatus.ts es un módulo
-                  #     PURO (sin React, con specs en expenses/__tests__/): "¿este gasto sigue
-                  #     costando?" sale de cuatro campos (active, startsAt, endsAt, frequency) y el
-                  #     ORDEN importa. La precedencia de expenseState() es inactivo (acción
-                  #     deliberada del dueño; gana aunque además ya hubiera terminado) → terminado
-                  #     (endsAt < hoy, con `<` y no `<=`: un gasto que termina hoy TODAVÍA se cobra
-                  #     hoy, espejo del `endsAt >= today` del backend) → programado → **cobrado**
-                  #     (un `once` cuya fecha ya pasó) → activo. "Cobrado" existe aparte de "activo"
-                  #     porque su monthlyRunRate es 0: pintarlo activo lo pondría a la par de la
-                  #     renta y el hosting, que es justo el número que la pantalla evita confundir.
-                  #     **Las fechas se leen en UTC, NO en la zona de la tienda** — al revés que en
-                  #     cupones. Las de un gasto son DATEONLY ("2026-08-01", sin hora) y el backend
-                  #     las compara contra isoDay() (UTC), así que `storeDayISO()` de couponStatus.ts
-                  #     NO se debe reusar aquí: rodaría el día en sentido contrario. Los `<input
-                  #     type="date">` se siembran con el string TAL CUAL.
-                  #     priceChangeDelta()/priceChangeLabel() son lo ÚNICO que el front calcula (el
-                  #     backend devuelve previousAmount/amount crudos y deja el delta al cliente a
-                  #     propósito); `percent` es null —no 0— cuando previousAmount es 0, o la UI
-                  #     pintaría "+Infinity%". **Nada de aritmética de run-rate**: currentAmount,
-                  #     monthlyRunRate y los totales del historial vienen listos del mismo servicio
-                  #     que alimenta el KPI del dashboard, y duplicar `weekly × 52/12` garantiza que
-                  #     un día las dos pantallas digan números distintos.
-                  #     Se llama expenseStatus.ts y el badge ExpenseStateBadge.tsx a propósito: un
-                  #     `ExpenseStatus.tsx` al lado dejaría el import a merced del orden de
-                  #     extensiones del bundler en un FS insensible a mayúsculas (macOS), la misma
-                  #     trampa que separa couponStatus.ts de CouponStatusBadge.tsx.
-                  #     **ExpenseAmountForm está separado de ExpenseForm y eso no es cosmético**: en
-                  #     el backend el monto no es una columna del gasto sino una versión fechada, así
-                  #     que guardar $340 desde el 1 de agosto NO reescribe lo que costaba en julio.
-                  #     Un campo "monto" dentro del formulario de edición escondería esa diferencia
-                  #     y haría que corregir un typo repreciara el gasto. Por eso ExpenseForm solo
-                  #     captura el monto en el ALTA (primera versión) y en la edición lo sustituye
-                  #     por un aviso que manda a "Cambiar precio". ExpenseAmountForm muestra además
-                  #     el historial de versiones para que el cambio se haga contra algo, no a ciegas.
-                  #     **ShippingCostNote (Fase 22) es un componente compartido y no copia pegada en
-                  #     dos lugares**, por el mismo motivo que notices.ts en products/: la advertencia
-                  #     ("ya restado en la ganancia bruta · no lo captures como gasto: se contaría dos
-                  #     veces") se pinta en el resumen Y en el historial, y las dos tienen que decir
-                  #     exactamente lo mismo — es la copia que evita el doble conteo. No lleva
-                  #     controles: no hay fila Expense detrás. Rotula la ventana con
-                  #     shippingWindowLabel(from, to, partial) de expenseStatus.ts, y eso NO es
-                  #     decoración: en el mes en curso la ventana llega hasta HOY, y un acumulado a
-                  #     media quincena junto a un monthlyRunRate de mes completo se lee como si el
-                  #     envío saliera baratísimo. `orders` va al lado porque sin él un monto raro no
-                  #     se puede sanity-checkear
-                  #   data/ — subcomponentes de gráficas y tablas (recharts) + types.ts (contratos de datos del admin, también consumidos por lib/api/dashboard.ts, lib/api/reports.ts y reportes/)
-                  #   reportes/ — SalesReport (histórico por mes) y ReplenishmentReport (forecast + pedido sugerido). YA conectados vía lib/api/reports (GET /api/admin/reports/*)
+  home/           # NavHeader, Hero, Footer, CategoryCard. Hero fetches real per-category piece
+                  #   counts via getProducts({ categoria, perPage: 1 }) — only reads `total`
+  outlet/         # OutletView (catalog listing) + OutletCard + EmptyState + OutletSkeleton (Suspense
+                  #   fallback, see "Estados de carga"). OutletFilters (search + categoría + talla +
+                  #   orden + price range): the backend resolves everything in SQL — front NEVER
+                  #   filters/sorts/trims client-side (would break pagination). URL is the source of
+                  #   truth, sanitized via lib/domain/catalogFilters.ts. Search + price fields share
+                  #   one local draft (300ms debounce) committed via `replace: true` (not `push`, or
+                  #   every keystroke would pollute history); inputs show the raw URL text, not the
+                  #   sanitized value (sanitizing mid-type would erase what's being typed — garbage in
+                  #   the URL is harmless, the backend silently ignores it). Draft re-seeding on URL
+                  #   change happens in render, not a useEffect (avoids a cascading-render lint warning).
+                  #   Empty state splits in two: no filters → "Agotado"; with filters → "No encontramos
+                  #   nada" + clear-filters button (keeps category on /botas /sombreros /ropa).
+                  #   `precioMin > precioMax` intentionally yields zero results (matches backend)
+  seo/            # JsonLd — schema.org <script> block, escapes `<` to avoid closing the tag early
+  product/        # ProductInfo — detail panel (ImageCarousel gallery + size picker + add-to-cart).
+                  #   Gallery from product.images (Cloudinary, up to 3) → imageSrc → placeholder.
+                  #   hasSizes:false skips the size picker, adds with the sentinel size 0 (see
+                  #   "Productos sin tallas")
+  ui/             # Cart, CartProvider (drawer, mounted in root layout), FormControls
+                  #   (TextField/SelectField, shared by checkout/ + auth/), ImageCarousel
+                  #   (framer-motion + next/image, respects reduced-motion)
+  checkout/       # 4-step flow (see "Checkout flow"). ShippingOptions (step 3, live quote via
+                  #   lib/api/shipping.ts). CouponField (step 0) — a useMutation, not useQuery:
+                  #   applying a coupon is a deliberate click, and the route is rate-limited to
+                  #   20/min. Never computes the discount itself — always reads it from /validate,
+                  #   which shares the discount function with checkout (duplicating it would drift).
+                  #   Backend `message` shown verbatim (distinguishes: doesn't exist · expired ·
+                  #   exhausted · under minimum). checkoutErrors.ts — pure module (specs) mapping the
+                  #   FOUR 409s of POST /api/orders: no stock · quote expired · idempotency key reused
+                  #   · coupon (isCouponError — expired/reused/pushes total under Stripe's minimum).
+                  #   Coupon errors are the only ones mentioning "cupón". A rejected coupon is never
+                  #   auto-removed (would silently change the accepted price) — the UI offers a button
+  pedido/         # Public order tracking (buyer-facing, not owner). OrderTracking owns the query
+                  #   (orderKeys.lookup(token), manual refresh only — no refetchInterval; backend caps
+                  #   this route at 30 req/min; retry:false since a 404 is definitive). OrderStatusTimeline,
+                  #   TrackedOrderItems, OrderLookupForm. Form asks for the tracking CODE (not the link,
+                  #   Fase 21) — matches the email's copy. extractPublicOrderToken still accepts both
+                  #   forms (old emails only carry the link). Neither buyer-facing screen shows
+                  #   "Pedido #<id>" (Order.id is the store's global sequence, not the buyer's
+                  #   reference — enumerable, hence the token-based lookup); admin panel still shows it.
+                  #   orderTimeline.ts — pure module (specs) deriving the 4-step timeline; `pending`
+                  #   and `cancelled` don't fit the 4 steps and are handled separately (cancelled ≠
+                  #   refunded — don't promise a refund that may not exist). Named differently from
+                  #   OrderStatusTimeline.tsx to avoid case-insensitive-FS (macOS) import ambiguity.
+                  #   TrackedOrderItems does NOT reuse checkout/OrderItems — it gets nameSnapshot +
+                  #   frozen prices, not a live Product (product may have changed/vanished since).
+                  #   Totals DO reuse checkout/OrderTotals (gained an optional `discount` prop, Fase 19)
+  legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static
+  nosotros/       # AboutUs — static "Sobre nosotros", linked from footer
+  auth/           # AuthShell + LoginForm (RHF + zod + TanStack mutation, connected). AdminGuard
+                  #   protects /admin, validates token via GET /auth/me. ForgotPasswordForm — 3-step
+                  #   wizard (email → 5-digit code → new password), local state, not persisted.
+                  #   Subcomponents: CodeInput (5-box OTP), ResetCodeForm, NewPasswordForm
+  providers/      # QueryProvider (TanStack root), BrandProvider (hydrates brand from public
+                  #   GET /api/admin/brand, exposes useBrand(); BRAND in lib/domain/brand.ts is SSR fallback)
+  admin/          # Sidebar + types.ts (AdminSection) + sections/ (8 tabs) + per-tab subcomponent
+                  #   folders (config/, coupons/, data/, orders/, products/, reportes/, expenses/, import/):
+                  #
+                  #   MarcaSection — brand identity editor. Connected (autosave debounce). Logo is a
+                  #     local blob: preview only, not persisted (upload = future work)
+                  #   ProductSection — catalog CRUD, connected via lib/api/adminProducts. Subcomponents:
+                  #     ProductForm, ProductCategoryView, ProductDetailModal, notices.ts. ProductForm
+                  #     manages a gallery of up to 3 images (create/update product as JSON, then
+                  #     deleteProductImage/addProductImages per changed image, Cloudinary). Its
+                  #     `onBack(notice?)` reports save/delete outcomes back up to the list's banner —
+                  #     never navigates silently. "Maneja tallas" toggle (Fase 24) swaps the sizes
+                  #     input for a numeric "Cantidad en existencia" (stockQuantity) — see "Productos
+                  #     sin tallas"
+                  #   ImportSection — Excel bulk import/restock (Fase 13), own Sidebar entry because
+                  #     the review table needs full width. See "Importación por Excel" — invariants
+                  #     there exist specifically to avoid duplicating real stock
+                  #   OrdersSection — paginated order list (server-paginated `date` filter, unlike
+                  #     SalesTable's client-side one). Page size 20 desktop / 5 mobile via matchMedia.
+                  #     Subcomponents in components/admin/orders/: OrdersTable, OrdersPagination,
+                  #     OrderDetailModal, StatusBadges (status/paymentStatus are INDEPENDENT fields
+                  #     with DISJUNT color ramps — they're shown side by side, so sharing hues would
+                  #     force reading the text to tell them apart). Modal shows unitCost + margin
+                  #     (admin-only). Coupon row sits above Shipping (discount never touches shipping)
+                  #     and only appears with couponDiscount > 0; total margin subtracts it. DropoffBadge
+                  #     flags `shippingRequiresDropoff` (Skydropx doesn't pick up — owner must drop off).
+                  #     Skydropx label/tracking fields (Fase 11) populated by the webhook. Polling every
+                  #     30 min + manual refresh; a per-row signature (status|paymentStatus|shipmentStatus|
+                  #     labelUrl|trackingNumber) drives a Sileo toast ONLY when the automatic refetch
+                  #     (not manual, not first load) finds something changed.
+                  #     Cancel/refund (Fase 12): button visible on pending/paid only (backend 409s
+                  #     otherwise); inline confirm + optional reason; invalidates order+product keys
+                  #     (restock affects catalog too) and syncs the open modal via onOrderUpdated,
+                  #     flagged as manual so it doesn't also fire the polling toast.
+                  #     Manual ship/deliver (Fase 14): flat-rate orders never touch Skydropx (no
+                  #     webhook), so this covers advancing them by hand. Tracking number/carrier
+                  #     optional; forward-only (409 to go backward or on cancelled/unpaid); repeating
+                  #     the current status is allowed (lets you add a late tracking number). Omitted
+                  #     keys mean "don't touch this field" (empty string would 400). Does NOT capture
+                  #     "URL de rastreo" (removed Fase 21) — that's the carrier's own link and only the
+                  #     Skydropx webhook should set it; the buyer's own tracking already goes out in
+                  #     every email.
+                  #     Skydropx label retry (Fase 16): sits above "Estado del envío" (label must
+                  #     exist before marking shipped). All branching comes from shipmentLabel.ts (pure,
+                  #     specs) — see below. `force: true` is the only place in the app that can create
+                  #     a second (paid) label; has its own extra confirmation.
+                  #   orders/shipmentLabel.ts — pure module. `skydropxShipmentId` isn't "an id or
+                  #     null": it can also be "creating" (in flight / orphaned), "unreconciled:<id>"
+                  #     (Skydropx charged but didn't persist), "unreconciled:desconocido" (may have
+                  #     charged with no trace). shipmentLabelState() classifies all 5 states;
+                  #     canRetryShipment() mirrors the backend's 4 guards to avoid offering a button
+                  #     that can only 409
+                  #   CouponsSection — connected via lib/api/adminCoupons. "Cancelar" is PUT
+                  #     { active: false }, not a delete (history/reactivation preserved). DELETE
+                  #     outcome (`deactivated: true` = already has redemptions, soft-deactivated
+                  #     instead) is reported from what the backend actually did.
+                  #     coupons/couponStatus.ts — pure module (specs): couponState() precedence is
+                  #     cancelled → agotado → vencido → programado → activo (deliberately NOT date-first
+                  #     — "agotado" is a more useful message than "expired"). Uses `<=` for expiry to
+                  #     mirror the backend guard exactly. **storeDayISO() is mandatory for seeding
+                  #     `<input type="date">`** — coupon expiry is stored as end-of-day in the store's
+                  #     timezone, so a naive `iso.slice(0,10)` would roll the date forward a day on
+                  #     every re-save. Named couponStatus.ts (not CouponStatus.tsx) to dodge
+                  #     case-insensitive-FS bundler ambiguity next to CouponStatusBadge.tsx.
+                  #   DataSection — dashboard (KpiGrid, RevenueChart, InventoryTable, SalesTable),
+                  #     connected via lib/api/dashboard. 7/30/90-day selector indexes precomputed
+                  #     kpisByPeriod/profitKpisByPeriod. SalesTable paginates 5/page + filters by day.
+                  #     Fase 22: shipping is a COST OF SALE — row profit = total − shipping − costoTotal
+                  #     (previously shipping was omitted from margin, overstating profit on high-shipping
+                  #     orders). New KPI `COSTO DE ENVÍO` needed zero code (KpiGrid renders generically by label)
+                  #   ReportesSection — Ventas / Reposición tabs + month selector, see "Reportes"
+                  #   ExpensesSection — expenses & subscriptions (Fase 20), connected. Feeds the
+                  #     KPI GASTOS/GANANCIA OPERATIVA (previously a hardcoded $2,000). "Dar de baja" is
+                  #     PUT { active: false }, not delete — same deactivate-vs-delete contract as coupons.
+                  #     expenses/expenseStatus.ts — pure module (specs): precedence is inactivo →
+                  #     terminado → programado → **cobrado** (a past-dated `once` charge — separated from
+                  #     "activo" because its monthlyRunRate is 0) → activo. **Dates read in UTC**
+                  #     (opposite of coupons — expense dates are DATEONLY, no time component; do NOT
+                  #     reuse storeDayISO() here). priceChangeDelta()/Label() are the ONLY client-side
+                  #     math — everything else (currentAmount, monthlyRunRate) comes precomputed from
+                  #     the same service that feeds the dashboard KPI, to avoid two screens diverging.
+                  #     ExpenseAmountForm is separate from ExpenseForm on purpose: amount is a
+                  #     dated VERSION, not a column — editing the concept must never reprice history.
+                  #     ShippingCostNote — shared component (not copy-pasted) showing the derived
+                  #     `shippingCost` line in both summary and history: no Expense row behind it, not
+                  #     editable, and **never summed into totals/charts/categories** (already subtracted
+                  #     in GANANCIA BRUTA — summing it here would double-count)
+                  #   ConfigSection — admin users + own account, connected (Fase 6). "Mi cuenta" card
+                  #     requires current password for any change; "Administradores" card (list + add/remove)
+                  #   import/ — ImportSection subcomponents. Pure modules (tested): types.ts
+                  #     (Cell/RowEdit/ImportState + EDITABLE_FIELDS whitelist protected by `satisfies`),
+                  #     rowInput.ts (ingest/serialize/coerce/validate, mirrors backend parsing),
+                  #     importReducer.ts, dependencies.ts, labels.ts. See "Importación por Excel"
+                  #   data/ — chart/table subcomponents (recharts) + types.ts (shared admin data contracts)
+                  #   reportes/ — SalesReport + ReplenishmentReport, connected via lib/api/reports
 lib/
   api/
-    client.ts     # instancia axios (baseURL NEXT_PUBLIC_API_URL ?? /api) + interceptors: request adjunta Bearer del authStore, response cierra sesión y va a /login en 401. Flags de config: skipAuth (pública: sin Bearer, 401 no redirige) y skipAuthRedirect (autenticada, pero 401 con otro significado —p. ej. contraseña incorrecta— NO cierra sesión: lo maneja la UI inline)
-    auth.ts       # contratos de auth (patrón getProducts): schemas Zod + login()/forgotPassword()/verifyResetCode()/resetPassword()/getMe() + authKeys. Fuente única del tipo AuthUser ({ id, name, email, role }). YA conectado al backend (POST /auth/login, POST /auth/forgot-password, POST /auth/verify-reset-code, POST /auth/reset-password, GET /auth/me). Los endpoints de recuperación son públicos y solo devuelven { ok: true }
-    orders.ts     # contrato del checkout (patrón getProducts): OrderResponseSchema + CreateOrderResponseSchema ({ order, clientSecret }) (Zod, items SIN unitCost) + buildOrderPayload(items, customer, selectedRate?) + createOrder() + orderKeys. YA conectado (POST /api/orders): envía { items, customer, quotationId?, rateId? } sin montos; el backend recalcula totales (re-consultando Skydropx por esa cotización si vino) y devuelve el clientSecret del PaymentIntent de Stripe (Fase 8). quotationId/rateId van juntos o ninguno (both-or-neither, igual que createOrderSchema en el backend) — vienen de la tarifa elegida en ShippingOptions (lib/api/shipping.ts, Fase 8.4). Fase 15: createOrder(payload, idempotencyKey?) manda el header `Idempotency-Key` (máx. 200 chars, 400 si se pasa) y devuelve `replayed` (CreateOrderResult) leído del header de respuesta `Idempotency-Replayed` — que NO está en el cuerpo (por eso se adjunta fuera del parse de Zod) y solo aparece en la respuesta REPETIDA. Quién decide cuándo rota la clave: CheckoutContext (ver "Checkout flow"). Fase 17: OrderResponseSchema declara `publicToken` (nullable) — el backend YA lo mandaba en el 201 y Zod lo descartaba, mismo bug que arreglaron las Fases 11 y 16 con otros campos; es lo que deja mandar al comprador a /pedido/<token> sin esperar el correo. Además expone el contrato de la consulta pública: PublicOrderSchema + PublicOrderItemSchema + lookupOrder(token) (GET /api/orders/lookup/:token, `skipAuth` — es pública, no debe llevar Bearer y su 401 no debe expulsar a nadie a /login) + orderKeys.lookup(token) + lookupOrderErrorMessage(). PublicOrderSchema NO reutiliza OrderResponseSchema ni AdminOrderSchema: el backend devuelve una proyección explícita, distinta y más chica a propósito (fuera unitCost, paymentIntentId, refundId, labelUrl, los ids de Skydropx, shippingRequiresDropoff, el propio publicToken y el correo/teléfono del comprador — el enlace se comparte por WhatsApp con facilidad). Dos campos que el roadmap no listaba pero el backend SÍ manda: `couponCode`/`couponDiscount` (sin ellos el total no cuadraría con subtotal − savings + shipping y el faltante no tendría explicación visible; hoy llegan null/0 hasta la Fase 19) y `"refunded"` en el enum de paymentStatus (alcanzable vía la cancelación del admin de la Fase 12, a diferencia de OrderResponseSchema, donde un pedido recién creado nunca puede estarlo). `.parse()` estricto (solo lectura, un parse fallido es reintentable sin riesgo). lookupOrderErrorMessage prefiere SIEMPRE el message del backend: su 404 es el mismo para un token inexistente, alterado o mal formado —no revela cuál fue— y ya dice qué hacer. Fase 23: OrderResponseSchema declara `packageCount` (nullable, `null` = se cobró con la tarifa plana) — mismo bug de siempre, el backend ya lo mandaba y Zod lo descartaba. Es informativo: **no viaja en buildOrderPayload** (el backend lo ignora; el que se guarda sale de su re-consulta autoritativa). PublicOrderSchema NO lo trae — el backend no lo proyecta en la consulta pública
-    coupons.ts    # contrato PÚBLICO del cupón (Fase 19, patrón getProducts): CouponPreviewSchema
-                  #   + couponKeys + validateCoupon({ code, items, email? }) (POST
-                  #   /api/coupons/validate, `skipAuth` — es pública, no debe llevar Bearer y su
-                  #   401 no debe expulsar a nadie a /login) + isCouponRejection +
-                  #   validateCouponErrorMessage. `.parse()` estricto (no escribe nada: un parse
-                  #   fallido es reintentable y no gasta la promoción). La ruta **valida SIN
-                  #   canjear** —consultarla N veces no mueve el contador de usos— y devuelve el
-                  #   MISMO monto que se va a cobrar, porque comparte `computeCouponDiscount` con
-                  #   el checkout: por eso el front NUNCA calcula el descuento. `discount` se
-                  #   aplica sobre la mercancía neta (`subtotal − savings`) y JAMÁS sobre el envío.
-                  #   El resultado NO es una reserva: `remainingRedemptions` es informativo y
-                  #   POST /api/orders re-decide todo de forma atómica (ver isCouponError arriba).
-                  #   `email` es opcional porque el campo vive antes de los datos de envío; sin él
-                  #   la respuesta trae `perCustomerChecked: false`. isCouponRejection separa
-                  #   "el backend rechazó el cupón" (4xx, veredicto) de "no pudimos preguntar"
-                  #   (red, 5xx, 429): es lo que decide si se bloquea el pago — bloquear por una
-                  #   red intermitente le quitaría un descuento válido a quien sí podía pagar
-    adminCoupons.ts # contrato del CRUD de cupones del panel (Fase 19, patrón getProducts):
-                  #   CouponSchema + AdminCouponSchema (= CouponSchema + activeRedemptions; se
-                  #   extiende en ese sentido porque activeRedemptions SOLO viene en el GET — el
-                  #   POST/PUT devuelven el cupón pelón) + adminCouponKeys + getAdminCoupons()
-                  #   (`.parse` estricto) + createCoupon/updateCoupon (acceptWrite: un 2xx ya
-                  #   escribió, reintentar crearía un segundo cupón) + deleteCoupon → { ok,
-                  #   deactivated } + couponWriteErrorMessage. `code` y `redeemedCount` NO se
-                  #   pueden editar (el PUT los ignora) y `active: false` es la forma de CANCELAR
-                  #   un cupón; una clave ausente en el PUT significa "no toques ese campo", que
-                  #   es lo que deja cancelar mandando solo { active: false }. Las fechas viajan
-                  #   como `YYYY-MM-DD` crudo (lo que escribe un <input type="date">): el backend
-                  #   las interpreta en la zona de la tienda —inicio de día para startsAt, FIN de
-                  #   día para expiresAt— que es lo que un dueño quiere decir con "vence el 31"
-    adminExpenses.ts # contrato de gastos y suscripciones del panel (Fase 20, patrón getProducts):
-                  #   EXPENSE_CATEGORIES/EXPENSE_FREQUENCIES (claves crudas del backend; sus
-                  #   etiquetas en español viven en expenses/expenseStatus.ts, no aquí) +
-                  #   ExpenseSchema/ExpenseSummarySchema/ExpenseMonthSchema + adminExpenseKeys
-                  #   (all · list(filters) · summary() · history(), las tres colgando de `all` para
-                  #   que una sola invalidación las refresque: cualquier escritura mueve las tres) +
-                  #   getAdminExpenses/getExpenseSummary/getExpenseHistory (`.parse` estricto) +
-                  #   createExpense/updateExpense (acceptWrite: un 2xx ya escribió, reintentar
-                  #   daría de alta un segundo gasto o agregaría otra versión de monto) +
-                  #   deleteExpense → { ok, deactivated } + expenseWriteErrorMessage.
-                  #   **El monto NO es un campo del gasto**: vive versionado por fecha en `amounts`.
-                  #   Mandar `amount` en el PUT AGREGA una versión con vigencia `amountEffectiveFrom`
-                  #   —o HOY si se omite, ojo: distinto del POST, que usa `startsAt`— en vez de
-                  #   sobrescribir; si ya existe una versión con esa fecha la corrige en su lugar, y
-                  #   si el monto vigente ahí ya era el mismo NO escribe nada. `amountEffectiveFrom`
-                  #   sin `amount` es 400. Eso es lo que hace que subir Render de $290 a $340 no
-                  #   reescriba lo que costaba en julio, y por lo que el cambio de precio tiene
-                  #   formulario propio.
-                  #   currentAmount/monthlyRunRate/nextChargeDate vienen CALCULADOS — no
-                  #   recalcularlos en cliente (ver expenses/expenseStatus.ts).
-                  #   `active` y `endsAt` se mantienen coherentes solos en el servidor (apagar fija
-                  #   endsAt en hoy, reactivar lo limpia): la UI solo manda `active`.
-                  #   Los filtros inválidos son **400 y no se ignoran** (al revés que el catálogo
-                  #   público de la Fase 18): aquí quien consulta es el dueño y un filtro que no
-                  #   aplicó le haría leer mal sus propios números. Sus `message` ya son copia de UI
-                  #   accionable en español → expenseWriteErrorMessage los pinta VERBATIM.
-                  #   `from`/`to` del listado filtran por fecha de CARGO, no de alta.
-                  #   Fase 22: DerivedShippingCostSchema + `shippingCost` REQUERIDO en
-                  #   ExpenseSummarySchema y ExpenseMonthSchema (requerido y no opcional por el
-                  #   precedente de packageCount en la Fase 23: un backend viejo debe fallar ruidoso
-                  #   en vez de pintar "$0 de guías"). Es el envío pagado a la paquetería, DERIVADO
-                  #   de los pedidos: sin fila de gasto detrás, no editable, ausente del GET del
-                  #   listado. Los tres literales (category "paqueteria", derived, includedInGross-
-                  #   Profit) son invariantes del contrato, no datos. **Va FUERA de total,
-                  #   byCategory, byExpense, monthlyRunRate, annualRunRate y activeCount** — el
-                  #   dashboard ya lo resta en GANANCIA BRUTA y sumarlo aquí lo restaría dos veces.
-                  #   Cajas y empaque SÍ van como gasto de categoría `paqueteria`; las guías no
-    shipping.ts   # contrato de cotización de envío en vivo (patrón getProducts): ShippingRateSchema/ShippingRatesResponseSchema (Zod) + SelectedShippingRate (= ShippingRate + quotationId, la forma que viaja por CheckoutContext/usePlaceOrder) + shippingKeys + getShippingRates(items, customer). YA conectado (POST /api/shipping/rates, pública). SIEMPRE responde 200 (el backend cae a su propia tarifa plana si Skydropx falla); usa `.parse` simple (no hay OrderResponseParseError aquí — es de solo lectura, un parse fallido es reintentable sin riesgo de duplicar nada). Fase 23: `packageCount` (entero ≥ 1) en ShippingRateSchema, **requerido y no opcional** — el backend lo manda en las DOS ramas del controlador (cotización viva y tarifa plana, las dos desde el mismo `packOrder`), así que declararlo requerido hace que un backend viejo falle ruidoso en vez de pintar "una caja" sobre un pedido de cuatro
-    adminProducts.ts # contrato del catálogo admin (patrón getProducts): AdminProductSchema (SÍ trae unitCost + images: { url, publicId }[] + hasSizes) + adminProductKeys + getAdminProducts()/createProduct()/updateProduct()/deleteProduct() + addProductImages()/deleteProductImage(). YA conectado (GET/POST/PUT/DELETE /api/admin/products + POST/DELETE /api/admin/products/:id/images). AdminProductInput manda sizes como CSV donde repetir talla = unidades de stock (el backend agrupa en filas ProductSize) y YA NO incluye imageSrc (las imágenes se gestionan solo por los endpoints dedicados: addProductImages sube multipart `images` 1-3 File, tope 3 total; deleteProductImage borra por publicId). Fase 24: `hasSizes` decide cuál de `sizes`/`stockQuantity` viaja (ambos opcionales en el tipo, el backend 400 si llega el del modo contrario) — ver "Productos sin tallas"
-    adminProductImport.ts # contrato de la importación masiva por Excel (Fase 13): schemas Zod
-                  #   (ImportRowPlan/ProductSnapshot/FieldChange/SizeChange/ImportRowInput) +
-                  #   previewProductImport(file) (multipart, campo `file`) y commitProductImport(rows)
-                  #   (JSON) + importPreviewErrorMessage/importCommitErrorMessage. Preview con
-                  #   `.parse()` estricto (es de solo lectura, un parse fallido es reintentable);
-                  #   commit con safeParse + console.warn + dato crudo (razonamiento de acceptWrite,
-                  #   pero más fuerte: reintentar un commit DUPLICA stock). ImportRowInputSchema usa
-                  #   z.looseObject para que una clave extra sobreviva al parse y se pueda avisar
-    adminOrders.ts # contrato de pedidos admin (patrón getProducts): AdminOrderSchema/AdminOrderItemSchema (Zod, item SÍ trae unitCost) + adminOrderKeys + getAdminOrders(page, perPage, date?). YA conectado (GET /api/admin/orders?page=&perPage=&date=, PAGINADO en servidor → { orders, total, page, perPage, totalPages }). `date` (YYYY-MM-DD, opcional) acota a los pedidos creados ese día UTC — filtro real de servidor, no de cliente (ver OrdersSection). status y paymentStatus son campos INDEPENDIENTES; paymentStatus incluye "refunded" (Fase 12). AdminOrderSchema también trae los campos de guía/rastreo Skydropx (Fase 11): skydropxShipmentId/trackingNumber/trackingUrl/labelUrl/shipmentStatus, todos nullable — el backend ya los manda en la misma respuesta, pero Zod los descartaba por no estar declarados. Fase 12 agrega refundId/refundedAt (nullable) + cancelAdminOrder(id, reason?) (POST /:id/cancel, valida `{ order }` con AdminOrderSchema) — cancela un pedido pending (libera stock) o paid (reembolso total en Stripe + restock); el backend rechaza shipped/delivered/cancelled con 409. Fase 14 agrega updateAdminOrderStatus(id, { status: "shipped"|"delivered", trackingNumber?, trackingUrl?, shippingCarrier? }) (PATCH /:id/status, misma validación con AdminOrderSchema) — avance manual del estado sin depender del webhook de Skydropx. Solo hacia adelante (409 si retrocede, si el pedido está cancelado o si aún no está pagado; repetir el estado actual SÍ se permite, así se agrega una guía tardía). Los tres campos de guía son opcionales y la función OMITE las claves vacías en vez de mandarlas como "": el backend las valida con .trim().min(1) (un "" sería 400) y una clave ausente significa "no toques ese campo" — es lo que permite avanzar el estado sin borrar la guía guardada (campos "último gana"). Fase 16 agrega skydropxQuotationId/skydropxRateId al schema (el backend YA los mandaba —adminGetOrders serializa el modelo Order completo— pero Zod los descartaba por no estar declarados, mismo bug que arregló la Fase 11 con los campos de guía; sin los dos el pedido se cobró con la tarifa plana y no hay tarifa que convertir en guía) + retryAdminOrderShipment(id, { force? }) (POST /:id/shipment/retry, body opcional, misma validación con AdminOrderSchema) — reintento manual de la guía que ESPERA el resultado: 200 = la guía existe, 502 = Skydropx volvió a fallar (reintentable), 409 ante cualquier duda (ya tiene guía real o cobrada sin persistir, otra solicitud la está generando, no pagado, cancelado, ya enviado/entregado, o tarifa plana). `force` solo viaja cuando es true y el backend solo lo acepta para "unreconciled:desconocido" (ver OrderDetailModal/shipmentLabel.ts)
-    dashboard.ts  # contrato de métricas admin (patrón getProducts): DashboardSchema (Zod, valida la forma de components/admin/data/types.ts) + dashboardKeys + getAdminDashboard(). YA conectado (GET /api/admin/dashboard). kpisByPeriod/profitKpisByPeriod llegan igual que revenueByPeriod — las tres ventanas (7/30/90) precalculadas en un solo response, sin query params; DataSection alterna en cliente. recentSales[].day es una clave ISO UTC ("2026-07-13") junto al display date ("3 jul · 14:30"), para que SalesTable filtre por día de forma fiable. Fase 22: `recentSales[].shipping` — el envío cobrado en ese pedido, ya sumado dentro de `total`, que es lo que deja sacar la ganancia real de la fila. `KpiDataSchema`/`profitKpisByPeriod` NO cambiaron para el KPI nuevo `COSTO DE ENVÍO`: KpiGrid pinta los KPIs genéricamente por `label`, así que uno nuevo aparece solo (igual que `GASTOS` en la Fase 20). Su `trend` viene INVERTIDO a propósito desde el backend (`positive: true` = el costo bajó) y KpiCard ya pinta por `positive` — con la regla normal, "el envío subió 40%" saldría en verde
-    reports.ts    # contrato de reportes admin (patrón getProducts): MonthlyReportSchema/ReplenishmentRowSchema (Zod, reflejan components/admin/data/types.ts) + reportKeys + getMonthlyReport()/getReplenishmentReport(). YA conectado (GET /api/admin/reports/monthly, GET /api/admin/reports/replenishment). Ambos endpoints devuelven un array plano ya derivado/ordenado por el backend
-    brand.ts      # contrato de marca (patrón getProducts): BrandSettingsSchema (Zod) + brandKeys + getBrandSettings()/updateBrandSettings(). YA conectado (GET público /api/admin/brand, PUT protegido). BrandSettings es un SUBCONJUNTO de BRAND (brandName/heroText/tagline/cartNotice/footerNote/logoUrl); namePrimary/nameAccent/email/instagram NO existen en el backend. updateBrandSettings usa safeParse (un 2xx ya persistió)
-    adminUsers.ts # contrato de usuarios del panel (patrón getProducts): AdminUserSchema (Zod, sin passwordHash, role owner|admin) + adminUserKeys + getAdminUsers()/createAdminUser()/deleteAdminUser(). YA conectado (GET/POST/DELETE /api/admin/users). createAdminUser usa acceptWrite (safeParse); el backend valida 409 correo en uso y 400 al borrar la propia cuenta / al único propietario
-    account.ts    # contrato de cuenta propia: AccountUpdateResponseSchema + updateOwnAccount(). YA conectado (PUT /api/admin/account). currentPassword es obligatoria para cualquier cambio; email va sembrado con el actual (el backend solo lo cambia si difiere). El PUT va con skipAuthRedirect (el 401 = contraseña incorrecta, se muestra inline sin cerrar sesión). No devuelve el user → la UI rehidrata con authStore.setUser + invalidación de authKeys.me
-    products.ts   # getProducts(filters), getProductById(id) — fetcher público del catálogo (patrón hermano de adminProducts.ts). YA conectados al backend real (GET /api/products, GET /api/products/{id}) vía axios (lib/api/client). Product/ProductsResult son tipos Zod (ProductSchema/ProductListResponseSchema) validados en runtime. Product público NO trae unitCost (dato sensible) pero SÍ trae images: { url }[] (galería Cloudinary, hasta 3, sin publicId) + imageSrc (primera imagen, compat) + hasSizes (Fase 24, ver "Productos sin tallas"). 404 → null. El storefront ya no usa mocks (db/ eliminado en la Fase 4). Fase 18: ProductFilters gana q/orden/precioMin/precioMax (la RESPUESTA no cambia — ProductListResponseSchema se queda igual, y availableSizes ya viene acotado por q y por el rango). No hizo falta tocar productKeys: `filtered` serializa el objeto completo y el hash de TanStack Query descarta las claves `undefined`, así que la caché no se fragmenta; axios ya omite esos params.
-  domain/         # datos/lógica de negocio puros (sin React, sin I/O)
-    catalogFilters.ts # parseSearchParam/parseOrdenParam/parsePriceParam/parseTallaParam/
-                  #   parsePageParam + ORDEN_OPTIONS + hasActiveFilters + isInvertedPriceRange —
-                  #   lectura y saneo de los query params del catálogo público (Fase 18). Módulo
-                  #   puro, con specs. Espejo de las reglas del controlador del backend, que
-                  #   IGNORA EN SILENCIO cualquier valor inválido y nunca responde 400 en estos
-                  #   campos: aquí tampoco se inventan mensajes de validación, un valor basura
-                  #   simplemente no viaja. Existe porque lo que se lee de la URL entra al
-                  #   queryKey de TanStack Query — sin esta capa, `?orden=basura` y
-                  #   `?orden=otracosa` serían dos entradas de caché distintas con exactamente el
-                  #   mismo catálogo dentro. Se llama catalogFilters y NO outletFilters porque un
-                  #   `outletFilters.ts` junto a `OutletFilters.tsx` deja el import a merced del
-                  #   orden de extensiones del bundler en un FS insensible a mayúsculas (macOS),
-                  #   el mismo motivo que separa OrderStatusTimeline.tsx de orderTimeline.ts
-    cart.ts       # computeTotals(items) — subtotal/savings del carrito. **NO calcula envío** (Fase
-                  #   23): devuelve `shipping: null` y `total` = mercancía neta. La copia local de la
-                  #   tarifa plana (computeShipping/SHIPPING_BY_TYPE) se ELIMINÓ — cobraba una guía
-                  #   por pedido y el backend ahora cobra por caja, así que el carrito prometía menos
-                  #   de lo que se cobraba. No reintroducirla: ver "Shipping".
-                  #   mapCartItemsToOrderItems(items) y cartLineSignature(items) — compartidos por
-                  #   lib/api/orders.ts y lib/api/shipping.ts para no duplicar el mapeo carrito→renglón
-                  #   ni las firmas de caché (pendingOrder/selectedRate) que usa CheckoutContext
-    idempotency.ts # newIdempotencyKey() — la clave del header `Idempotency-Key` del checkout
-                  #   (Fase 15). Módulo puro, con specs. crypto.randomUUID() + DOS fallbacks
-                  #   (getRandomValues; timestamp+random) porque randomUUID solo existe en
-                  #   contexto SEGURO: abrir el sitio desde el teléfono en http://192.168.x.x:3000
-                  #   dejaría el checkout entero sin poder pagar con un TypeError. No necesita ser
-                  #   criptográfica, solo irrepetible dentro de la ventana de 60 s del backend
-    publicOrderToken.ts # PUBLIC_TOKEN_PATTERN / isPublicOrderToken / extractPublicOrderToken —
-                  #   el UUID opaco que ES la credencial de /pedido/<token> (Fase 17). Módulo puro,
-                  #   con specs. extractPublicOrderToken acepta el token pelón O la URL completa
-                  #   pegada del correo (con barra final, query, hash o texto alrededor). Desde la
-                  #   Fase 21 el formulario pide el CÓDIGO, pero las DOS formas se siguen aceptando y
-                  #   no se deben tocar: los correos ya enviados llevan solo el enlace, y quien lo
-                  #   pegue desde uno viejo tiene que seguir entrando. Existe para que OrderLookupForm
-                  #   no gaste una de las 30 consultas/min del backend en algo que no es ni un UUID.
-                  #   Frontera: aquí solo se decide si lo pegado TIENE FORMA de código; si el pedido
-                  #   existe lo dice el 404 del backend, con su copia — el front nunca inventa un
-                  #   "token inválido".
-                  #   isOwnOrderTrackingUrl(url) vive aquí por la MISMA forma /pedido/<token>, pero
-                  #   responde lo contrario: "esto NO es la paquetería". Order.trackingUrl es el
-                  #   tracking_url_provider del webhook de Skydropx (el sitio del carrier), pero hasta
-                  #   la Fase 21 el form manual del panel dejaba capturarlo y ahí se pegó el enlace de
-                  #   /pedido/<token> — con ese dato guardado, el botón "Rastrear" de la página pública
-                  #   manda al comprador a la MISMA página en la que ya está, disfrazado de enlace
-                  #   externo. OrderStatusTimeline lo usa para no pintar el botón (la guía y la
-                  #   paquetería siguen ahí, que es lo que necesita para buscar por su cuenta). Exige
-                  #   el UUID a propósito: una paquetería mexicana bien puede tener /pedido/<folio> en
-                  #   su ruta, y descartarla dejaría sin rastreo a quien sí lo tiene. Sin host: el
-                  #   enlace guardado pudo ser localhost o el dominio real
-    shipmentStatus.ts # shipmentStatusLabel(raw) + SHIPMENT_STATUS_LABELS — traducción del string
-                  #   CRUDO que reporta Skydropx (no es un enum cerrado), con fallback legible.
-                  #   Nació en components/admin/orders/StatusBadges.tsx y se movió aquí en la Fase 17
-                  #   porque ahora lo consumen DOS superficies con presentación distinta: la píldora
-                  #   del panel (ShipmentStatusBadge, que conserva su tabla de COLORES) y la frase de
-                  #   la página pública ("La paquetería reporta: …"). Con dos tablas paralelas,
-                  #   agregar un estado en una y olvidarla en la otra le contaría al comprador algo
-                  #   distinto de lo que ve el dueño; además el storefront no debe importar de
-                  #   components/admin/
-    brand.ts      # BRAND — defaults/fallback de identidad/copy de marca (nombre, email, hero, tagline, cartNotice…). El storefront se hidrata desde el backend vía BrandProvider/useBrand; BRAND es el fallback SSR. resolveBrand(settings) mergea BrandSettings (backend) ← BRAND: mapea tagline (string \n) → taglineLines[] y conserva namePrimary/nameAccent/email/instagram (que el backend no tiene). ResolvedBrand = forma que consume el storefront
-    categories.ts # CATEGORIES + CategoryInfo/ProductType + categoryPlural()/categorySingular() — fuente única de categorías y etiquetas (antes duplicadas en ~10 archivos). DEFAULT_DIMENSIONS: defaults de empaque (peso/dimensiones) por categoría, usados por ProductForm para pre-llenar al crear (editables)
-  seo/            # metadata y datos estructurados (sin React)
-    site.ts       # SITE_URL (NEXT_PUBLIC_SITE_URL ?? localhost:3000, sin barra final) +
-                  #   absoluteUrl(path) + SITE_KEYWORDS. Fuente única de la URL pública: la
-                  #   consumen metadataBase, los canonicals, sitemap.ts y robots.ts
-    metadata.ts   # pageMetadata({ title, description, path, ogDescription }) — constructor de
-                  #   la metadata de una página pública (canonical + bloque OG/Twitter completo).
-                  #   Úsalo SIEMPRE en páginas nuevas: existe porque `alternates` se hereda y
-                  #   `openGraph` se reemplaza entero — ver "SEO"
-    jsonLd.ts     # builders de schema.org: storeJsonLd() (ClothingStore, home), productJsonLd()
-                  #   (Product + offers en salePrice, stock → InStock/SoldOut — el outlet no repone)
-                  #   y breadcrumbJsonLd(). Regla: solo describir lo que la página realmente muestra
-  stripe/         # pasarela de pago
-    client.ts     # getStripe() — singleton loadStripe(NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) a nivel de módulo (una sola vez, no por render). Devuelve null si falta la llave → la UI degrada con mensaje de config. Solo lo consume components/checkout/usePlaceOrder.ts
-  ui/             # helpers de presentación
-    motion.ts     # variantes framer-motion compartidas (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
-  utils/
-    index.ts      # formatPrice(amount) — es-MX locale formatting (incluye el símbolo $)
+    client.ts     # single axios instance, baseURL = NEXT_PUBLIC_API_URL ?? /api. Request interceptor
+                  #   attaches Bearer from authStore; response interceptor logs out + redirects on 401.
+                  #   Flags: skipAuth (public route, no Bearer, no redirect) / skipAuthRedirect
+                  #   (authenticated, but this 401 means something else — e.g. wrong password —
+                  #   handled inline instead of logging out)
+    auth.ts       # Zod contracts + login/forgotPassword/verifyResetCode/resetPassword/getMe + authKeys.
+                  #   Source of truth for AuthUser type
+    orders.ts     # Checkout contract. buildOrderPayload sends { items, customer, couponCode?,
+                  #   quotationId?, rateId? } — never amounts (backend recalculates + re-quotes
+                  #   Skydropx if a quotation was passed). createOrder(payload, idempotencyKey?) sends
+                  #   the `Idempotency-Key` header and reads `Idempotency-Replayed` off the response
+                  #   header (not the body). PublicOrderSchema is a distinct, smaller projection (no
+                  #   unitCost/paymentIntentId/refundId/labelUrl/Skydropx ids/publicToken/buyer contact
+                  #   info — this link gets shared over WhatsApp). `packageCount` (Fase 23, nullable —
+                  #   null = flat-rate) is informational only, never sent back in buildOrderPayload
+    coupons.ts    # Public coupon contract (Fase 19). validateCoupon() — validates WITHOUT redeeming
+                  #   (querying repeatedly doesn't burn a use), returns the exact amount that will be
+                  #   charged (shares computeCouponDiscount with the backend checkout — front never
+                  #   computes it itself). isCouponRejection separates a real rejection (4xx) from
+                  #   "couldn't ask" (network/5xx/429) — only the former blocks payment
+    adminCoupons.ts # CRUD contract. `code`/`redeemedCount` are not editable; `active: false` cancels.
+                  #   Omitted keys in PUT mean "don't touch". Dates travel as raw YYYY-MM-DD — backend
+                  #   interprets in store timezone (start-of-day for startsAt, END-of-day for expiresAt)
+    adminExpenses.ts # Amount is NOT a field on the expense — it's versioned by date in `amounts`.
+                  #   Sending `amount` in a PUT ADDS a new version (or corrects one already at that
+                  #   date); it never overwrites past history. `amountEffectiveFrom` without `amount`
+                  #   is 400. Filters are 400-on-invalid here (unlike the public catalog) since the
+                  #   owner is reading their own numbers. Fase 22: DerivedShippingCostSchema +
+                  #   required `shippingCost` (derived from orders, no Expense row, excluded from
+                  #   every total/chart — the dashboard already subtracts it in GANANCIA BRUTA)
+    shipping.ts   # getShippingRates(items, customer) → POST /api/shipping/rates, public, ALWAYS 200
+                  #   (backend falls back to its own flat rate if Skydropx fails). `packageCount`
+                  #   (Fase 23) required, not optional — old backends should fail loud, not silently
+                  #   show "one box" on a 4-box order
+    adminProducts.ts # AdminProductSchema carries unitCost + images + hasSizes. Sizes travel as CSV
+                  #   where a repeated size = extra stock. Fase 24: `hasSizes` decides whether `sizes`
+                  #   or `stockQuantity` is sent — never both (backend 400s on the wrong one)
+    adminProductImport.ts # Excel import contract. Preview uses strict `.parse()` (read-only, safe to
+                  #   retry); commit uses safeParse + warn (already wrote — turning a weird body into
+                  #   a thrown error would invite a retry that DUPLICATES stock)
+    adminOrders.ts # Paginated admin order list + guía/rastreo fields (Fase 11) + refund (Fase 12,
+                  #   POST /:id/cancel) + manual status advance (Fase 14, PATCH /:id/status,
+                  #   forward-only) + shipment retry (Fase 16, POST /:id/shipment/retry — 200 = label
+                  #   exists, 502 = Skydropx failed again, 409 on any ambiguity)
+    dashboard.ts  # DashboardSchema, GET /api/admin/dashboard. kpisByPeriod/profitKpisByPeriod precompute
+                  #   all 3 windows (7/30/90) in one response. Fase 22: recentSales[].shipping. The new
+                  #   COSTO DE ENVÍO KPI's `trend` is INVERTED on purpose (positive: true = cost went
+                  #   down) — KpiCard just renders by `positive`, so without the inversion a rising
+                  #   shipping cost would show green
+    reports.ts    # MonthlyReport[] / ReplenishmentRow[] — both fully derived/ordered by the backend
+    brand.ts      # BrandSettingsSchema is a SUBSET of BRAND (namePrimary/nameAccent/email/instagram
+                  #   don't exist on the backend, stay client-only)
+    adminUsers.ts # AdminUserSchema (role owner|admin). Backend 409s on duplicate email, 400 on
+                  #   deleting your own account or the sole owner
+    account.ts    # updateOwnAccount — currentPassword required for any change. skipAuthRedirect (a
+                  #   401 here means wrong password, shown inline, doesn't log out)
+    products.ts   # Public catalog fetcher (getProducts/getProductById), 404 → null. No unitCost.
+                  #   Carries images[]/imageSrc/hasSizes. Fase 18: q/orden/precioMin/precioMax added
+                  #   to filters — response shape unchanged
+  domain/         # pure business logic (no React, no I/O)
+    catalogFilters.ts # parse*Param + hasActiveFilters + isInvertedPriceRange (Fase 18, specs). Mirrors
+                  #   the backend's "silently ignore invalid values, never 400" rule — exists so
+                  #   `?orden=garbage` doesn't fragment the TanStack Query cache
+    cart.ts       # computeTotals(items) — subtotal/savings only. **Does NOT compute shipping**
+                  #   (Fase 23, `shipping: null`) — the old flat-rate copy (computeShipping/
+                  #   SHIPPING_BY_TYPE) was removed because it undercharged vs. the backend's per-box
+                  #   pricing. **Do not reintroduce local shipping math** — see "Shipping"
+    idempotency.ts # newIdempotencyKey() (Fase 15, specs) — crypto.randomUUID() + two fallbacks,
+                  #   since randomUUID only exists in secure contexts (would break checkout over
+                  #   plain http://192.168.x.x)
+    publicOrderToken.ts # PUBLIC_TOKEN_PATTERN/isPublicOrderToken/extractPublicOrderToken (Fase 17,
+                  #   specs) — accepts either the bare token or a full pasted URL. Only decides
+                  #   "does this look like a code" — existence is the backend's 404 to report.
+                  #   isOwnOrderTrackingUrl(url) detects the opposite bug: a /pedido/<token> link
+                  #   accidentally saved as Order.trackingUrl (pre-Fase-21 manual form) — used to
+                  #   suppress the "Rastrear" button so it doesn't point back at itself
+    shipmentStatus.ts # shipmentStatusLabel — translates Skydropx's raw (non-enum) status string.
+                  #   Lives in domain/ (not admin/) because BOTH the admin badge and the public
+                  #   tracking page need the same mapping
+    brand.ts      # BRAND — SSR fallback brand copy; resolveBrand(settings) merges backend BrandSettings ← BRAND
+    categories.ts # CATEGORIES + labels (single source, was duplicated ~10 places) + DEFAULT_DIMENSIONS
+  seo/
+    site.ts       # SITE_URL (NEXT_PUBLIC_SITE_URL ?? localhost) + absoluteUrl() — single source for
+                  #   metadataBase, canonicals, sitemap.ts, robots.ts
+    metadata.ts   # pageMetadata() — use for every new public page (see "SEO" for why)
+    jsonLd.ts     # storeJsonLd/productJsonLd/breadcrumbJsonLd — only describe what the page actually shows
+  stripe/client.ts # getStripe() — module-level loadStripe() singleton. null if key missing → UI degrades
+  ui/motion.ts    # shared framer-motion variants (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
+  utils/index.ts  # formatPrice(amount) — es-MX locale
 schemas/
-  checkout.ts     # zod shippingSchema + ShippingData type + MEXICAN_STATES list
-  auth.ts         # zod loginSchema + forgotPasswordSchema + LoginData/ForgotPasswordData types
-  users.ts        # zod createUserSchema + updateAccountSchema (+ passwordComplexity reutilizable, refleja las reglas del backend) — validación de los forms de ConfigSection
-  coupons.ts      # zod couponFormSchema + emptyCouponForm + couponInputFromForm (Fase 19) —
-                  #   validación del form de CouponsSection, espejo de couponInputSchema del
-                  #   backend (incluidas las reglas cruzadas: porcentaje ≤ 100, el tope en pesos
-                  #   solo sobre porcentaje, fin > inicio; duplicarlas aquí evita que el dueño
-                  #   llene todo para que se lo rechacen al guardar). TODOS los campos son texto
-                  #   (el valor de un <input> siempre lo es) y la conversión a número vive en
-                  #   couponInputFromForm, para que el mapeo al payload sea un solo lugar legible.
-                  #   Los montos se capturan con type="text" inputMode="decimal" y reusan
-                  #   parseNumberText de components/admin/import/rowInput.ts (puro, con specs) —
-                  #   una segunda copia del parser divergiría en el primer caso raro
-  expenses.ts     # zod expenseFormSchema + amountChangeFormSchema + emptyExpenseForm +
-                  #   expenseInputFromForm/expenseUpdateFromForm/amountChangeFromForm (Fase 20) —
-                  #   validación de los DOS formularios de ExpensesSection, espejo de
-                  #   expenseInputSchema del backend (incluidas las reglas cruzadas: fin ≥ inicio,
-                  #   un `once` no lleva fecha de término). Mismo patrón que coupons.ts: todos los
-                  #   campos son texto y la conversión vive en los mappers; los montos usan
-                  #   type="text" inputMode="decimal" y el mismo parseNumberText.
-                  #   `expenseFormSchema` es una **función** de `isNew` y no un objeto con un campo
-                  #   `isNew` adentro: un booleano que el formulario nunca pinta tendría que viajar
-                  #   como defaultValue sin registrar, y depender de que react-hook-form lo arrastre
-                  #   hasta el resolver es un detalle de implementación suyo, no un contrato.
-                  #   **expenseUpdateFromForm NO manda amount ni amountEffectiveFrom**: en el PUT
-                  #   esas claves agregan una versión de monto, así que incluirlas haría que
-                  #   corregir un typo en el concepto repreciara el gasto en cada guardado. Ese
-                  #   camino es amountChangeFromForm, y por eso son dos formularios
+  checkout.ts     # shippingSchema + MEXICAN_STATES
+  auth.ts         # loginSchema + forgotPasswordSchema
+  users.ts        # createUserSchema + updateAccountSchema (+ shared passwordComplexity)
+  coupons.ts      # couponFormSchema + couponInputFromForm (Fase 19) — mirrors backend cross-field
+                  #   rules (percent ≤ 100, cap only on percent-type, end > start) so bad input is
+                  #   caught before submit, not after
+  expenses.ts     # expenseFormSchema (a FUNCTION of `isNew`, not a hidden field) + amountChangeFormSchema.
+                  #   expenseUpdateFromForm never sends amount/amountEffectiveFrom — that's a separate
+                  #   form (amountChangeFromForm) since those keys version-bump the price
 store/
-  cartStore.ts    # Zustand store (persist) — cart items, open/close, totals, stock-aware addItem
-  importStore.ts  # Zustand store (SIN persist) — estado de la importación por Excel sobre el
-                  #   reducer puro de components/admin/import. Fuera del árbol de componentes
-                  #   porque app/admin/page.tsx desmonta la sección al cambiar de pestaña del
-                  #   Sidebar y una revisión a medias se perdería. Sin persist a propósito (ver
-                  #   "Importación por Excel"). usePendingImportCount() alimenta el badge del Sidebar
-  authStore.ts    # Zustand store (persist, key botas-don-chuy-auth) — token + user ({ id, name, email, role }) de sesión admin, login()/setUser()/logout()/isAuthenticated(). Fuente única del token (axios client + AdminGuard). El tipo AuthUser vive en lib/api/auth.ts
+  cartStore.ts    # Zustand + persist — cart items, stock-aware addItem
+  importStore.ts  # Zustand, NO persist (section unmounts on tab switch; a half-reviewed import must not survive that)
+  authStore.ts    # Zustand + persist (key botas-don-chuy-auth) — token + user, source of truth for the axios interceptor + AdminGuard
 ```
 
-**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/botas`, `/sombreros`, `/ropa`, `/checkout`, `/pedido`, `/pedido/[token]`, `/terminos`, `/privacidad`, `/envios`, `/nosotros`, `/admin`, `/login`, `/forgot-password` (las 3 de categoría reutilizan `OutletView` con `defaultCategoria`)
+**Implemented routes**: `/`, `/outlet`, `/outlet/[id]/producto`, `/botas`, `/sombreros`, `/ropa`, `/checkout`, `/pedido`, `/pedido/[token]`, `/terminos`, `/privacidad`, `/envios`, `/nosotros`, `/admin`, `/login`, `/forgot-password` (the 3 category routes reuse `OutletView` with `defaultCategoria`)
 
-**Planned routes** (not yet built): `/carrito`, `/devoluciones`
+**Planned, not built**: `/carrito`, `/devoluciones`
 
 ## State Management
 
-Cart state lives in a Zustand store (`store/cartStore.ts`) with `persist` middleware (localStorage key: `botas-don-chuy-cart`). The `Cart` drawer is rendered globally via `CartProvider` (dynamic import, SSR disabled) mounted in the root layout. `NavHeader` reads `totalItems()` and calls `toggleCart()`. `ProductInfo` calls `addItem()` + `openCart()` with per-size stock validation.
+Cart: `store/cartStore.ts` (Zustand + persist, key `botas-don-chuy-cart`). `Cart` drawer renders globally via `CartProvider` (dynamic import, SSR disabled) in root layout.
 
-Auth/session state lives in `store/authStore.ts` (Zustand + `persist`, key `botas-don-chuy-auth`) — ver "Auth & data fetching".
+Auth/session: `store/authStore.ts` (Zustand + persist, key `botas-don-chuy-auth`) — see "Auth & data fetching".
 
 ## Auth & data fetching
 
-Stack de datos: **TanStack Query + Axios + Zod**. `QueryProvider` (`components/providers/QueryProvider.tsx`) monta el `QueryClientProvider` en el root layout.
+Stack: **TanStack Query + Axios + Zod**. `QueryProvider` mounts `QueryClientProvider` in root layout.
 
-- **`lib/api/client.ts`** — instancia axios única. `baseURL = process.env.NEXT_PUBLIC_API_URL ?? "/api"`. El **request interceptor** adjunta `Authorization: Bearer <token>` leyendo `useAuthStore.getState().token`; el **response interceptor** en `401` llama `logout()` y redirige a `/login` (vía `window.location`, para poder usarse fuera de componentes). Toda llamada al backend debe pasar por esta instancia.
-- **`lib/api/auth.ts`** — contratos de auth centralizados (patrón `getProducts.ts`): schemas Zod (`AuthUserSchema`, `LoginResponseSchema`, `MeResponseSchema`) + `login()`, `forgotPassword()`, `getMe()` + `authKeys`. Toda respuesta se valida con Zod en runtime. `AuthUser` = `{ id, name, email, role: "owner"|"admin" }` — fuente única del tipo (el `authStore` lo reimporta).
-- **Sesión** — `store/authStore.ts` guarda `{ token, user }` en localStorage. Es la fuente única que leen el interceptor y el guard. `setUser()` rehidrata el usuario tras validar el token.
-- **Login** — `components/auth/LoginForm.tsx` usa `useMutation({ mutationFn: login })` (**conectado al backend real**). Mapea `401`→credenciales, `429`→rate-limit. En `onSuccess` guarda la sesión y navega a `/admin`.
-- **Recuperación de contraseña (Fase 10)** — `components/auth/ForgotPasswordForm.tsx` es un wizard de 3 pasos con estado local: (1) email → `forgotPassword()` (el backend siempre responde `{ ok: true }` sin enumerar usuarios y envía un código de 5 dígitos por correo vía Resend); (2) `ResetCodeForm` captura el código en `CodeInput` (OTP de 5 casillas) y lo valida con `verifyResetCode()` (`400` → "Código inválido o expirado"; tras 5 intentos el backend quema el código) + enlace "Reenviar código"; (3) `NewPasswordForm` define la nueva contraseña con `resetPasswordSchema` (misma complejidad que `passwordComplexity`) → `resetPassword()` → redirige a `/login`. `429` en cualquier paso → mensaje de rate-limit. Los tres endpoints son públicos (usuario deslogueado, sin Bearer).
-- **Protección de `/admin`** — `components/auth/AdminGuard.tsx` (en `app/admin/layout.tsx`) lee el token con un patrón hidratación-safe (`useSyncExternalStore`); sin token redirige a `/login`. Además valida el token contra `GET /api/auth/me` (`useQuery`, `staleTime` 5 min) y rehidrata `user`. Mientras la validación está en vuelo (`isPending`) muestra "Verificando sesión…". Token inválido → `401` → el interceptor cierra sesión y redirige. Un error **no-401** (500/red/parseo) **no bloquea** el acceso: se renderiza el panel igual que el guard previo solo-token, para no dejar al admin atrapado por una caída transitoria del backend. **Logout** desde el botón "Cerrar Sesión" de `ConfigSection`.
+- **`lib/api/client.ts`** — single axios instance. Request interceptor attaches `Authorization: Bearer`; response interceptor logs out + redirects to `/login` on 401. All backend calls go through this instance.
+- **Login** — `useMutation({ mutationFn: login })`. Maps 401→credentials, 429→rate-limit.
+- **Password recovery (Fase 10)** — 3-step wizard, local state: email → 5-digit code (`CodeInput` OTP) → new password → `/login`. Recovery endpoints are public.
+- **`/admin` protection** — `AdminGuard` reads the token hydration-safely (`useSyncExternalStore`), redirects if absent, and validates against `GET /api/auth/me`. A **non-401** error (500/network) does NOT block access — the panel renders anyway so a transient backend outage doesn't lock out the admin. 401 → interceptor logs out.
 
-> Modelo de seguridad: token en localStorage + guard cliente es lo correcto para el approach axios/SPA en esta etapa sin backend. En producción (con backend) conviene cookie `httpOnly` + middleware de Next; el interceptor 401 ya deja listo el camino. `unitCost`/márgenes solo deben exponerse en rutas `/api/admin/*` autenticadas.
+> Security model: token in localStorage + client guard is correct for this axios/SPA stage. `unitCost`/margins must only ever be exposed via authenticated `/api/admin/*` routes.
 
-Env: `NEXT_PUBLIC_API_URL` apunta al backend (sin definir → `/api`). `NEXT_PUBLIC_SITE_URL` = origen público del sitio, base de canonicals/sitemap/OG (sin definir → `http://localhost:3000`; ver "SEO"). `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` = llave **publicable** de Stripe (`pk_test_…` en sandbox), de la **misma cuenta** que la `STRIPE_SECRET_KEY` del backend; es una llave pública (segura para el bundle), nunca poner una llave secreta/restringida (`sk_`/`rk_`) en un `NEXT_PUBLIC_`. Las `NEXT_PUBLIC_*` se inyectan en build → tras cambiarlas hay que reiniciar `pnpm dev`. No commitear secretos.
+Env: `NEXT_PUBLIC_API_URL` (→ `/api` if unset). `NEXT_PUBLIC_SITE_URL` (→ `localhost:3000` if unset, see "SEO"). `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` — publishable key only, same account as backend's `STRIPE_SECRET_KEY`, never a secret/restricted key. `NEXT_PUBLIC_*` values are baked in at build time — restart `pnpm dev` after changing them.
 
 ## SEO
 
-La metadata global vive en el root layout (`app/layout.tsx`): `metadataBase`, `title.template` (`%s | Botas Don Chuy Outlet`), description, keywords, OG/Twitter, `formatDetection` (Safari convierte precios/CPs en enlaces de teléfono si no se apaga) y `robots` con `max-image-preview: large` (lo que permite que la foto salga grande en el resultado de búsqueda). Cada página solo define lo suyo.
+Global metadata lives in the root layout (`metadataBase`, `title.template`, OG/Twitter, `formatDetection` off, `robots` with `max-image-preview: large`).
 
-**Toda página pública nueva arma su metadata con `pageMetadata()` (`lib/seo/metadata.ts`)** — no a mano. El helper existe por dos trampas de la herencia de metadata de Next, las dos verificadas contra el HTML del build (no en teoría):
+**Every new public page must build its metadata with `pageMetadata()` (`lib/seo/metadata.ts`)**, because of two Next.js metadata-inheritance traps (verified against build HTML, not just docs):
 
-1. **`alternates` se HEREDA** si la página no lo define. Por eso el root layout **no** declara `canonical` (el del home vive en `app/page.tsx`): con un `canonical: "/"` arriba, toda página que se olvidara del suyo se declaraba duplicada del home — le pasó a `/terminos`, `/privacidad`, `/envios` y `/nosotros`, que además están en el sitemap.
-2. **`openGraph` se REEMPLAZA entero** al declararlo, no se mezcla. Una página que solo quería su título perdía `siteName`, `locale`, `type` y la imagen de `opengraph-image.tsx` (enlace pelón en WhatsApp). Por eso el helper siempre emite el bloque completo, imagen y medidas incluidas.
+1. **`alternates` is INHERITED** if a page doesn't define it — so the root layout deliberately has no `canonical`, or every page that forgot its own would self-declare as a duplicate of the home page (happened to `/terminos`, `/privacidad`, `/envios`, `/nosotros`).
+2. **`openGraph` is REPLACED wholly**, not merged — a page that only wanted a custom title lost `siteName`/`locale`/`type`/OG image. The helper always emits the full block.
 
-Las únicas dos páginas públicas que no pasan por el helper lo hacen por una razón: el **home** solo declara `alternates` (su título/OG ya son los defaults del layout y tocarlos reemplazaría el bloque heredado), y **producto** arma el suyo en `generateMetadata` porque su imagen es la foto real de la pieza.
+Only the **home** (declares just `alternates`) and **producto** (builds its own `generateMetadata` — real product photo) skip the helper.
 
-- **`lib/seo/site.ts` es la fuente única de la URL pública.** `NEXT_PUBLIC_SITE_URL` se inyecta en build; sin definir cae a `http://localhost:3000`. **Hay que definirla en Vercel (Production)** con el origen real y sin barra final, o los canonicals y el `sitemap.xml` publicados apuntarán a localhost.
-- **Canonicals de listado sin query**: `/outlet?categoria=bota&pagina=2` canonicaliza a `/outlet`. Sin esto, cada combinación de filtros se indexa como duplicado y se reparte la autoridad entre todas.
-- **Rutas privadas**: `/admin/*`, `/login`, `/forgot-password`, `/checkout` y `/pedido*` llevan `robots: noindex` **y** están en el disallow de `robots.txt`. No es redundante: robots.txt impide el *crawl*, el meta impide el *índice* — una URL bloqueada en robots.txt pero enlazada desde fuera puede indexarse igual, y `/pedido` justamente está enlazada desde el Footer de todas las páginas. `unitCost`/márgenes nunca deben acabar en un índice, y el token de `/pedido/<token>` es la **credencial** del pedido.
-- **Datos estructurados** (`lib/seo/jsonLd.ts` + `components/seo/JsonLd.tsx`): `ClothingStore` en el home, `Product` + `BreadcrumbList` en producto. Regla dura: **solo describir lo que la página realmente muestra** — marcar datos que el usuario no ve viola las políticas de Google y puede costar los rich results de todo el dominio. `image` se **omite** si el producto no tiene fotos (`image: []` no es "sin imagen": es propiedad inválida y arrastra al bloque entero). `brand` también se omite: en schema.org es el **fabricante** (Cuadra…), no la tienda —esa va en `offers.seller`—, y el `Product` del backend no guarda la marca; es recomendada, no obligatoria.
-- **Imagen OG**: `app/opengraph-image.tsx` (generada). Solo la heredan las rutas que **no** declaran `openGraph` (hoy: el home). Las demás la referencian explícitamente vía `pageMetadata()`; producto la usa como fallback cuando la pieza no tiene foto — si no, se quedaría sin ninguna `og:image` (enlace pelón en WhatsApp), que hoy es el caso más común del catálogo.
-- Al tocar el catálogo, recordar que `sitemap.ts` tiene `MAX_PAGES` como tope de seguridad del recorrido paginado.
+- `lib/seo/site.ts` is the single source of the public URL — **must be set in Vercel Production** or canonicals/sitemap point at localhost.
+- Listing canonicals strip query params: `/outlet?categoria=bota&pagina=2` → `/outlet`.
+- Private routes (`/admin/*`, `/login`, `/forgot-password`, `/checkout`, `/pedido*`) carry both `robots: noindex` **and** a robots.txt disallow — the meta stops indexing, robots.txt stops crawling; neither alone is enough since `/pedido` is linked from the Footer.
+- Structured data only describes what the page actually shows (Google policy). `image` omitted entirely if the product has no photos (`image: []` is invalid, not "no image"). `brand` omitted (schema.org brand = manufacturer, not the store; not in the backend's Product model).
+- `opengraph-image.tsx` is only inherited by routes without their own `openGraph` (today: home only); producto uses it as a fallback when the piece has no photo.
 
 ## Estados de carga (loading.tsx vs Suspense)
 
-Las rutas de catálogo suspenden por motivos distintos, y por eso el skeleton va en lugares distintos — o no va. **No unificar sin leer esto**, las dos decisiones tienen una razón medida detrás:
+Two different reasons to suspend → two different answers. **Don't unify without reading this:**
 
-- **Listados** (`/outlet`, `/botas`, `/sombreros`, `/ropa`) **NO son RSC async**: `OutletView` es un client component que hace su propio fetch con TanStack Query. Lo que suspende en el prerender es su `useSearchParams`, y ese bailout lo atrapa **el boundary más cercano**, que es el `<Suspense>` que la página ya tenía dentro. Por eso el skeleton va como `fallback={<OutletSkeleton />}` de ese Suspense: **un `loading.tsx` en esas rutas nunca se alcanzaría**. Ya hidratado, manda el spinner propio de OutletView. `OutletSkeleton` replica la rejilla real (mismas columnas, mismo `aspect-square`) para que al llegar los productos no salte el layout.
+- **Listings** (`/outlet`, `/botas`, `/sombreros`, `/ropa`) are NOT async RSCs — `OutletView` is a client component fetching via TanStack Query. What suspends during prerender is its `useSearchParams`, caught by the page's own `<Suspense fallback={<OutletSkeleton />}>` — **a `loading.tsx` here would never be reached**.
+- **Producto** (`/outlet/[slug]/producto`) IS an async RSC and deliberately has **no loading.tsx**. Any streaming boundary forces Next to send the shell before knowing whether the product exists → status stays 200 and `notFound()` becomes a **soft 404** (measured: with loading.tsx, `/outlet/999999/producto` → 200; without, → 404). Outlet pieces get discontinued and their indexed URLs get crawled often, so correct status won out over a skeleton — the accepted cost is no click feedback until the backend responds.
 
-- **Producto** (`/outlet/[slug]/producto`) **sí es un RSC async** y aun así **NO lleva loading.tsx, a propósito**. Cualquier boundary que streamee obliga a Next a mandar el shell antes de saber si el producto existe → el status queda en 200 y el `notFound()` posterior pinta el 404 con status 200 (**soft 404**). Medido: con `loading.tsx`, `/outlet/999999/producto` → 200; sin él → 404. En un outlet las piezas se agotan y se retiran, y sus URLs (indexadas y en el sitemap) se crawlean seguido, así que se priorizó el status correcto sobre el skeleton — el costo aceptado es que al hacer clic en una tarjeta no hay feedback hasta que responde el backend. `generateStaticParams` + `dynamicParams: false` daría ambas, pero cualquier producto creado tras el build daría 404 hasta el siguiente deploy: peor. El razonamiento está también en un comentario al inicio de `page.tsx`.
-
-`loadProduct` valida el slug (`Number.isInteger(id) && id > 0`) antes de llamar al backend: `/outlet/abc/producto` daba `Number("abc")` → `NaN` → `GET /products/NaN` → **400**, que `getProductById` no atrapa (solo mapea 404 → null) → la ruta reventaba con un 500 en vez del 404 limpio. Los crawlers y los enlaces viejos pegan a URLs basura de forma rutinaria.
+`loadProduct` validates the slug (`Number.isInteger(id) && id > 0`) before calling the backend — otherwise `/outlet/abc/producto` → `Number("abc")` → `NaN` → 400 from the backend → an unhandled 500 instead of a clean 404.
 
 ## Checkout flow
 
-`/checkout` is a 4-step wizard. Step state is held in a React context (`components/checkout/CheckoutContext.tsx`, scoped via `CheckoutProvider` in the page — not persisted, so a refresh restarts at step 0).
+`/checkout` is a 4-step wizard. State lives in `components/checkout/CheckoutContext.tsx` (not persisted — a refresh restarts at step 0). Steps render conditionally, so **navigating unmounts the step** — anything that must survive back/forward lives in the context, not the step component: `acceptedTerms`, the unvalidated shipping draft (ref), `confirmedCustomer` (state — validated address, what gets quoted), the chosen shipping rate (state, cached by cart+customer signature), the applied coupon (state, cached by a deliberately **looser** signature — just `cartLineSignature(items)`, since the discount only depends on merchandise and shouldn't be dropped by an address/carrier change), Stripe's pending order (ref), and the idempotency key (ref).
 
-`CheckoutFlow` renderiza los pasos condicionalmente (`{step === 1 && <UserDetails />}`), así que **navegar desmonta el paso**. Todo lo que deba sobrevivir a ir y volver vive en el contexto, no en los componentes de paso: `acceptedTerms` (state, controla el checkbox del resumen), el **borrador de envío** (`shippingDraftRef` + `getShippingDraft`/`setShippingDraft`, sin validar — resiembra el form de `UserDetails`), la **dirección confirmada** (`confirmedCustomer`, state — validada al enviar el paso 1, es lo que `ShippingOptions` cotiza), la **tarifa de envío elegida** (`selectedRateEntry`/`getSelectedRate`/`setSelectedRate`, cacheada por firma carrito+cliente igual que la orden pendiente), el **cupón aplicado** (`appliedCouponEntry`/`getAppliedCoupon`/`setAppliedCoupon`, Fase 19 — cacheado con una firma deliberadamente **más laxa**: solo `cartLineSignature(items)`, sin cliente ni tarifa, porque el descuento depende únicamente de la mercancía neta y corregir la dirección o cambiar de paquetería no debe tirar un cupón que sigue siendo válido; lo que sí lo invalida es cambiar el carrito, sobre el que se calcularon el monto y el mínimo de compra. Guarda además `checkedEmail`: mientras no sea el del cliente confirmado, el "un uso por cliente" sigue sin verificarse), la orden pendiente de Stripe (`pendingOrderRef`) y la **clave de idempotencia** (`idempotencyKeyRef` + `getIdempotencyKey`/`resetIdempotencyKey`, Fase 15 — ver el paso 3). `shippingDraftRef`/`pendingOrderRef` son **refs**, no state: solo se leen al montar / al hacer submit, así que re-renderizar con ellos sería ruido; `confirmedCustomer`/`selectedRateEntry` sí son state porque otro componente (paso 3) debe re-renderizar en cuanto existen o cambian. `UserDetails` siembra `useForm({ defaultValues: getShippingDraft() ?? undefined })` y guarda `getValues()` en el cleanup de un `useEffect` (es decir, al desmontarse) — sin validar, el borrador puede ir a medias. `completeOrder` lo limpia junto con el carrito, la clave de idempotencia y el cupón aplicado (el cupón ya se canjeó en ese pedido: conservarlo lo reaplicaría solo si el comprador armara otro carrito idéntico, y muchos cupones son de un uso por cliente — ese segundo intento chocaría contra un 409 al pagar). El `Stepper` recibe `maxVisited={maxVisitedStep}` y deja saltar a **cualquier paso ya visitado** (atrás o adelante), nunca a uno sin visitar ni una vez confirmado el pedido; `maxVisitedStep` lo sube el helper `visit()` del contexto. Pinta **tres niveles** por paso, no dos: `isDone` (`index < current`, palomita ámbar), `isVisited` (`index > current && index <= maxVisited` — se estuvo ahí y se retrocedió: número en ámbar tenue, ni completado ni intacto) y pendiente (apagado). Sin el nivel intermedio, retroceder hacía que el paso ya lleno se viera idéntico a uno nunca tocado.
+The `Stepper` allows jumping to any **already-visited** step (never an unvisited one, never after order confirmation), and renders 3 states per step (done / visited-but-not-current / pending) — without the middle state, going back made a filled step look untouched.
 
-1. **Resumen** (`OrderSummary`) — read-only cart review + **required** terms & privacy checkbox; "Continuar" is disabled until accepted. Muestra `computeTotals(items)`, que desde la Fase 23 **ya no estima el envío**: devuelve `shipping: null` y `<OrderTotals>` lo pinta como "Se calcula con tu dirección", con el total rotulado **"Total sin envío"**. Ni $0 ni esconder la fila — un envío que no se nombra se lee como envío gratis. Aquí también vive el **campo de cupón** (`CouponField`, Fase 19), entre `<OrderItems />` y los totales: el descuento validado se resta del total y `<OrderTotals>` recibe la prop `discount`. **El invariante de totales de toda la app es `total = subtotal − savings − couponDiscount + shipping`**: `savings` (ahorro outlet, `originalPrice` vs `salePrice`) y `couponDiscount` son cosas DISTINTAS y no se suman —mezclarlas le mentiría al comprador sobre de dónde viene cada descuento— y el cupón **nunca toca el envío**, por eso su fila va arriba de la de Envío (igual que en el correo de confirmación).
-2. **Dirección** (`UserDetails`) — solo captura y valida la dirección con `react-hook-form` + `zodResolver` contra `schemas/checkout.ts` (restringida a México vía `MEXICAN_STATES`). Al enviarse, `confirmShipping(data)` (`CheckoutContext`) guarda la dirección validada, **invalida sin condición** cualquier tarifa elegida antes (una dirección nueva puede cotizar distinto) y avanza al paso 3. No crea orden ni toca Stripe; el sidebar solo muestra el subtotal outlet, con nota de que el envío se calcula en el siguiente paso.
-3. **Envío** (`ShippingOptions`) — cotización de envío **en vivo** contra Skydropx (Fase 8.4). **Revalidación del cupón** (Fase 19): si hay uno aplicado y su `checkedEmail` no es el del cliente confirmado, un `useQuery` sobre `couponKeys.validate(code, items, email)` lo re-consulta **con el correo** — es el ÚNICO momento del checkout en que `/validate` puede verificar el "un uso por cliente" (el código se captura en el paso 0, antes de que exista un correo), y avisar aquí es mejor que fallar al cobrar. `retry: false` (un 404/409 es un veredicto; reintentarlo gasta tres consultas para llegar al mismo mensaje). Un rechazo (`isCouponRejection`, 4xx) **bloquea "Pagar y confirmar"** y ofrece quitar el cupón; un fallo de red o un 429 **no** bloquean. El guard `!!coupon &&` del `couponBlocked` no es defensivo: al quitar el cupón la query se deshabilita pero TanStack Query **conserva el error** de la última corrida, así que sin él el botón "Quitar cupón y continuar" dejaría el pago bloqueado para siempre — justo la salida que ese botón existe para dar. `useQuery({ queryKey: shippingKeys.rates(items, confirmedCustomer), queryFn: () => getShippingRates(...) })` llama a `POST /api/shipping/rates` (`lib/api/shipping.ts`), que SIEMPRE responde 200 — si Skydropx falla/hace timeout, el backend cae a su propia tarifa plana (`rateId`/`quotationId` null, `carrier: "Estándar"`). Con una sola opción se preselecciona sola (nada que decidir); con 2+ no se preselecciona nada — elegir es el punto de este paso. **Número de cajas (Fase 23)**: cuando el pedido va en más de un bulto se avisa ARRIBA de la lista de tarifas (que es donde el comprador está comparando precios y preguntándose por qué son más altos) y otra vez en el sidebar vía la prop `packageCount` de `OrderTotals`; el número se toma del **máximo** de `data.rates`, no de `rates[0]` — hoy todas salen del mismo acomodo y coinciden, pero leer la primera es apostarle a eso. Los totales del sidebar (`OrderTotals`) se arman localmente: `computeTotals(items)` da `subtotal`/`savings`, y `.shipping`/`.total` se sobreescriben con la tarifa elegida menos el `couponDiscount` (`subtotal − savings − couponDiscount + rate.total`) — así el monto que se ve aquí es el mismo que se cobra. **Pago con Stripe conectado (Fase 8, test/sandbox)**: "Pagar y confirmar" corre `usePlaceOrder` (`components/checkout/usePlaceOrder.ts`), un flujo de **dos fases** — (1) `createOrder()` (`lib/api/orders.ts`) postea `buildOrderPayload(items, customer, selectedRate, couponCode)` = `{ items, customer, couponCode?, quotationId?, rateId? }` **sin montos** (viaja el CÓDIGO del cupón, jamás un monto: misma regla que rige precios y envío; la clave se omite si no hay cupón, porque un `""` sería 400) (el backend re-consulta Skydropx por esa cotización —o cae a su tarifa plana si no vinieron— y devuelve `{ order, clientSecret }`); (2) `stripe.confirmCardPayment(clientSecret, { payment_method: "pm_card_visa" })` con Stripe.js (`lib/stripe/client.ts` = singleton `loadStripe`). La **tarjeta de prueba está hardcodeada** (`pm_card_visa` = `4242 4242 4242 4242`) porque todo corre en sandbox; `PaymentSection` (movido aquí desde el paso de dirección — el pago no puede confirmarse sin una tarifa elegida) es un panel de tarjeta de prueba de solo lectura. La orden creada se **cachea en el `CheckoutContext`** (`orderSignature` = `productId+talla+cantidad` del carrito **+ los datos del cliente + la tarifa elegida + el cupón aplicado**) para no duplicarla en un reintento; se invalida sola si cambió el carrito, el cliente, la tarifa o el cupón (sin esto último, aplicar o quitar un cupón reconfirmaría el pedido cacheado con el precio anterior — le cobraría al comprador un total distinto al que tiene en pantalla). **`Idempotency-Key` (Fase 15)**: ese caché solo protege del reintento que pasa por el hook; el header protege del que no (un doble clic que dispara dos peticiones antes de que la primera responda, o el reintento automático del navegador). `usePlaceOrder` pide la clave con `getIdempotencyKey(signature)` — la **misma firma** que la orden pendiente, a propósito: "otro carrito, otro cliente, otra tarifa u otro cupón" es exactamente lo que hace que un reenvío deje de ser el mismo pedido (y el backend mete el `couponCode` en su propia huella, así que los dos criterios coinciden por construcción y no por coincidencia), y tener dos criterios para lo mismo es la forma segura de que se desincronicen. Así la clave rota sola, sin efectos ni invalidación aparte; `completeOrder()` la limpia (si no, una segunda compra del mismo carrito dentro de los 60 s se leería como reenvío y devolvería el pedido anterior). Se genera **perezosamente en el submit, nunca en render** (no desperdicia claves y evita el desajuste de hidratación: `crypto.randomUUID()` no existe en SSR). Si el backend responde `201` con el header **`Idempotency-Replayed`** (ese pedido ya existía), `usePlaceOrder` consulta el PaymentIntent con `stripe.retrievePaymentIntent()` **antes** de confirmar y, si ya está `succeeded`, salta directo a la confirmación: re-confirmar un pago hecho devuelve un error de Stripe que le diría al comprador que su pago falló cuando ya se cobró. Errores mapeados (en `checkoutErrors.ts`): `409` "sin stock" muestra el mensaje del backend inline; `409` de **clave de idempotencia reusada** (`isIdempotencyKeyConflict`) muestra el mensaje del backend y llama `resetIdempotencyKey()` — reintentar con la misma clave daría el mismo 409 para siempre; `409` de **cotización expirada** (quotations duran 24 h — se detecta por el texto "cotizaciones expiran" en el mensaje) además limpia la tarifa elegida (`setSelectedRate(..., null)`) para forzar una nueva cotización en vez de reintentar en bucle contra un `quotationId`/`rateId` caducado; `409` de **cupón** (`isCouponError`, Fase 19 — se agotó, lo usó otro carrito del mismo correo, o el descuento deja el total bajo el mínimo cobrable de Stripe) muestra el mensaje del backend y expone `couponRejected` para que `ShippingOptions` ofrezca "Quitar cupón y reintentar": el cupón **nunca se quita solo**, porque eso cambiaría en silencio el precio que el comprador aceptó; `400` datos; `clientSecret` nulo / Stripe no cargado → mensaje de config; `error.message` de Stripe. El usuario permanece en el paso. **Solo tras `paymentIntent.status === "succeeded"`** se llama `completeOrder(customer, order)`, que congela el snapshot (con `orderId` + los **totales autoritativos del servidor**), vacía el carrito y avanza. El estado `paid` real lo concilia el **webhook** del backend de forma asíncrona.
-4. **Confirmación** (`Success`) — renders the frozen order snapshot + shipping address. **Sin "Pedido #<id>"** desde la Fase 21 (`orderId` sigue en el snapshot, solo dejó de pintarse — ver `components/pedido/`): ese id es el consecutivo global de la tienda y los correos ya dejaron de mandarlo; la referencia del comprador es el CTA a `/pedido/<token>`. El snapshot guarda `couponCode`/`couponDiscount` del servidor: los `totals` ya vienen con el descuento restado, así que la fila del cupón es informativa — sin ella el total no cuadraría con `subtotal − savings + shipping` y el faltante quedaría sin explicar. También guarda `packageCount` (Fase 23) y lo pasa a `OrderTotals`: cierra el círculo con el paso 3, para no dejar un envío alto sin explicación en la única pantalla que el comprador se queda mirando. Cuando el snapshot trae `publicToken` (Fase 17), el CTA primario pasa a ser **"Ver el estado de mi pedido"** → `/pedido/<token>`, y "Seguir comprando" queda como secundario; sin token la pantalla queda exactamente como antes. El token viene en el mismo `201` del checkout, así que no hay que esperar el correo — y **no se persiste**: vive lo que vive el `CheckoutContext`. Guardarlo en `localStorage` sería mover una credencial de pedido al navegador solo para ahorrarle a alguien buscar su correo.
+1. **Resumen** (`OrderSummary`) — read-only review + required terms checkbox. `computeTotals(items)` no longer estimates shipping (Fase 23) — shown as "Se calcula con tu dirección", never $0 or hidden (an unnamed shipping line reads as free shipping). `CouponField` lives here. **App-wide totals invariant: `total = subtotal − savings − couponDiscount + shipping`** — `savings` (outlet discount) and `couponDiscount` are distinct and never merged; the coupon never touches shipping.
+2. **Dirección** (`UserDetails`) — RHF + zod (`schemas/checkout.ts`, Mexico-only via `MEXICAN_STATES`). On submit, `confirmShipping(data)` unconditionally invalidates any previously chosen rate (a new address may quote differently) and advances. No order/Stripe interaction yet.
+3. **Envío** (`ShippingOptions`) — live Skydropx quote. **Coupon revalidation** (Fase 19): if applied and not yet checked against the confirmed email, re-queries `/validate` with the email — the only point in checkout where "one use per customer" can actually be verified. A rejection (`isCouponRejection`, 4xx) blocks "Pagar y confirmar"; a network error/429 does not. `POST /api/shipping/rates` **always returns 200** (falls back to flat rate on Skydropx failure). A single rate auto-selects; 2+ requires a choice. **packageCount** (Fase 23) is shown above the rate list and in the sidebar when >1 box, taken from the **max** across `data.rates` (not `rates[0]`). Payment: `usePlaceOrder` — (1) `createOrder()` posts `buildOrderPayload(...)` with **no amounts** (backend recalculates, re-quoting Skydropx by `quotationId` if present) → `{ order, clientSecret }`; (2) `stripe.confirmCardPayment(clientSecret, { payment_method: "pm_card_visa" })` — **hardcoded test card**, sandbox only. The pending order is cached in context by an `orderSignature` (cart + customer + rate + coupon) to avoid re-creating it on retry; invalidated if any of those change. **`Idempotency-Key`** (Fase 15) protects against the retry path that *doesn't* go through the cache (double-click, browser auto-retry) — keyed by the same signature, generated lazily on submit (never in render — `crypto.randomUUID()` doesn't exist in SSR), cleared by `completeOrder()`. If the backend replays (`Idempotency-Replayed` header), `usePlaceOrder` checks `stripe.retrievePaymentIntent()` before re-confirming, since re-confirming an already-`succeeded` payment throws a false failure. Errors mapped in `checkoutErrors.ts` (see components/checkout above). Only on `paymentIntent.status === "succeeded"` does `completeOrder()` freeze the snapshot (with server-authoritative totals), empty the cart, and advance — the real `paid` state is reconciled async by the webhook.
+4. **Confirmación** (`Success`) — renders the frozen snapshot. No `#<id>` (Fase 21); CTA is "Ver el estado de mi pedido" → `/pedido/<token>` when `publicToken` is present in the snapshot (not persisted to localStorage — that would move a credential to the browser just to save a click).
 
-Shared, prop-driven pieces: `Stepper` (wizard indicator — genérico, escala solo con `CHECKOUT_STEPS` sin cambios de código), `OrderItems`, `OrderTotals`, and `FormControls` (`TextField`/`SelectField` — `forwardRef` inputs that take RHF `register()` spread + an `error` string).
+Shared pieces: `Stepper`, `OrderItems`, `OrderTotals`, `FormControls`.
 
 ## Shipping — cotización en vivo (Skydropx, Fase 8.4)
 
-El checkout cotiza envío **en vivo** contra Skydropx desde el paso 3 (`ShippingOptions`, ver "Checkout flow"). El backend (`backend/src/controllers/shipping.controller.ts` + `services/skydropx.service.ts`) ya está construido y es la autoridad: acomoda el carrito en su catálogo de cajas (`packOrder`), cotiza **un bulto por caja** contra Skydropx, y responde `{ quotationId, rates: [{ rateId, carrier, service, amount, total, days, packageCount }] }`. Origen fijo: Celaya, Guanajuato, CP 38000.
+Backend (`backend/src/controllers/shipping.controller.ts` + `skydropx.service.ts`) is the authority: packs the cart into boxes (`packOrder`), quotes **one shipment per box** against Skydropx, returns `{ quotationId, rates: [{ rateId, carrier, service, amount, total, days, packageCount }] }`. Fixed origin: Celaya, Guanajuato.
 
-**Frontend → backend**: `lib/api/shipping.ts` (`getShippingRates(items, customer)`) postea `POST /api/shipping/rates` con `{ customer, items: [{ productId, size, quantity }] }` (mapeo compartido con `orders.ts` vía `mapCartItemsToOrderItems`). `ShippingData` (schemas/checkout.ts) mapea directo a los campos de dirección de Skydropx: `postalCode`→`postal_code`, `state`→`area_level1`, `city`→`area_level2`, `neighborhood`→`area_level3`.
+`lib/api/shipping.ts` posts `POST /api/shipping/rates` with `{ customer, items }` (shared mapping via `mapCartItemsToOrderItems`).
 
-**El envío se cobra por caja (Fase 23)**: el backend acomoda el pedido en cajas reales (chica 40×35×25, mediana 55×40×35, grande 60×45×50) y cada tarifa trae **`packageCount`** — cuántos bultos ampara. Un pedido de una pieza sigue yendo en la caja chica (el caso mayoritario no se sobrecobra); el salto de precio aparece solo cuando el pedido de verdad ya no cabe en una. **El frontend nunca lo recalcula**: `packageCount` es informativo (`ShippingOptions` avisa "tu pedido va en N cajas" arriba de la lista de tarifas y en el sidebar; `Success` lo repite desde el snapshot) y **no se manda de vuelta** en `POST /api/orders`, donde el backend lo ignora.
+**Charged per box** (Fase 23) — a single-item order still ships in the small box (majority case unaffected); the price jump only appears once the order genuinely needs more than one box. **The frontend never recalculates `packageCount`** — purely informational, never sent back in `POST /api/orders`.
 
-**Fallback de tarifa plana**: si Skydropx falla, hace timeout, el producto tiene alguna dimensión en 0, o el pedido excede los bultos cotizables en vivo, el backend responde 200 igual con `quotationId: null` y una sola tarifa sintética (`rateId: null`, `carrier: "Estándar"`) calculada con su propia copia de la tarifa plana (`SHIPPING_BY_TYPE = { bota: 160, sombrero: 130, ropa: 100 }` MXN, sumada **por caja** con el tipo más caro que cada una lleva). Sale del **mismo `packOrder`** que la rama en vivo, así que trae el mismo `packageCount`: caer al respaldo cambia el precio del bulto, nunca cuántos bultos son.
+**Flat-rate fallback**: if Skydropx fails/times out/a product has a zero dimension/the order exceeds live-quotable bulk, backend still returns 200 with `quotationId: null` and one synthetic rate (`SHIPPING_BY_TYPE = { bota: 160, sombrero: 130, ropa: 100 }` MXN, summed per box). Comes from the same `packOrder`, so `packageCount` is identical either way.
 
-> ⚠️ **`lib/domain/cart.ts` ya NO calcula envío** — antes tenía una copia de esa tabla (`computeShipping`/`SHIPPING_BY_TYPE`, un `Math.max` que cobraba UNA guía por pedido) que se usaba como estimado en el paso 1. Se eliminó en la Fase 23: con el cobro por caja le prometía al comprador menos de lo que el backend cobra (3 botas + 1 sombrero mostraban $160, lo mismo que una sola bota). Portar `packOrder` al front habría dejado dos implementaciones que se desincronizan a la primera vez que el dueño mida sus cajas. **No reintroducir el cálculo local**: `CartTotals.shipping` es `number | null`, y `null` significa "todavía no hay cotización" (ver "Checkout flow", paso 1).
+> ⚠️ **`lib/domain/cart.ts` no longer computes shipping.** A local copy (`computeShipping`) was removed in Fase 23 — it charged one flat guía per order regardless of box count, undercharging vs. the backend. **Do not reintroduce it** — `CartTotals.shipping` is `number | null`, and `null` means "not yet quoted."
 
-**Monto mostrado = monto cobrado**: la tarifa que el comprador elige en `ShippingOptions` (`quotationId`+`rateId`, o `null`+`null` en el fallback) se manda en `POST /api/orders`. El backend **re-consulta Skydropx** por esa cotización exacta y usa su `total` como `order.shipping` — nunca confía en un monto del cliente. Si la cotización expiró (duran 24 h), el backend responde 409 y el frontend limpia la tarifa elegida para forzar una nueva cotización (ver "Checkout flow", paso 3). Esto es lo que cierra la brecha que existía antes de la Fase 8.4: el frontend ya no calcula el envío por su cuenta para mostrarlo — lo cotiza y lo cobra con el mismo número.
+**Shown amount = charged amount**: the rate chosen in `ShippingOptions` is sent to `POST /api/orders`; the backend re-queries Skydropx by that exact quotation and uses its `total` — never trusts a client-supplied amount. Expired quotations (24h TTL) → 409 → front clears the selected rate to force a re-quote.
 
 ## Importación por Excel (Fase 13)
 
-La sección **Importar** (`components/admin/sections/ImportSection.tsx` + `components/admin/import/`) sube un `.xlsx` con mercancía nueva y restock. Son **dos pasos** contra el backend: `POST /api/admin/products/import/preview` (multipart, **no escribe nada**) y `POST /api/admin/products/import` (JSON, aplica las filas ya revisadas).
+`ImportSection` uploads an `.xlsx` for new stock + restock, in two backend steps: `POST /import/preview` (multipart, writes nothing) and `POST /import` (JSON, applies reviewed rows).
 
-**El principio que ordena todo el diseño:** el restock **SUMA** stock y **no hay forma de deshacerlo desde la app**. Una fila mal leída no se corrige con un botón: se corrige a mano, producto por producto. Por eso la pantalla de revisión no es cosmética y por eso las reglas de abajo son invariantes, no preferencias.
+**Governing principle: restock ADDS stock and there's no undo from the app.** A misread row isn't fixed with a button — it's fixed by hand, product by product. Hence the invariants below are not preferences.
 
-### Invariantes (no romper sin leer el porqué)
+### Invariantes
 
-- **Una fila aplicada con éxito NUNCA vuelve al payload.** Tras cada commit, los índices que **escribieron** (`created`/`updated`) entran en `applied` y quedan con candado el resto de la sesión, aunque se editen. Es estructural (en el reducer), no una convención de quien arme el siguiente lote — es lo que hace segura la iteración "corrige los errores y reintenta". Un `unchanged` del commit **no** lleva candado (no tocó nada, y bloquearlo impediría corregirlo y reenviarlo) pero **sí** se deselecciona, para que no viaje sin que el dueño lo vuelva a elegir.
-- **Con filas ya aplicadas, "Volver a analizar" desaparece** (`canReanalyze`). El preview recalcula contra el catálogo YA actualizado mientras el archivo sigue diciendo lo mismo ("suma 3 piezas"), así que el restock recién aplicado reaparecería como `update`; y `previewLoaded` no puede conservar el candado, porque el `.xlsx` pudo editarse entre un análisis y otro y los índices del plan nuevo no tienen por qué ser los mismos. El candado se protege en la **entrada**, no intentando migrarlo. La salida en ese estado es "Empezar de nuevo".
-- **Todo se clavea por el ÍNDICE de `plan.rows`, nunca por el folio `row`.** `row` es el número de fila del Excel: dato externo, opcional en el contrato y potencialmente repetido. El índice es único por construcción y estable (nunca se reordena ni se empalma el array; el filtrado ocurre al pintar), así que el caso borde de folios duplicados desaparece en vez de tener que cubrirse. El merge del resultado del commit es **posicional** (`response.rows[k]` ↔ `sentIndices[k]`, que viajan como variable de la mutation), con fallback por folio y, si tampoco cuadra, lista sin merge.
-- **`serializeRowEdit` emite solo una whitelist** (`EDITABLE_FIELDS ... as const satisfies readonly (keyof ImportRowInput)[]`), **también para las filas no editadas**. El body del commit es `.strict()` en el backend: una clave que el preview devuelva y el commit no acepte mataría el **lote entero** con un 400. El `satisfies` hace que eso falle en el build, no en producción.
-- **Los conteos se derivan de `rows`, no del `summary`** del backend (que solo se usa como verificación cruzada con `console.warn`). Un toolbar que dice "5 actualizaciones" sobre una tabla que muestra 4 destruye la confianza en toda la pantalla, y es la tabla lo que el dueño puede auditar.
-- **Preview → `.parse()` estricto; commit → `safeParse` + `console.warn` + dato crudo.** El preview es de solo lectura (un parse fallido es reintentable sin riesgo, y una forma inesperada significa que no podemos pintar el diff con honestidad); el commit ya escribió, y convertir un cuerpo raro en error invitaría a un reintento que **duplica el stock**.
-- **La invalidación tras el commit corre también** con `summary.failed > 0` (un éxito parcial sí escribió) y también si el Zod del cuerpo falló. Toca `adminProductKeys.all` **y** `productKeys.all` (el import crea productos y cambia stock: lo ve el catálogo admin y el outlet público).
+- **A successfully applied row never re-enters the payload.** After each commit, `created`/`updated` indices lock for the rest of the session (structural, in the reducer) — this is what makes "fix the errors and retry" safe. An `unchanged` row is not locked but IS deselected.
+- **"Volver a analizar" disappears once rows are applied** (`canReanalyze`) — a fresh preview would run against the already-updated catalog while the file still says the same thing, making the just-applied restock look like another pending update.
+- **Everything keys by the row's array INDEX, never the Excel folio `row`** (external, optional, possibly duplicated). Commit-result merge is positional with folio fallback.
+- **`serializeRowEdit` emits only a whitelist** (`EDITABLE_FIELDS ... satisfies`) — the commit body is `.strict()` server-side; one stray key would 400 the **entire batch**. The `satisfies` makes that a build-time failure.
+- **Counts are derived from `rows`, never from the backend's `summary`** (used only for a `console.warn` cross-check) — the table is what the owner can actually audit.
+- **Preview → strict `.parse()`; commit → `safeParse` + warn + raw data.** Commit already wrote — throwing on a weird body would invite a retry that DUPLICATES stock.
+- **Post-commit invalidation also runs on partial failure** and on a failed Zod parse (a partial success still wrote). Invalidates both admin and public product keys.
 
-### "Ausente" vs. "vacío" — el modelo de presencia
+### "Ausente" vs. "vacío"
 
-En el contrato, una **clave ausente** significa "no toques esa columna del producto", `null` equivale a ausente, pero **`description: ""` SÍ borra la descripción**. Como el valor de un `<input>` siempre es un string, inferir "ausente" de un string vacío haría imposible expresar el segundo caso. Por eso cada celda (`Cell` en `import/types.ts`) lleva `presence: "absent" | "present"` **aparte** del texto:
+A missing key means "don't touch this column"; `null` == absent; but `description: ""` DOES clear it. Since an `<input>`'s value is always a string, each cell (`Cell` in `import/types.ts`) carries `presence: "absent" | "present"` separate from its text. Numbers use `type="text" inputMode="decimal"` (not `type="number"` — swallows commas, scroll changes the value) and `parseNumberText` mirrors the backend's parser; **never silently degrades to 0** — an unparseable row is marked invalid and deselected instead.
 
-```
-teclear y borrar   →  ""        (en `description` limpia; en el resto es error de captura)
-botón "No tocar"   →  ausente   (la clave no viaja)
-```
+`sizes` is excluded from "seed from current value" (`NOT_SEEDED`) — sizes are additive, so seeding today's count would double it on apply.
 
-El `text` se conserva al pasar a `absent`, para que alternar no pierda lo tecleado. `visible` es un tri-estado (`No tocar` / `Sí` / `No`) por el mismo motivo: para un booleano, "ausente" ≠ "No" — y es su **único** control de presencia (no lleva el botón "Establecer / ✕ No tocar" del resto de las celdas: dos mandos sobre lo mismo desincronizaban el valor sembrado, texto de presentación, con el que compara el tri-estado).
+### Two contract limits the UI can't paper over
 
-"Establecer" siembra el valor guardado del producto para que el dueño lo haga explícito de un clic, pero **`sizes` está excluido del sembrado** (`NOT_SEEDED`, junto a `description`): las tallas se **suman**, así que sembrar lo que el producto tiene hoy no lo hace explícito — lo duplica al aplicar, y encima la celda queda "editada", lo que suprime el `ImportSizeDiff` que habría hecho visible la suma. La celda de tallas se deja vacía a propósito: lo que se escribe ahí son las piezas que **entran**.
+1. **Can't re-preview an edited row** — `/import/preview` only accepts a file, so re-uploading ignores edits. The UI suppresses diff lines whose inputs changed (`stalenessOf`) instead of pretending they're still accurate; shows a local "what you're about to send" diff in their place.
+2. **Preview resolves against a virtual catalog** (DB + what earlier rows in the same file already project) — deselecting an earlier row can invalidate a later one's result. `dependencies.ts` detects this (`action === "update" && productId === null`) and warns without blocking.
 
-Los números se capturan con `type="text" inputMode="decimal"`, **no** `type="number"` (éste devuelve `""` ante basura —ni siquiera se puede leer lo que se tecleó—, se traga la coma decimal y cambia el valor al hacer scroll). `parseNumberText` espeja `readCellNumber` del backend (miles, símbolo de moneda, coma decimal). **Nunca degrada a 0**: la fila se marca inválida y se deselecciona, pero el resto del lote sigue aplicable.
+### Other details
 
-### Dos límites del contrato que la UI no puede tapar
-
-1. **No se puede re-previsualizar una fila editada.** `/import/preview` solo acepta un archivo, así que re-subirlo devuelve el mismo plan e ignora las ediciones. En vez de fingirlo, la UI **suprime el diff que dejó de ser cierto** (`stalenessOf`): editar `code`/`name` invalida **todo** (la fila puede emparejar ahora con otro producto), editar otro campo suprime solo lo afectado, y en su lugar se muestra un **diff local de la instrucción** ("Cambios que hiciste a la fila" — un diff de lo que se va a mandar, no del producto), que es lo único que sí se puede afirmar. Regla: nunca pintar una línea de diff cuyos insumos el usuario cambió.
-2. **El preview resuelve contra un catálogo virtual** (la BD más lo que las filas anteriores del archivo ya proyectaron), así que la fila 2 puede crear `BTA-9` y la fila 5 restockearlo. Deseleccionar la fila 2 cambia el resultado de la 5, y el preview no puede saberlo porque se calculó antes. `dependencies.ts` lo detecta con una señal exacta y barata —`action === "update" && productId === null` significa que empareja con algo que aún no existe en la BD—, lo avisa por fila y en el toolbar, y ofrece "Seleccionar las filas faltantes". **No bloquea**: pide una confirmación inline extra. Cuando el `before` es una proyección, el panel se etiqueta "Estado proyectado", no "Actual en el catálogo".
-
-### Otros detalles
-
-- **Estado en `store/importStore.ts` (Zustand, sin `persist`)** — ver el porqué en la sección de `store/`.
-- **409 de doble envío**: el backend rechaza el mismo lote dos veces en menos de 60 s (hash del payload **sin** `row`). Reintentar solo las filas fallidas es un subconjunto → otro hash → no se bloquea; pero reintentar *todas* cuando *todas* fallaron da un 409 sin haberse escrito nada. `isSameBatchAsLast` lo pre-detecta en cliente y lo explica antes de gastar la petición, más una cuenta regresiva.
-- **La tabla no se desmonta durante el commit**, solo se deshabilita: si falla, no se pierden ediciones ni selección.
-- **`reactivated: true`** (un producto descontinuado vuelve al catálogo **público**) no aparece en `changes`, así que lleva badge propio, línea en el detalle y conteo en el resumen previo — es justo la clase de efecto que sorprende al dueño en silencio.
-- **Accesibilidad**: `<table>` real con `<caption class="sr-only">`/`<th scope>`; el grupo "N filas sin cambios" usa `<button aria-expanded>` + filas condicionales dentro de su propio `<tbody>` (`<details>` **no** puede envolver un `<tbody>`). Con el filtro "Todas", las `unchanged` viven **siempre** en ese grupo y nunca en el `<tbody>` principal: así el botón sigue montado abierto y cerrado — derivarlo de "las que están ocultas" lo desmontaba al expandir y el grupo ya no se podía volver a colapsar; el select-all pone `indeterminate` por ref (no es prop de React) y se acota al filtro activo; los filtros anuncian el conteo en un `aria-live`.
-- **Rendimiento**: las filas nacen colapsadas y el editor se monta solo al expandir (500 filas × 13 campos serían 6 500 inputs). **Sin `staggerContainer` en la lista** — 0.07 s × 500 filas = 35 s.
-- **Plantilla**: `public/plantilla-importacion-productos.xlsx`, generada por `scripts/generate-plantilla-importacion.mjs` con el `exceljs` **del backend** (`NODE_PATH=../backend/node_modules node scripts/generate-plantilla-importacion.mjs`) para no meter ~1 MB de dependencia en el frontend por una descarga estática. Es un script **one-off** y su salida está versionada: al cambiar el encabezado canónico hay que regenerarla y volver a commitearla.
-- El importador **no** soporta productos sin tallas (ver "Productos sin tallas" abajo) — sigue asumiendo `hasSizes: true` para toda fila; un producto sin tallas se da de alta por `ProductForm` directamente.
+- Zustand store (`store/importStore.ts`), no persist — the section unmounts on tab switch and a half-reviewed import shouldn't survive that.
+- **Duplicate-submission 409**: backend rejects the same payload hash within 60s. `isSameBatchAsLast` pre-detects and explains it client-side before wasting the request.
+- Table stays mounted (only disabled) during commit — a failure doesn't lose edits/selection.
+- `reactivated: true` (discontinued product returning to the public catalog) gets its own badge — it's exactly the kind of side effect that surprises silently.
+- Rows render collapsed; the editor mounts only on expand (500 rows × 13 fields would be 6,500 inputs). No `staggerContainer` on the list (would take 35s at 500 rows).
+- Template: `public/plantilla-importacion-productos.xlsx`, generated by `scripts/generate-plantilla-importacion.mjs` using the **backend's** `exceljs` (avoids a ~1MB frontend dependency for a static download). One-off script; regenerate + recommit if the canonical header changes.
+- Importer does **not** support sizeless products yet — assumes `hasSizes: true` for every row; those are created directly via `ProductForm`.
 
 ## Productos sin tallas (Fase 24)
 
-`Product.hasSizes: boolean` (`ProductSchema`/`AdminProductSchema`, default `true`) distingue mercancía que se vende por talla (botas, sombreros) de piezas sueltas — un corbatín, una hebilla — donde solo importa cuántas hay. Por dentro el backend guarda esa cantidad como una fila con un **centinela** de talla (`0`); `product.stock` y `product.sizes` se siguen leyendo igual que en un producto con tallas, así que **casi todo el front es transparente a esto sin tocar nada** (`store/cartStore.ts`, `mapCartItemsToOrderItems`/`cartLineSignature` de `lib/domain/cart.ts` ya cuentan/mandan `size` de forma genérica).
+`Product.hasSizes: boolean` (default `true`) distinguishes sized merchandise from loose pieces (a corbatín, a hebilla) where only the count matters. The backend stores that count as a row with a **sentinel size (`0`)** — `product.stock`/`product.sizes` read the same either way, so most of the front is already transparent to this.
 
-Los dos puntos que sí necesitan saber del modo:
+Two places that do need to know the mode:
 
-- **`ProductForm.tsx`** — toggle "Maneja tallas" (mismo patrón `Controller` que el checkbox `visible`) junto al campo de tallas/existencia: encendido muestra el input de tallas de siempre; apagado lo cambia por un numérico **"Cantidad en existencia"**, mandado como `stockQuantity` en vez de `sizes` (`AdminProductInput` los declara ambos opcionales — el backend responde 400 si viaja el del modo contrario, así que el submit arma el payload con spread condicional y nunca manda los dos). Editar un producto existente precarga el toggle con `product.hasSizes` y, si es `false`, precarga la cantidad con `product.stock`.
-- **`ProductInfo.tsx`** (ficha pública) — con `hasSizes: false` el `<fieldset>` de tallas no se renderiza y `effectiveSize` se fija en `0` (el centinela) en vez de depender de `selectedSize`: el botón "Agregar al carrito" queda disponible directo, sujeto solo a `stock > 0`, y llama `addItem(product, 0)`.
+- **`ProductForm.tsx`** — "Maneja tallas" toggle swaps the sizes input for a numeric "Cantidad en existencia" (`stockQuantity`). `AdminProductInput` declares both fields optional; the submit sends only the one matching the toggle (backend 400s on the wrong one).
+- **`ProductInfo.tsx`** — with `hasSizes: false`, no size `<fieldset>` renders; `effectiveSize` is fixed at `0` and "Agregar al carrito" is gated only on `stock > 0`.
 
-**El centinela nunca debe pintarse como una talla real.** Como una talla capturada por `ProductForm` siempre es un entero `> 0` (lo filtra `parseSizes`), `item.size === 0` es indicador inequívoco del modo sin tallas en cualquier pantalla que pinte renglones de pedido — no hace falta propagar `hasSizes` hasta ahí. Por eso `components/ui/Cart.tsx`, `components/checkout/OrderItems.tsx`, `components/pedido/TrackedOrderItems.tsx` y la columna "Talla" de `OrderDetailModal.tsx` (admin) condicionan ese renglón a `size > 0`; `ProductDetailModal.tsx` (admin) en cambio sí tiene `product.hasSizes` a la mano y oculta el bloque "Tallas (unidades)" completo con ese flag. El catálogo público (`availableSizes`, el filtro de talla del outlet) nunca incluye `0` — lo garantiza el backend, no hace falta filtrarlo en el front.
+**The sentinel must never render as a real size.** Since a captured size is always `> 0` (`parseSizes` filters), `item.size === 0` unambiguously means sizeless in any order-row rendering context — `hasSizes` doesn't need to be threaded through. `Cart.tsx`, `checkout/OrderItems.tsx`, `pedido/TrackedOrderItems.tsx`, and `OrderDetailModal.tsx`'s "Talla" column all gate that row on `size > 0`; `ProductDetailModal.tsx` (admin) has `product.hasSizes` directly available and hides the whole "Tallas" block with it. The public catalog's `availableSizes` never includes `0` — guaranteed by the backend.
 
 ## Reportes, forecast y reposición
 
-La sección **Reportes** (`components/admin/ReportesSection.tsx`) tiene dos pestañas encadenadas: el reporte de ventas (histórico) alimenta al de reposición (forecast). **Ambas consumen el backend real** vía `lib/api/reports.ts` (Fase 4); el frontend ya no deriva nada — el backend hace todo el cálculo y devuelve las filas listas.
-
-### Flujo de datos (todo derivado en el backend)
+`ReportesSection` has two linked tabs: sales history feeds the replenishment forecast. **Both are fully backend-derived** — the front only renders rows.
 
 ```
-Órdenes pagadas (backend)                          ← fuente real: ventas por mes por producto
-        │
-        ├──► GET /api/admin/reports/monthly ──► getMonthlyReport() ──► ReportesSection ──► SalesReport
-        │        (MonthlyReport[]: byProduct + byCategory, mes en curso con partial=true)   (histórico: qué se vendió)
-        │
-        └──► GET /api/admin/reports/replenishment ──► getReplenishmentReport() ──► ReplenishmentReport
-                 (ReplenishmentRow[] ya ordenado por urgencia → margen; el backend corre       (futuro: qué comprar)
-                  computeForecast sobre los meses completos por producto)
+Órdenes pagadas (backend)
+  ├─► GET /reports/monthly ──► SalesReport        (histórico: qué se vendió)
+  └─► GET /reports/replenishment ──► ReplenishmentReport  (futuro: qué comprar,
+        computeForecast over complete months per product)
 ```
 
-`ReportesSection` es dueño de la query mensual (`reportKeys.monthly()`): con ella pinta el selector de mes, el mes por defecto (último no parcial) y la nota de mes parcial, y pasa el array `reports` como prop a `SalesReport` (que lo usa para el lookup + `trendVsPrev`) y a `ReplenishmentReport` (solo para el banner de rango de historial). `ReplenishmentReport` tiene su propia query (`reportKeys.replenishment()`), que se monta lazy al abrir la pestaña.
+`ReportesSection` owns the monthly query (month selector, default = latest non-partial month) and passes `reports` down to both tabs; the replenishment query mounts lazily on tab open.
 
-### Forecast auto-escalado (ahora en el backend)
+**Forecast** (`backend/src/services/forecast.ts`, `computeForecast(monthlySales)`), scaled by history length:
 
-El pronóstico vive en `backend/src/services/forecast.ts` (`computeForecast(monthlySales: number[])`) — el frontend ya no lo calcula. Elige el algoritmo según cuántos meses de historial completo reciba:
+| Meses | Algoritmo | Confianza |
+|---|---|---|
+| 1–2 | Promedio simple | baja |
+| 3 | Promedio ponderado + tendencia (±15%) | media |
+| 4+ | Suavización exponencial de Holt (α=0.4, β=0.3) | alta |
 
-| Meses | Nivel | Algoritmo | Confianza |
-|---|---|---|---|
-| 1–2 | 1 | Promedio simple | baja |
-| 3 | 2 | Promedio ponderado + detector de tendencia (±15%) | media |
-| 4+ | 3 | Suavización exponencial de Holt (α=0.4, β=0.3) | alta |
+**Replenishment ordering**: coverage urgency first (`urgente` <15 días · `pronto` <45 · `ok` ≥45), `margenMensual` desc as tie-breaker only — never the primary driver.
 
-Devuelve `{ forecastNextMonth, method, methodLabel, trend, confidence }` — los campos que `ReplenishmentRow` refleja tal cual.
-
-### Reposición — cobertura primero, margen como desempate
-
-El backend (`reports.service.ts`) calcula por producto: `diasCobertura`, `suggestedOrder = max(0, forecast × 2 − stock)` (~60 días de cobertura), `costoEstimadoPedido`, `ingresoMensual`, `margenMensual` y `priority` (`urgente` <15 días · `pronto` <45 · `ok` ≥45). **Orden de la tabla**: urgencia de cobertura primero (un stock-out no se entierra), y **dentro de cada nivel, por `margenMensual` desc** — el margen es tie-breaker, no el driver de urgencia. El front solo pinta las filas ya ordenadas.
-
-### Exportación CSV
-
-Ambos reportes exportan CSV con un helper `csvField()` (escapado RFC 4180: envuelve en comillas y duplica las internas si hay `,`/`"`/salto de línea) y BOM `﻿` para que Excel respete acentos. Son **documentos distintos**:
-- **Ventas** → `ventas-<YYYY-MM>.csv` (mes seleccionado): Pos, Producto, Tipo, Unidades, Ingresos, % del total, Utilidad, Margen %.
-- **Reposición** → `reposicion-<YYYY-MM>.csv` (mes actual): Producto, Tipo, Stock, Forecast, Tendencia, Método, Días Cobertura, Ingreso Mensual, Margen Mensual, Prioridad, Sugerido Comprar, Costo Est.
+**CSV export**: `csvField()` (RFC 4180 escaping) + BOM for Excel accents. Ventas → `ventas-<YYYY-MM>.csv`; Reposición → `reposicion-<YYYY-MM>.csv`. Different documents, different columns.
 
 ## Backend (Express.js) — contrato base
 
-El backend (Express, `http://localhost:4000`, Swagger en `/api/docs`) ya está construido. **El storefront y todo el admin ya están conectados al backend real** (Fases 1-4): `lib/api/products.ts` consume `GET /api/products` y `GET /api/products/{id}`; `lib/api/adminProducts.ts` cubre el CRUD de `/api/admin/products` (`ProductSection`/`ProductForm`/`ProductCategoryView`); `lib/api/dashboard.ts` sirve `GET /api/admin/dashboard` (`DataSection`); y `lib/api/reports.ts` sirve `GET /api/admin/reports/monthly` + `/replenishment` (`ReportesSection`/`SalesReport`/`ReplenishmentReport`). **Ya no quedan mocks en el frontend**: el directorio `db/` (mockProducts + mockData) y `lib/forecast.ts` se eliminaron al cerrar la Fase 4. El backend expone **las mismas formas de datos** que los tipos del front (`components/admin/data/types.ts`, `ProductSchema`); mientras los contratos se respeten, los componentes no cambian. Marca (Fase 5), usuarios/cuenta (Fase 6), pedidos del admin (Fase 7, `GET /api/admin/orders` → `OrdersSection`), pagos (Fase 8, Stripe en **test/sandbox**: `usePlaceOrder` + `confirmCardPayment` con `pm_card_visa`), cotización de envío en vivo (Fase 8.4, Skydropx: `lib/api/shipping.ts` + `ShippingOptions`, ver "Shipping") cancelación/reembolso manual de pedidos (Fase 12, `POST /api/admin/orders/:id/cancel` → `OrderDetailModal`), importación/restock masivo por Excel (Fase 13, `POST /api/admin/products/import/preview` + `/import` → `ImportSection`, ver "Importación por Excel") el avance manual de estado enviado/entregado (Fase 14, `PATCH /api/admin/orders/:id/status` → `OrderDetailModal`), la `Idempotency-Key` del checkout (Fase 15, header de `POST /api/orders` → `usePlaceOrder`, ver "Checkout flow") el reintento manual de la guía de Skydropx (Fase 16, `POST /api/admin/orders/:id/shipment/retry` → `OrderDetailModal` + `orders/shipmentLabel.ts`) el seguimiento público del pedido (Fase 17, `GET /api/orders/lookup/:token` → `components/pedido/`, la única pantalla cara al comprador), el buscador/orden/rango de precio del catálogo (Fase 18, los cuatro query params nuevos de `GET /api/products` → `OutletFilters` + `lib/domain/catalogFilters.ts`) los cupones de descuento (Fase 19, `POST /api/coupons/validate` → `CouponField` + `lib/api/coupons.ts`, y el CRUD de `/api/admin/coupons` → `CouponsSection` + `lib/api/adminCoupons.ts`) y los gastos y suscripciones (Fase 20, las seis rutas de `/api/admin/expenses` → `ExpensesSection` + `lib/api/adminExpenses.ts`, que es de donde ahora sale el KPI `GASTOS`/`GANANCIA OPERATIVA` en vez de una constante) YA están conectados. La Fase 21 (el formulario de `/pedido` pide el **código de seguimiento** en vez del enlace, y el `#<id>` desaparece de las pantallas del comprador) fue 100% copia del front: no movió endpoints ni contratos. La Fase 23 (el envío se cobra **por caja**: `packageCount` en `lib/api/shipping.ts` y `lib/api/orders.ts`, y `lib/domain/cart.ts` deja de calcular envío — ver "Shipping") tampoco movió endpoints: el backend ya cobraba por caja y el front era el que iba atrasado. La Fase 22 (el envío como **costo de venta** en el panel: `recentSales[].shipping` en `lib/api/dashboard.ts` → `SalesTable`, y `shippingCost` en el resumen/historial de `/api/admin/expenses` → `ShippingCostNote`) también fue solo front: el backend ya restaba el envío en la GANANCIA BRUTA y ya mandaba los dos campos. La Fase 24 (productos **sin tallas** — existencia manual: `hasSizes` en `lib/api/products.ts`/`lib/api/adminProducts.ts`, el toggle "Maneja tallas" de `ProductForm.tsx`, y `ProductInfo.tsx` saltándose el selector de talla — ver "Productos sin tallas" abajo) tampoco movió endpoints: el backend ya soportaba `hasSizes`/`stockQuantity` y el front era el que iba atrasado. **Con eso el roadmap queda cerrado — no hay fases pendientes.**
+Express, `http://localhost:4000`, Swagger at `/api/docs`. **Fully connected — no mocks remain, no pending phases.** `unitCost`/margins only ever travel through authenticated `/api/admin/*` routes. Business logic (forecast, replenishment, cart totals, shipping) lives server-side as pure functions over numbers; the frontend only renders derived rows. See `ROADMAP-BACKEND-INTEGRATION.md` for the historical phase-by-phase log if needed — this file is the current source of truth for how each piece works.
 
-> **Principio:** la lógica de negocio (forecast, reposición, totales de carrito, envío) es de funciones puras que reciben números. Forecast y reposición ya viven en el backend (`backend/src/services/`); el frontend solo pinta las filas ya calculadas. La única matriz "fuente de verdad" es ventas-por-mes-por-producto (las órdenes pagadas).
+### Modelos mínimos
 
-### Modelos / tablas mínimas
-
-| Modelo | Campos clave (ver tipos exactos en el front) | Sirve a |
+| Modelo | Campos clave | Sirve a |
 |---|---|---|
-| `Product` | `id, name, salePrice, unitCost, stock, type, weightKg, lengthCm, widthCm, heightCm, sizes/stock por talla` | catálogo, inventario, forecast, envío |
-| `Sale` / `OrderItem` | `productId, unitsSold, revenue, unitCost, date` | ventas mensuales, KPIs |
-| `Order` | snapshot de carrito + `ShippingData` + totales + envío elegido | checkout, confirmación |
+| `Product` | `id, name, salePrice, unitCost, stock, type, weightKg/lengthCm/widthCm/heightCm, sizes` | catálogo, inventario, forecast, envío |
+| `Sale`/`OrderItem` | `productId, unitsSold, revenue, unitCost, date` | ventas, KPIs |
+| `Order` | snapshot de carrito + ShippingData + totales + envío elegido | checkout |
 
-### Endpoints sugeridos (REST)
+### Endpoints principales
 
 ```
-POST /api/auth/login               → { token, user }      (login admin — ver "Auth")
-GET  /api/products                 → Product[]            (público: outlet, detalle)
-GET  /api/products/:id             → Product
-POST /api/admin/products           → crea (ProductForm)
-PUT  /api/admin/products/:id        → actualiza stock/precio/etc.
-POST /api/admin/products/import/preview → plan del .xlsx sin escribir nada (ImportSection)
-POST /api/admin/products/import    → aplica las filas revisadas (JSON, ver "Importación por Excel")
-
-GET  /api/admin/dashboard          → DashboardData        (KpiData[], RevenuePoint[] por periodo, SaleRow[], InventoryRow[])
-GET  /api/admin/reports/monthly    → MonthlyReport[]      (agrupa ventas por mes → byProduct, byCategory)
-GET  /api/admin/reports/replenishment → ReplenishmentRow[] (corre computeForecast por producto sobre meses completos)
-
-POST /api/orders                   → crea pedido (recibe snapshot del checkout)
-POST /api/shipping/rates           → cotización Skydropx (ver "Shipping" abajo)
+POST /api/auth/login                     → { token, user }
+GET  /api/products | /api/products/:id   → Product[] | Product          (público)
+POST/PUT/DELETE /api/admin/products[/:id]
+POST /api/admin/products/import/preview | /import
+GET  /api/admin/dashboard
+GET  /api/admin/reports/monthly | /replenishment
+POST /api/orders                         → crea pedido
+POST /api/shipping/rates                 → cotización Skydropx
 ```
-
-### Notas de implementación para el backend
-
-- **`MonthlyReport`** se calcula agrupando ventas por mes; marcar `partial: true` el mes en curso. La reposición **excluye los meses parciales** del historial que pasa a `computeForecast` (`reports.service.ts` filtra `!r.partial`).
-- **`ReplenishmentRow`** no es persistente: se computa on-the-fly desde ventas históricas + stock actual + costo (cobertura, suggestedOrder, margen, priority y el orden con margen como tie-breaker) — ya implementado en `backend/src/services/reports.service.ts`.
-- **`unitCost` y márgenes son datos sensibles** del negocio: exponerlos solo en rutas `/api/admin/*` autenticadas, nunca en las públicas de catálogo.
-- **Forecast en el servidor**: `backend/src/services/forecast.ts` es la fuente única del pronóstico (el frontend ya no lo calcula). El contrato `ForecastResult` = los campos `forecast*`/`trend`/`confidence` de `ReplenishmentRow`.
-- **Validación**: reusar los esquemas zod de `schemas/` (p. ej. `shippingSchema`) en el backend para validar payloads de pedido y mantener una sola definición de las reglas.
-- **Auth**: `POST /api/auth/login` recibe `{ email, password }` (validar con `loginSchema` de `schemas/auth.ts`) y devuelve `{ token, user: { email } }`. El front guarda el token y lo manda como `Authorization: Bearer <token>`; el backend debe responder `401` cuando sea inválido/expirado (el axios interceptor ya cierra sesión y redirige). Proteger todas las rutas `/api/admin/*` con ese token.
 
 ## Design System
 
-The site uses a luxury dark aesthetic — all new UI should follow these conventions:
+Luxury dark aesthetic — follow these for all new UI:
 
-- **Background (page/shell)**: `bg-tobacco-950` — única fuente de verdad. Aplica al `<body>` (root layout), storefront, admin y auth. No usar `bg-stone-950` como fondo de página.
-- **Surfaces** (cards, drawers, dropdowns sobre el fondo): `bg-stone-900` / `bg-stone-900/60` — capa elevada sobre `tobacco-950` (mismo patrón en storefront y admin).
-- **Text primary**: `text-amber-50`
-- **Text muted**: `text-amber-100/50` (or similar opacity variants)
+- **Background**: `bg-tobacco-950` (body, storefront, admin, auth — never `bg-stone-950` for a page background)
+- **Surfaces** (cards/drawers/dropdowns): `bg-stone-900` / `bg-stone-900/60`
+- **Text**: primary `text-amber-50`, muted `text-amber-100/50`
 - **Accent**: `text-amber-400` / `border-amber-400/70`
-- **Serif font** (headings): `font-serif` → Playfair Display via CSS var `--font-playfair`
-- **Sans font** (body/labels): `font-sans` → Jost via CSS var `--font-jost`
-- Labels use heavy letter-spacing (`tracking-[0.25em]`) and `uppercase`
-- All copy is in **Spanish** (Mexican market)
+- **Fonts**: `font-serif` (Playfair, headings) / `font-sans` (Jost, body). Labels: `uppercase tracking-[0.25em]`
+- All copy in **Spanish** (Mexican market)
 
 ### Animaciones, accesibilidad e imágenes
 
-- **Animaciones**: usar **framer-motion** (no transiciones CSS ad-hoc para entradas/salidas). Variantes compartidas en `lib/ui/motion.ts` (`fadeUp`, `fadeIn`, `staggerContainer`, `EASE_LUXE`). Los drawers (`Cart`, `Sidebar`) usan `AnimatePresence` + `motion`. Respetar `useReducedMotion()` para desactivar slides.
-- **Foco / teclado**: `globals.css` define un anillo `:focus-visible` ámbar global para todos los controles. No usar `focus:outline-none` sin un `focus-visible` de reemplazo.
-- **Movimiento reducido**: `globals.css` neutraliza animaciones/transiciones bajo `prefers-reduced-motion: reduce`.
-- **Imágenes**: `next/image` para imágenes reales de producto (URL remota — registrar el host en `images.remotePatterns` de `next.config.ts`). `<img>` crudo **solo** para previews locales `blob:` (next/image no las optimiza), con `eslint-disable @next/next/no-img-element`. Todo `<img>` de contenido lleva `alt` descriptivo; los previews de subida pueden ir `alt=""` (decorativos).
+- **framer-motion** for entries/exits (no ad-hoc CSS transitions). Shared variants in `lib/ui/motion.ts`. Respect `useReducedMotion()`.
+- Global `:focus-visible` amber ring in `globals.css` — never `focus:outline-none` without a replacement.
+- `prefers-reduced-motion: reduce` is neutralized globally.
+- `next/image` for real product photos (register remote hosts in `next.config.ts`); raw `<img>` only for local `blob:` previews.
