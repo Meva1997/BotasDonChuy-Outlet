@@ -45,8 +45,8 @@ export default function OrderItems({ items }: { items: CartItem[] }) {
                 {item.product.name}
               </p>
               <p className="text-amber-100/40 text-xs mt-0.5 capitalize">
-                Talla: {item.size} &middot; {item.product.type} &middot; Cant:{" "}
-                {item.quantity}
+                {item.size > 0 && <>Talla: {item.size} &middot; </>}
+                {item.product.type} &middot; Cant: {item.quantity}
               </p>
             </div>
 

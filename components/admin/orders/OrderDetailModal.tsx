@@ -495,7 +495,7 @@ export default function OrderDetailModal({
                             {item.nameSnapshot}
                           </td>
                           <td className={`${tdR} tabular-nums`}>
-                            {item.size}
+                            {item.size > 0 ? item.size : "—"}
                           </td>
                           <td className={`${tdR} tabular-nums`}>
                             {item.quantity}

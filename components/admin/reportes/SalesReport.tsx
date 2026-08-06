@@ -43,7 +43,6 @@ export default function SalesReport({ monthKey, reports }: Props) {
   if (!report) return null;
 
   const trend = trendVsPrev(report, reports);
-  const maxRevenue = Math.max(...report.byCategory.map((c) => c.revenue));
   const sortedProducts = [...report.byProduct].sort(
     (a, b) => b.unitsSold - a.unitsSold
   );
@@ -238,7 +237,7 @@ export default function SalesReport({ monthKey, reports }: Props) {
         <h3 className="font-serif text-lg text-amber-50 mb-5">Por categoría</h3>
         <div className="flex flex-col gap-4">
           {report.byCategory.map((cat) => {
-            const barWidth = pct(cat.revenue, maxRevenue);
+            const barWidth = pct(cat.revenue, report.totalRevenue);
             return (
               <div key={cat.category}>
                 <div className="flex items-baseline justify-between mb-1.5">
@@ -248,7 +247,7 @@ export default function SalesReport({ monthKey, reports }: Props) {
                   <span className="text-amber-50/80 font-mono text-sm">
                     {fmtMXN(cat.revenue)}
                     <span className="text-amber-100/30 text-xs ml-2">
-                      · {cat.units} pzas
+                      · {cat.units} pzas · {barWidth}% del mes
                     </span>
                   </span>
                 </div>

@@ -43,6 +43,9 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | `GET /api/admin/products` | `components/admin/ProductSection.tsx` → `getAdminProducts()` de `lib/api/adminProducts.ts` (`useQuery`) | ✅ | 3 |
 | `POST /api/admin/products` | `components/admin/ProductForm.tsx` → `createProduct()` (`useMutation` + invalidación) | ✅ | 3 |
 | `PUT /api/admin/products/:id` | `components/admin/ProductForm.tsx` → `updateProduct()` (`useMutation`) | ✅ | 3 |
+| `POST/PUT /api/admin/products` → `hasSizes` / `stockQuantity` | `ProductForm.tsx` — toggle "tiene tallas" que decide entre el input de tallas actual y un campo de cantidad manual | ✅ | 24 — un producto sin tallas (corbatín, hebilla) solo captura existencia, sin talla |
+| `GET /api/products`, `GET /api/products/:id`, `GET /api/admin/products` → `hasSizes` | `lib/api/products.ts`/`lib/api/adminProducts.ts` (schema Zod de `Product`) y `components/product/ProductInfo.tsx` (oculta el selector de tallas cuando es `false`) | ✅ | 24 |
+| `POST /api/orders` → `items[].size: 0` | `store/cartStore.ts` / checkout — `0` es el valor de `size` para un artículo de un producto sin tallas (no una talla real) | ✅ | 24 |
 | `DELETE /api/admin/products/:id` | `ProductCategoryView.tsx` / `ProductForm.tsx` → `deleteProduct()` (`useMutation`; soft/hard lo decide el backend) | ✅ | 3 |
 | `POST /api/admin/products/:id/images` | `ProductForm.tsx` → `addProductImages()` de `lib/api/adminProducts.ts` (galería de hasta 3, subida al guardar) | ✅ | 3 |
 | `DELETE /api/admin/products/:id/images` | `ProductForm.tsx` → `deleteProductImage()` (quitar una imagen por `publicId` al guardar) | ✅ | 3 |
@@ -107,6 +110,7 @@ dependencia: esa se lee en la columna "Depende de" del índice.
 | 21 | Seguimiento: el correo manda el código, no el enlace *(cara al cliente, solo copia)* | ✅ | 17 |
 | 22 | Panel: el envío como costo de venta *(solo panel, no toca la tienda)* | 🔴 | 3, 20 |
 | 23 | Checkout: el envío se cobra por caja *(cara al cliente)* | ✅ | 2 |
+| 24 | Admin: productos sin tallas (existencia manual) *(panel + tienda pública)* | ✅ | 2, 3 |
 
 ---
 
@@ -1434,6 +1438,77 @@ el dueño deja de pagar de su bolsa las guías de los pedidos grandes.
 **Salida:** el dueño ve de una vez cuánto se le va en guías, la ganancia que muestra el panel es la
 que de verdad le queda, y la sección de Gastos enseña el envío sin que nadie lo capture a mano ni se
 descuente dos veces.
+
+---
+
+## Fase 24 — Admin: productos sin tallas (existencia manual) ✅ *(panel + tienda pública)*
+
+> **Contexto.** El dueño no podía dar de alta mercancía sin talla (un corbatín vaquero, una hebilla
+> de cinturón): el formulario y el checkout asumían que TODO producto se vende por talla. El backend
+> ahora soporta un segundo modo, `hasSizes: false`, donde la existencia es una sola cantidad
+> capturada a mano, sin tallas.
+
+**Lo que hace el backend (referencia — no se toca desde el front):**
+
+- `Product.hasSizes: boolean` (default `true`, no rompe nada existente). Viaja en la respuesta de
+  `GET /api/products`, `GET /api/products/:id`, `GET /api/admin/products` y en el body de
+  create/update.
+- `POST/PUT /api/admin/products`: campo nuevo `stockQuantity` (entero, cantidad en existencia).
+  **Obligatorio cuando `hasSizes: false`**; `sizes` sigue siendo obligatorio cuando `hasSizes` es
+  `true` (o se omite — sigue siendo el default). Mandar el campo del modo contrario (`stockQuantity`
+  con `hasSizes:true`, o `sizes` con `hasSizes:false`) responde **400**.
+- Por dentro, la cantidad se guarda como una única fila interna con un valor centinela de "talla"
+  (`0`) — esto es **transparente para el front**: `product.stock` (la suma) y `product.sizes` (el
+  array repetido) se siguen leyendo exactamente igual que en un producto con tallas. El front nunca
+  debe interpretar ese `0` como una talla real ni mostrarlo como tal.
+- Checkout: `POST /api/orders`, `items[].size` acepta `0` **solo** para un producto `hasSizes:false`
+  — es el "size" que hay que mandar en vez de una talla elegida. Mandar una talla real para un
+  producto sin tallas, o `0` para uno que sí tiene, responde **400** con un mensaje accionable.
+- Catálogo público: `availableSizes` (el selector de tallas del outlet) **nunca** incluye `0` — los
+  productos sin tallas simplemente no aportan ninguna talla a ese filtro.
+- El importador masivo de Excel (Fase 13) **no** soporta productos sin tallas en esta fase — sigue
+  siendo solo para reabasto por talla. Un producto sin tallas se da de alta por el formulario normal.
+
+**Trabajo del frontend:**
+
+1. [x] `lib/api/products.ts` / `lib/api/adminProducts.ts` (schema Zod de `Product`): agregar
+       `hasSizes: z.boolean()`.
+2. [x] `components/admin/products/ProductForm.tsx`: toggle **"Maneja tallas"**. Mismo
+       patrón visual que el checkbox `visible` ya en ese archivo (`Controller` + estilo custom).
+       Apagado → oculta el input de tallas y muestra un campo numérico **"Cantidad en existencia"**
+       que se manda como `stockQuantity`; encendido → comportamiento actual, sin cambios.
+3. [x] Al editar un producto existente, precargar el toggle con `product.hasSizes` y, si es `false`,
+       precargar el campo de cantidad con `product.stock`.
+4. [x] `components/product/ProductInfo.tsx` (ficha de producto pública): cuando `product.hasSizes` es
+       `false`, no renderizar el selector de tallas — el botón "Agregar al carrito" queda habilitado
+       directo (sujeto solo a `stock > 0`), llamando `addItem(product, 0)`.
+5. [x] `store/cartStore.ts`: `addItem`/`updateQuantity` ya calculan el tope de cantidad contando
+       ocurrencias de `size` en `product.sizes` (`sizes.filter(s => s === size).length`) — con
+       `size: 0` y `sizes` siendo el array de ceros repetido `stock` veces, esa cuenta ya funciona sin
+       tocarla. No requirió cambios: verificado.
+6. [x] `lib/api/orders.ts`: el checkout ya manda `items[].size` como `number` obligatorio — no cambió
+       de tipo; `mapCartItemsToOrderItems`/`cartLineSignature` (`lib/domain/cart.ts`) ya mandan
+       `item.size` genérico, así que un `0` viaja sin tocarlas. Verificado, sin cambios.
+
+**Detalles de implementación que conviene no re-descubrir:**
+
+- `0` es un valor interno ("centinela"), nunca se le debe mostrar al dueño ni al comprador como
+  "talla 0" en ningún lado — ni en el selector de tallas del `ProductForm`, ni en la ficha de
+  producto, ni en el carrito.
+- El importador de Excel sigue asumiendo `hasSizes:true` para toda fila — no hace falta (ni está
+  soportado) tocarlo en esta fase.
+- **Alcance ampliado más allá de los 6 puntos de arriba**: como una talla real siempre es un entero
+  > 0 (lo exige `parseSizes` en `ProductForm.tsx`), `item.size === 0` es un indicador inequívoco del
+  centinela en CUALQUIER pantalla que pinte renglones de pedido — no hacía falta propagar `hasSizes`
+  hasta ahí. Se guardó ese "Talla: 0"/"talla 0" en `components/ui/Cart.tsx`, `components/checkout/
+  OrderItems.tsx`, `components/pedido/TrackedOrderItems.tsx` y la columna "Talla" de `OrderDetailModal.tsx`
+  (admin) condicionando el render a `size > 0`; y en `ProductDetailModal.tsx` (admin) ocultando el
+  bloque "Tallas (unidades)" completo cuando `product.hasSizes` es `false` (ahí sí hay el flag a la
+  mano, sin necesidad del truco del `> 0`).
+
+**Salida:** el dueño puede dar de alta un corbatín, una hebilla o cualquier producto sin tallas con
+solo su cantidad en existencia, el comprador puede llevarlo sin que se le pida elegir una talla que
+no existe, y el inventario/dashboard lo cuentan igual que cualquier otro producto.
 
 ---
 

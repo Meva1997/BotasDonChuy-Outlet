@@ -31,7 +31,8 @@ export default function TrackedOrderItems({
                 {item.nameSnapshot}
               </p>
               <p className="text-amber-100/40 text-xs mt-0.5">
-                Talla: {item.size} &middot; Cant: {item.quantity}
+                {item.size > 0 && <>Talla: {item.size} &middot; </>}
+                Cant: {item.quantity}
               </p>
             </div>
 

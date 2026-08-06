@@ -272,7 +272,7 @@ export default function OutletFilters({
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           {total !== undefined && (
             <span className="font-sans text-amber-100/40 text-[11px] sm:text-xs tracking-widest uppercase">
-              {total} {total === 1 ? "pieza" : "piezas"}{" "}
+              {total} {total === 1 ? "modelo" : "modelos"}{" "}
               <span aria-hidden className="text-amber-400/50">
                 ·
               </span>{" "}

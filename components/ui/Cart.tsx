@@ -192,8 +192,13 @@ export default function Cart() {
                           <Trash2 size={16} strokeWidth={1.6} aria-hidden="true" />
                         </button>
                       </div>
+                      {/* size 0 = centinela de un producto sin tallas (Fase
+                          24): las tallas reales siempre son enteros > 0
+                          (ver parseSizes en ProductForm.tsx), así que no
+                          hace falta más contexto para no mostrar "Talla: 0". */}
                       <p className="text-amber-100/40 text-xs mt-0.5 capitalize">
-                        Talla: {item.size} &middot; {item.product.type}
+                        {item.size > 0 && <>Talla: {item.size} &middot; </>}
+                        {item.product.type}
                       </p>
 
                       {/* Quantity + price row */}

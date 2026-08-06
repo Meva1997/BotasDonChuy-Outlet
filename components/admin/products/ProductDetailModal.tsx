@@ -241,24 +241,27 @@ export default function ProductDetailModal({
               </Field>
             </div>
 
-            {/* Tallas */}
-            <Field label="Tallas (unidades)">
-              {grouped.length > 0 ? (
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {grouped.map(({ size, count }) => (
-                    <span
-                      key={size}
-                      className="inline-flex items-center gap-1.5 border border-stone-700/60 px-2.5 py-1 text-xs tabular-nums"
-                    >
-                      <span className="text-amber-50">{size}</span>
-                      <span className="text-amber-100/40">×{count}</span>
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <span className="text-amber-100/30">—</span>
-              )}
-            </Field>
+            {/* Tallas — producto sin tallas (Fase 24): sin selector que
+                mostrar, la existencia ya se ve arriba en "Existencia". */}
+            {product.hasSizes && (
+              <Field label="Tallas (unidades)">
+                {grouped.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {grouped.map(({ size, count }) => (
+                      <span
+                        key={size}
+                        className="inline-flex items-center gap-1.5 border border-stone-700/60 px-2.5 py-1 text-xs tabular-nums"
+                      >
+                        <span className="text-amber-50">{size}</span>
+                        <span className="text-amber-100/40">×{count}</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-amber-100/30">—</span>
+                )}
+              </Field>
+            )}
 
             <div className="border-t border-stone-700/40" />
 

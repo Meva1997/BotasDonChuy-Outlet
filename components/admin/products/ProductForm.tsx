@@ -70,6 +70,12 @@ const nonNegNumber = z
   .number({ error: "Ingresa un número válido" })
   .nonnegative("Debe ser ≥ 0");
 
+// Cantidad en existencia de un producto SIN tallas (Fase 24) — entero ≥ 0.
+const nonNegInteger = z
+  .number({ error: "Ingresa un número válido" })
+  .nonnegative("Debe ser ≥ 0")
+  .int("Debe ser un número entero");
+
 // Medidas de envío: el backend las exige > 0 (van a Skydropx para cotizar en
 // vivo — un valor en 0 tumbaría la cotización, ver backend/CLAUDE.md § Envío
 // en vivo / Skydropx), así que el form debe rechazarlas aquí también, no solo
@@ -86,7 +92,9 @@ const productSchema = z
     originalPrice: nonNegNumber,
     salePrice: nonNegNumber,
     unitCost: nonNegNumber,
+    hasSizes: z.boolean(),
     sizes: z.string(),
+    stockQuantity: nonNegInteger,
     code: z.string(),
     weightKg: positiveNumber,
     lengthCm: positiveNumber,
@@ -98,7 +106,7 @@ const productSchema = z
     message: "El precio outlet no puede superar el precio original",
     path: ["salePrice"],
   })
-  .refine((d) => parseSizes(d.sizes).length >= 1, {
+  .refine((d) => !d.hasSizes || parseSizes(d.sizes).length >= 1, {
     message: "Agrega al menos una talla",
     path: ["sizes"],
   });
@@ -155,7 +163,9 @@ export default function ProductForm({ category, product, onBack }: Props) {
       originalPrice: product?.originalPrice ?? 1000,
       salePrice: product?.salePrice ?? 400,
       unitCost: product?.unitCost ?? 0,
-      sizes: product?.sizes?.join(", ") ?? "",
+      hasSizes: product?.hasSizes ?? true,
+      sizes: product?.hasSizes === false ? "" : product?.sizes?.join(", ") ?? "",
+      stockQuantity: product?.hasSizes === false ? product.stock : 0,
       code: product?.code ?? "",
       // Al crear, arrancan con los defaults de empaque de la categoría (editables)
       // en vez de cero; al editar se conservan los del producto.
@@ -172,6 +182,8 @@ export default function ProductForm({ category, product, onBack }: Props) {
   const name = useWatch({ control, name: "name" });
   const sizesValue = useWatch({ control, name: "sizes" });
   const type = useWatch({ control, name: "type" });
+  const hasSizes = useWatch({ control, name: "hasSizes" });
+  const stockQuantityValue = useWatch({ control, name: "stockQuantity" });
 
   // Al cambiar la categoría (solo creando), re-pobla las dimensiones con los
   // defaults de la nueva categoría — pero solo los campos que el usuario NO haya
@@ -268,8 +280,12 @@ export default function ProductForm({ category, product, onBack }: Props) {
   const orig = Number(originalPrice) || 0;
   const sale = Number(salePrice) || 0;
   const discount = orig > 0 ? Math.round(((orig - sale) / orig) * 100) : 0;
-  // Stock derivado de las tallas repetidas (fuente única; el backend lo calcula igual).
-  const derivedStock = parseSizes(sizesValue || "").length;
+  // Stock derivado: de las tallas repetidas cuando el producto maneja tallas
+  // (fuente única; el backend lo calcula igual), o directo de la cantidad
+  // capturada a mano cuando no (Fase 24).
+  const derivedStock = hasSizes
+    ? parseSizes(sizesValue || "").length
+    : Number(stockQuantityValue) || 0;
 
   // Persistencia real en un solo flujo: (1) crear/editar el producto (JSON, sin
   // imágenes) → (2) con su id, borrar las imágenes quitadas y subir las nuevas por
@@ -325,7 +341,12 @@ export default function ProductForm({ category, product, onBack }: Props) {
       salePrice: data.salePrice,
       unitCost: data.unitCost,
       type: data.type,
-      sizes: data.sizes,
+      hasSizes: data.hasSizes,
+      // El backend responde 400 si viaja el campo del modo contrario — nunca
+      // mandar los dos, ni el que no corresponde al toggle.
+      ...(data.hasSizes
+        ? { sizes: data.sizes }
+        : { stockQuantity: data.stockQuantity }),
       code: data.code || undefined,
       weightKg: data.weightKg,
       lengthCm: data.lengthCm,
@@ -653,12 +674,16 @@ export default function ProductForm({ category, product, onBack }: Props) {
               </div>
             </div>
 
-            {/* Existencias (derivado de las tallas) */}
+            {/* Existencias (derivado de las tallas, o de la cantidad manual) */}
             <div>
               <label className={labelCls}>Existencias</label>
               <div
                 className={`${inputCls} text-amber-100/60 select-none tabular-nums`}
-                title="Se calcula de las tallas capturadas (repetir una talla suma unidades)"
+                title={
+                  hasSizes
+                    ? "Se calcula de las tallas capturadas (repetir una talla suma unidades)"
+                    : "Cantidad en existencia capturada a mano"
+                }
               >
                 {derivedStock}
               </div>
@@ -794,22 +819,88 @@ export default function ProductForm({ category, product, onBack }: Props) {
         {/* Tallas + Descripción */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div>
-            <label htmlFor="field-sizes" className={labelCls}>
-              Tallas — repite una talla para sumar unidades
-            </label>
-            <input
-              id="field-sizes"
-              type="text"
-              placeholder="25, 26, 26, 27"
-              {...register("sizes")}
-              className={inputCls}
-            />
-            {errors.sizes ? (
-              <p className={errorCls}>{errors.sizes.message}</p>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <label htmlFor={hasSizes ? "field-sizes" : "field-stock-quantity"} className={`${labelCls} mb-0`}>
+                {hasSizes
+                  ? "Tallas — repite una talla para sumar unidades"
+                  : "Cantidad en existencia"}
+              </label>
+              <Controller
+                control={control}
+                name="hasSizes"
+                render={({ field }) => (
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none shrink-0">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={field.value}
+                        onChange={field.onChange}
+                        className="sr-only"
+                      />
+                      <div
+                        className={[
+                          "w-4 h-4 border flex items-center justify-center transition-colors",
+                          field.value
+                            ? "bg-amber-400/20 border-amber-400/70"
+                            : "bg-transparent border-stone-600",
+                        ].join(" ")}
+                      >
+                        {field.value && (
+                          <svg
+                            viewBox="0 0 12 12"
+                            className="w-2.5 h-2.5 text-amber-400"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <polyline points="1.5,6 4.5,9 10.5,3" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-[10px] tracking-[0.25em] uppercase text-amber-100/50">
+                      Maneja tallas
+                    </span>
+                  </label>
+                )}
+              />
+            </div>
+            {hasSizes ? (
+              <>
+                <input
+                  id="field-sizes"
+                  type="text"
+                  placeholder="25, 26, 26, 27"
+                  {...register("sizes")}
+                  className={inputCls}
+                />
+                {errors.sizes ? (
+                  <p className={errorCls}>{errors.sizes.message}</p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-amber-100/30">
+                    Ej. «25, 26, 26» = 1 unidad de la 25 y 2 de la 26 · {derivedStock} en total
+                  </p>
+                )}
+              </>
             ) : (
-              <p className="mt-1 text-[11px] text-amber-100/30">
-                Ej. «25, 26, 26» = 1 unidad de la 25 y 2 de la 26 · {derivedStock} en total
-              </p>
+              <>
+                <input
+                  id="field-stock-quantity"
+                  type="number"
+                  min={0}
+                  step={1}
+                  {...register("stockQuantity", { valueAsNumber: true })}
+                  className={inputCls}
+                />
+                {errors.stockQuantity ? (
+                  <p className={errorCls}>{errors.stockQuantity.message}</p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-amber-100/30">
+                    Producto sin tallas (p. ej. un corbatín o una hebilla) — captura
+                    directo cuántas piezas hay.
+                  </p>
+                )}
+              </>
             )}
           </div>
 
