@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Sidebar from "@/components/admin/Sidebar";
-import MarcaSection from "@/components/admin/sections/MarcaSection";
+import BrandSection from "@/components/admin/sections/BrandSection";
 import ProductSection from "@/components/admin/sections/ProductSection";
 import DataSection from "@/components/admin/sections/DataSection";
 import ConfigSection from "@/components/admin/sections/ConfigSection";
-import ReportesSection from "@/components/admin/sections/ReportesSection";
+import ReportsSection from "@/components/admin/sections/ReportsSection";
 import OrdersSection from "@/components/admin/sections/OrdersSection";
 import ImportSection from "@/components/admin/sections/ImportSection";
 import CouponsSection from "@/components/admin/sections/CouponsSection";
@@ -85,13 +85,13 @@ export default function AdminPage() {
         </div>
 
         <div className="p-6 md:p-10">
-          {active === "marca" && <MarcaSection />}
+          {active === "marca" && <BrandSection />}
           {active === "productos" && <ProductSection />}
           {active === "importar" && <ImportSection />}
           {active === "cupones" && <CouponsSection />}
           {active === "datos" && <DataSection />}
           {active === "pedidos" && <OrdersSection />}
-          {active === "reportes" && <ReportesSection />}
+          {active === "reportes" && <ReportsSection />}
           {active === "gastos" && <ExpensesSection />}
           {active === "configuracion" && <ConfigSection />}
         </div>

@@ -1,6 +1,6 @@
 // Genera la plantilla .xlsx de la importación masiva de productos (Fase 13).
 //
-// Script ONE-OFF: su salida (`public/plantilla-importacion-productos.xlsx`) está versionada en
+// Script ONE-OFF: su salida (`public/product-import-template.xlsx`) está versionada en
 // el repo y la UI la ofrece como descarga. No corre en el build ni en runtime.
 //
 // Usa el `exceljs` que YA está instalado en el backend (que es quien lee estos archivos), para
@@ -8,7 +8,7 @@
 // Por eso hay que resolverlo desde ahí:
 //
 //   cd frontend
-//   NODE_PATH=../backend/node_modules node scripts/generate-plantilla-importacion.mjs
+//   NODE_PATH=../backend/node_modules node scripts/generate-import-template.mjs
 //
 // Al tocar el encabezado canónico o los alias, hay que regenerar el archivo y volver a
 // commitearlo. La fuente de verdad de las columnas es HEADER_ALIASES en
@@ -25,7 +25,7 @@ const OUT_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
   "public",
-  "plantilla-importacion-productos.xlsx"
+  "product-import-template.xlsx"
 );
 
 /** Encabezado canónico, en el orden documentado para el dueño. */

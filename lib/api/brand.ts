@@ -6,7 +6,7 @@ import { api } from "@/lib/api/client";
 // controla solo este subconjunto de la marca; `namePrimary`/`nameAccent`/`email`/
 // `instagram` siguen viviendo estáticos en lib/brand.ts (ver resolveBrand()).
 //   GET  /api/admin/brand  → BrandSettings   (público; hidrata el storefront)
-//   PUT  /api/admin/brand  → BrandSettings   (protegido; update parcial desde MarcaSection)
+//   PUT  /api/admin/brand  → BrandSettings   (protegido; update parcial desde BrandSection)
 export const BrandSettingsSchema = z.object({
   id: z.number().optional(),
   brandName: z.string(),

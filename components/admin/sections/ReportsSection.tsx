@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { reportKeys, getMonthlyReport } from "@/lib/api/reports";
-import SalesReport from "../reportes/SalesReport";
-import ReplenishmentReport from "../reportes/ReplenishmentReport";
+import SalesReport from "../reports/SalesReport";
+import ReplenishmentReport from "../reports/ReplenishmentReport";
 
 type Tab = "ventas" | "reposicion";
 
@@ -13,7 +13,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "reposicion", label: "Reposición" },
 ];
 
-export default function ReportesSection() {
+export default function ReportsSection() {
   const { data: reports, isPending, isError, refetch } = useQuery({
     queryKey: reportKeys.monthly(),
     queryFn: getMonthlyReport,

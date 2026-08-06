@@ -6,6 +6,8 @@ Guidance for Claude Code when working in this repo.
 
 Before every git commit, check if `README.md` and `CLAUDE.md` need updating for the changes being committed — don't wait to be asked.
 
+**File and directory names are English; everything user-facing stays Spanish.** The only Spanish paths left are the ones the browser sees: route segments under `app/` (`/botas`, `/pedido`, `/terminos`, …), which are part of the public URL and must not be translated. Identifiers that are *values*, not file names — the `AdminSection` keys (`"marca"`, `"reportes"`), UI labels, copy, comments — are also Spanish and stay that way.
+
 ## Commands
 
 ```bash
@@ -89,7 +91,7 @@ components/
                   #   · coupon (isCouponError — expired/reused/pushes total under Stripe's minimum).
                   #   Coupon errors are the only ones mentioning "cupón". A rejected coupon is never
                   #   auto-removed (would silently change the accepted price) — the UI offers a button
-  pedido/         # Public order tracking (buyer-facing, not owner). OrderTracking owns the query
+  order/          # Public order tracking (buyer-facing, not owner). OrderTracking owns the query
                   #   (orderKeys.lookup(token), manual refresh only — no refetchInterval; backend caps
                   #   this route at 30 req/min; retry:false since a 404 is definitive). OrderStatusTimeline,
                   #   TrackedOrderItems, OrderLookupForm. Form asks for the tracking CODE (not the link,
@@ -105,7 +107,7 @@ components/
                   #   frozen prices, not a live Product (product may have changed/vanished since).
                   #   Totals DO reuse checkout/OrderTotals (gained an optional `discount` prop, Fase 19)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static
-  nosotros/       # AboutUs — static "Sobre nosotros", linked from footer
+  about/          # AboutUs — static "Sobre nosotros", linked from footer
   auth/           # AuthShell + LoginForm (RHF + zod + TanStack mutation, connected). AdminGuard
                   #   protects /admin, validates token via GET /auth/me. ForgotPasswordForm — 3-step
                   #   wizard (email → 5-digit code → new password), local state, not persisted.
@@ -113,9 +115,9 @@ components/
   providers/      # QueryProvider (TanStack root), BrandProvider (hydrates brand from public
                   #   GET /api/admin/brand, exposes useBrand(); BRAND in lib/domain/brand.ts is SSR fallback)
   admin/          # Sidebar + types.ts (AdminSection) + sections/ (8 tabs) + per-tab subcomponent
-                  #   folders (config/, coupons/, data/, orders/, products/, reportes/, expenses/, import/):
+                  #   folders (config/, coupons/, data/, orders/, products/, reports/, expenses/, import/):
                   #
-                  #   MarcaSection — brand identity editor. Connected (autosave debounce). Logo is a
+                  #   BrandSection — brand identity editor. Connected (autosave debounce). Logo is a
                   #     local blob: preview only, not persisted (upload = future work)
                   #   ProductSection — catalog CRUD, connected via lib/api/adminProducts. Subcomponents:
                   #     ProductForm, ProductCategoryView, ProductDetailModal, notices.ts. ProductForm
@@ -181,7 +183,7 @@ components/
                   #     Fase 22: shipping is a COST OF SALE — row profit = total − shipping − costoTotal
                   #     (previously shipping was omitted from margin, overstating profit on high-shipping
                   #     orders). New KPI `COSTO DE ENVÍO` needed zero code (KpiGrid renders generically by label)
-                  #   ReportesSection — Ventas / Reposición tabs + month selector, see "Reportes"
+                  #   ReportsSection — Ventas / Reposición tabs + month selector, see "Reportes"
                   #   ExpensesSection — expenses & subscriptions (Fase 20), connected. Feeds the
                   #     KPI GASTOS/GANANCIA OPERATIVA (previously a hardcoded $2,000). "Dar de baja" is
                   #     PUT { active: false }, not delete — same deactivate-vs-delete contract as coupons.
@@ -205,7 +207,7 @@ components/
                   #     rowInput.ts (ingest/serialize/coerce/validate, mirrors backend parsing),
                   #     importReducer.ts, dependencies.ts, labels.ts. See "Importación por Excel"
                   #   data/ — chart/table subcomponents (recharts) + types.ts (shared admin data contracts)
-                  #   reportes/ — SalesReport + ReplenishmentReport, connected via lib/api/reports
+                  #   reports/ — SalesReport + ReplenishmentReport, connected via lib/api/reports
 lib/
   api/
     client.ts     # single axios instance, baseURL = NEXT_PUBLIC_API_URL ?? /api. Request interceptor
@@ -423,7 +425,7 @@ A missing key means "don't touch this column"; `null` == absent; but `descriptio
 - Table stays mounted (only disabled) during commit — a failure doesn't lose edits/selection.
 - `reactivated: true` (discontinued product returning to the public catalog) gets its own badge — it's exactly the kind of side effect that surprises silently.
 - Rows render collapsed; the editor mounts only on expand (500 rows × 13 fields would be 6,500 inputs). No `staggerContainer` on the list (would take 35s at 500 rows).
-- Template: `public/plantilla-importacion-productos.xlsx`, generated by `scripts/generate-plantilla-importacion.mjs` using the **backend's** `exceljs` (avoids a ~1MB frontend dependency for a static download). One-off script; regenerate + recommit if the canonical header changes.
+- Template: `public/product-import-template.xlsx` (served under that English URL; `ImportDropzone`'s `download` attribute still saves it as `plantilla-importacion-productos.xlsx` for the owner), generated by `scripts/generate-import-template.mjs` using the **backend's** `exceljs` (avoids a ~1MB frontend dependency for a static download). One-off script; regenerate + recommit if the canonical header changes.
 - Importer does **not** support sizeless products yet — assumes `hasSizes: true` for every row; those are created directly via `ProductForm`.
 
 ## Productos sin tallas (Fase 24)
@@ -435,11 +437,11 @@ Two places that do need to know the mode:
 - **`ProductForm.tsx`** — "Maneja tallas" toggle swaps the sizes input for a numeric "Cantidad en existencia" (`stockQuantity`). `AdminProductInput` declares both fields optional; the submit sends only the one matching the toggle (backend 400s on the wrong one).
 - **`ProductInfo.tsx`** — with `hasSizes: false`, no size `<fieldset>` renders; `effectiveSize` is fixed at `0` and "Agregar al carrito" is gated only on `stock > 0`.
 
-**The sentinel must never render as a real size.** Since a captured size is always `> 0` (`parseSizes` filters), `item.size === 0` unambiguously means sizeless in any order-row rendering context — `hasSizes` doesn't need to be threaded through. `Cart.tsx`, `checkout/OrderItems.tsx`, `pedido/TrackedOrderItems.tsx`, and `OrderDetailModal.tsx`'s "Talla" column all gate that row on `size > 0`; `ProductDetailModal.tsx` (admin) has `product.hasSizes` directly available and hides the whole "Tallas" block with it. The public catalog's `availableSizes` never includes `0` — guaranteed by the backend.
+**The sentinel must never render as a real size.** Since a captured size is always `> 0` (`parseSizes` filters), `item.size === 0` unambiguously means sizeless in any order-row rendering context — `hasSizes` doesn't need to be threaded through. `Cart.tsx`, `checkout/OrderItems.tsx`, `order/TrackedOrderItems.tsx`, and `OrderDetailModal.tsx`'s "Talla" column all gate that row on `size > 0`; `ProductDetailModal.tsx` (admin) has `product.hasSizes` directly available and hides the whole "Tallas" block with it. The public catalog's `availableSizes` never includes `0` — guaranteed by the backend.
 
 ## Reportes, forecast y reposición
 
-`ReportesSection` has two linked tabs: sales history feeds the replenishment forecast. **Both are fully backend-derived** — the front only renders rows.
+`ReportsSection` has two linked tabs: sales history feeds the replenishment forecast. **Both are fully backend-derived** — the front only renders rows.
 
 ```
 Órdenes pagadas (backend)
@@ -448,7 +450,7 @@ Two places that do need to know the mode:
         computeForecast over complete months per product)
 ```
 
-`ReportesSection` owns the monthly query (month selector, default = latest non-partial month) and passes `reports` down to both tabs; the replenishment query mounts lazily on tab open.
+`ReportsSection` owns the monthly query (month selector, default = latest non-partial month) and passes `reports` down to both tabs; the replenishment query mounts lazily on tab open.
 
 **Forecast** (`backend/src/services/forecast.ts`, `computeForecast(monthlySales)`), scaled by history length:
 

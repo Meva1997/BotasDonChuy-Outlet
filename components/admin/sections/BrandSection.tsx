@@ -60,7 +60,7 @@ const inputCls =
   "text-amber-50 text-sm placeholder:text-amber-100/20 " +
   "focus:outline-none focus:border-amber-400/50 focus:bg-stone-800 transition-colors duration-150";
 
-export default function MarcaSection() {
+export default function BrandSection() {
   const queryClient = useQueryClient();
   const { data: settings } = useQuery({
     queryKey: brandKeys.detail(),
