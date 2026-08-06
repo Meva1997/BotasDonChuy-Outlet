@@ -17,6 +17,8 @@ export const AdminProductSchema = z.object({
   stock: z.number(),
   type: z.string(),
   sizes: z.array(z.number()),
+  // false = existencia sin tallas (Fase 24) — ver ProductSchema en lib/api/products.ts.
+  hasSizes: z.boolean(),
   // Galería de imágenes (Cloudinary, hasta 3). La forma admin SÍ trae el `publicId`
   // de cada imagen — necesario para borrarla vía DELETE /:id/images. `imageSrc`
   // (virtual) = URL de la primera imagen (compat con los consumidores de una foto).
@@ -60,6 +62,11 @@ export type DeleteResponse = z.infer<typeof DeleteResponseSchema>;
 // repetición de una talla representa unidades de stock ("25,26,26" → talla 26
 // con 2 unidades); el backend lo agrupa en filas ProductSize. No se envía un
 // `stock` escalar: se deriva de las tallas repetidas.
+// `hasSizes` (Fase 24) decide cuál de los otros dos viaja: `sizes` cuando es
+// `true` (o se omite — sigue siendo el default), `stockQuantity` (entero, la
+// existencia capturada a mano) cuando es `false`. Mandar el campo del modo
+// contrario responde 400 — por eso son ambos opcionales aquí y el llamador
+// arma el objeto con solo el que corresponde.
 export interface AdminProductInput {
   name: string;
   description?: string;
@@ -67,7 +74,9 @@ export interface AdminProductInput {
   salePrice: number;
   unitCost: number;
   type: "bota" | "sombrero" | "ropa";
-  sizes: string;
+  hasSizes: boolean;
+  sizes?: string;
+  stockQuantity?: number;
   // Las imágenes NO viajan en el POST/PUT (el backend las ignora aquí): se
   // gestionan por endpoints dedicados —addProductImages/deleteProductImage—.
   code?: string;

@@ -29,7 +29,7 @@ const METHOD_STYLES = {
     detail: "1-2 meses de datos · confianza baja",
     color: "text-red-400/70 border-red-400/20 bg-red-500/5",
   },
-  "tendencia": {
+  tendencia: {
     label: "Nivel 2 · Prom. ponderado + tendencia",
     detail: "3 meses de datos · confianza media",
     color: "text-amber-400/80 border-amber-400/20 bg-amber-500/5",
@@ -43,10 +43,9 @@ const METHOD_STYLES = {
 
 const TREND_ICON: Record<string, { icon: string; color: string }> = {
   creciendo: { icon: "↑", color: "text-emerald-400" },
-  estable:   { icon: "→", color: "text-amber-100/40" },
-  bajando:   { icon: "↓", color: "text-red-400" },
+  estable: { icon: "→", color: "text-amber-100/40" },
+  bajando: { icon: "↓", color: "text-red-400" },
 };
-
 
 function coverageColor(days: number) {
   if (days < 15) return "text-red-400";
@@ -131,7 +130,8 @@ export default function ReplenishmentReport({ reports }: Props) {
     return (
       <div className="max-w-md space-y-4">
         <p className="text-red-400/90 text-sm border border-red-500/30 bg-red-500/5 rounded-md px-4 py-3">
-          No pudimos cargar la reposición. Revisa tu conexión e inténtalo de nuevo.
+          No pudimos cargar la reposición. Revisa tu conexión e inténtalo de
+          nuevo.
         </p>
         <button
           type="button"
@@ -161,14 +161,17 @@ export default function ReplenishmentReport({ reports }: Props) {
   return (
     <div className="flex flex-col gap-5">
       {/* Banner: método activo */}
-      <div className={`flex items-start gap-3 px-4 py-3 rounded border ${methodStyle.color}`}>
+      <div
+        className={`flex items-start gap-3 px-4 py-3 rounded border ${methodStyle.color}`}
+      >
         <div className="mt-0.5 w-1.5 h-1.5 rounded-full bg-current shrink-0 opacity-70" />
         <div>
           <p className="text-[10px] tracking-[0.2em] uppercase font-sans font-medium">
             {methodStyle.label}
           </p>
           <p className="text-[10px] font-sans mt-0.5 opacity-70">
-            {fullMonthsCount} mes{fullMonthsCount !== 1 ? "es" : ""} de historial completo · {methodStyle.detail}
+            {fullMonthsCount} mes{fullMonthsCount !== 1 ? "es" : ""} de
+            historial completo · {methodStyle.detail}
           </p>
         </div>
       </div>
@@ -180,17 +183,28 @@ export default function ReplenishmentReport({ reports }: Props) {
             Forecast basado en historial · {historialRange}
           </p>
           <p className="text-[11px] text-amber-100/30 font-sans">
-            Objetivo: mantener 60 días de cobertura · el algoritmo mejora con más meses
+            Objetivo: mantener 60 días de cobertura · el algoritmo mejora con
+            más meses
           </p>
         </div>
         <button
           onClick={() => exportCSV(rows)}
           className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded border border-amber-400/25 text-amber-400/70 hover:border-amber-400/60 hover:text-amber-400 transition-colors text-[10px] tracking-[0.2em] uppercase font-sans cursor-pointer"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
           Exportar CSV
         </button>
@@ -227,7 +241,7 @@ export default function ReplenishmentReport({ reports }: Props) {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm font-sans min-w-[760px]">
+          <table className="w-full text-sm font-sans min-w-190">
             <thead>
               <tr className="border-b border-amber-400/10">
                 <th className="text-left px-5 py-3 text-[9px] tracking-[0.25em] uppercase text-amber-100/30">
@@ -267,7 +281,9 @@ export default function ReplenishmentReport({ reports }: Props) {
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${p.dot}`} />
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${p.dot}`}
+                        />
                         <div>
                           <p className="text-amber-50/90 text-[13px] leading-snug">
                             {row.name}
@@ -280,7 +296,9 @@ export default function ReplenishmentReport({ reports }: Props) {
                     </td>
                     <td className="px-4 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        <span className={`text-sm font-medium ${t.color}`}>{t.icon}</span>
+                        <span className={`text-sm font-medium ${t.color}`}>
+                          {t.icon}
+                        </span>
                         <span className="font-mono text-amber-100/70 text-[13px]">
                           {row.forecastNextMonth}
                         </span>
@@ -290,15 +308,21 @@ export default function ReplenishmentReport({ reports }: Props) {
                       {row.currentStock}
                     </td>
                     <td className="px-4 py-3.5 text-right">
-                      <span className={`font-mono text-[13px] font-medium ${coverageColor(row.diasCobertura)}`}>
-                        {row.diasCobertura === 999 ? "—" : `${row.diasCobertura}d`}
+                      <span
+                        className={`font-mono text-[13px] font-medium ${coverageColor(row.diasCobertura)}`}
+                      >
+                        {row.diasCobertura === 999
+                          ? "—"
+                          : `${row.diasCobertura}d`}
                       </span>
                     </td>
                     <td className="px-4 py-3.5 text-right font-mono text-amber-100/60 text-[13px]">
                       {row.margenMensual > 0 ? fmtMXN(row.margenMensual) : "—"}
                     </td>
                     <td className="px-4 py-3.5 text-center">
-                      <span className={`inline-block text-[9px] tracking-[0.15em] uppercase px-2 py-1 rounded border ${p.badge}`}>
+                      <span
+                        className={`inline-block text-[9px] tracking-[0.15em] uppercase px-2 py-1 rounded border ${p.badge}`}
+                      >
                         {p.label}
                       </span>
                     </td>
@@ -306,7 +330,9 @@ export default function ReplenishmentReport({ reports }: Props) {
                       {row.suggestedOrder > 0 ? row.suggestedOrder : "—"}
                     </td>
                     <td className="px-5 py-3.5 text-right font-mono text-amber-100/50 text-[13px]">
-                      {row.costoEstimadoPedido > 0 ? fmtMXN(row.costoEstimadoPedido) : "—"}
+                      {row.costoEstimadoPedido > 0
+                        ? fmtMXN(row.costoEstimadoPedido)
+                        : "—"}
                     </td>
                   </tr>
                 );
@@ -314,7 +340,10 @@ export default function ReplenishmentReport({ reports }: Props) {
             </tbody>
             <tfoot>
               <tr className="border-t border-amber-400/15">
-                <td colSpan={6} className="px-5 py-3.5 text-[9px] tracking-[0.2em] uppercase text-amber-100/25 font-sans">
+                <td
+                  colSpan={6}
+                  className="px-5 py-3.5 text-[9px] tracking-[0.2em] uppercase text-amber-100/25 font-sans"
+                >
                   Total
                 </td>
                 <td className="px-5 py-3.5 text-right font-mono text-amber-50/70 text-[13px]">
@@ -331,12 +360,14 @@ export default function ReplenishmentReport({ reports }: Props) {
 
       {/* Nota contextual */}
       <p className="text-[10px] text-amber-100/25 font-sans leading-relaxed">
-        Al ser un outlet de liquidación, «reposición» significa buscar lotes similares con tu proveedor.
-        La lista se ordena por urgencia de cobertura y, dentro de cada nivel, por{" "}
-        <span className="text-amber-400/70">margen mensual</span> — primero los productos
-        que más ganancia te generan al mes. Empieza por los marcados como{" "}
-        <span className="text-red-400/60">urgente</span>.
-        {" "}Con más meses de historial el sistema subirá automáticamente al siguiente nivel de precisión.
+        Al ser un outlet de liquidación, «reposición» significa buscar lotes
+        similares con tu proveedor. La lista se ordena por urgencia de cobertura
+        y, dentro de cada nivel, por{" "}
+        <span className="text-amber-400/70">margen mensual</span> — primero los
+        productos que más ganancia te generan al mes. Empieza por los marcados
+        como <span className="text-red-400/60">urgente</span>. Con más meses de
+        historial el sistema subirá automáticamente al siguiente nivel de
+        precisión.
       </p>
     </div>
   );

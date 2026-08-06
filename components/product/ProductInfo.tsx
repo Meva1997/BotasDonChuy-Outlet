@@ -23,6 +23,11 @@ export default function ProductInfo({ product }: ProductInfoProps) {
 
   const isOutOfStock = product.stock === 0;
   const isLastPiece = product.stock === 1;
+  // Producto sin tallas (Fase 24): la existencia se captura como cantidad, sin
+  // selector — `product.sizes` es el array del centinela `0` repetido `stock`
+  // veces (transparente para el resto de la página), así que aquí se ignora y
+  // se agrega directo con size 0, nunca mostrado como "talla 0".
+  const isSizeless = !product.hasSizes;
 
   // Stock disponible por talla (un tamaño puede repetirse en el array)
   const sizeStockMap = product.sizes.reduce<Record<number, number>>(
@@ -41,13 +46,15 @@ export default function ProductInfo({ product }: ProductInfoProps) {
     );
   }
 
+  const effectiveSize = isSizeless ? 0 : selectedSize;
+
   const selectedSizeAtMax =
-    selectedSize !== null &&
-    cartQuantityFor(selectedSize) >= sizeStockMap[selectedSize];
+    effectiveSize !== null &&
+    cartQuantityFor(effectiveSize) >= sizeStockMap[effectiveSize];
 
   function handleAddToCart() {
-    if (!selectedSize || selectedSizeAtMax) return;
-    addItem(product, selectedSize);
+    if (effectiveSize === null || selectedSizeAtMax) return;
+    addItem(product, effectiveSize);
     openCart();
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
@@ -203,7 +210,9 @@ export default function ProductInfo({ product }: ProductInfoProps) {
             </p>
           </section>
 
-          {/* Tallas — fieldset + legend agrupa semánticamente controles relacionados */}
+          {/* Tallas — fieldset + legend agrupa semánticamente controles relacionados.
+              Oculto por completo en productos sin tallas (Fase 24). */}
+          {!isSizeless && (
           <fieldset className="border-0 p-0 m-0 flex flex-col gap-3">
             <legend className="font-sans text-amber-100/50 text-xs tracking-[0.22em] uppercase mb-1">
               Talla
@@ -243,6 +252,7 @@ export default function ProductInfo({ product }: ProductInfoProps) {
               })}
             </div>
           </fieldset>
+          )}
 
           {/* Disponibilidad — role="status" informa cambios a lectores de pantalla */}
           <p
@@ -264,15 +274,15 @@ export default function ProductInfo({ product }: ProductInfoProps) {
             type="button"
             onClick={handleAddToCart}
             disabled={
-              isOutOfStock || !selectedSize || added || selectedSizeAtMax
+              isOutOfStock || effectiveSize === null || added || selectedSizeAtMax
             }
             whileHover={
-              !isOutOfStock && selectedSize && !added && !selectedSizeAtMax
+              !isOutOfStock && effectiveSize !== null && !added && !selectedSizeAtMax
                 ? { scale: 1.015 }
                 : undefined
             }
             whileTap={
-              !isOutOfStock && selectedSize && !added && !selectedSizeAtMax
+              !isOutOfStock && effectiveSize !== null && !added && !selectedSizeAtMax
                 ? { scale: 0.985 }
                 : undefined
             }
@@ -281,7 +291,7 @@ export default function ProductInfo({ product }: ProductInfoProps) {
                 ? "bg-amber-400/20 border-amber-400/60 text-amber-400 cursor-default"
                 : isOutOfStock || selectedSizeAtMax
                   ? "bg-transparent border-amber-100/10 text-amber-100/25 cursor-not-allowed"
-                  : selectedSize
+                  : effectiveSize !== null
                     ? "bg-linear-to-r from-amber-950 to-amber-900 hover:from-amber-900 hover:to-amber-800 border-amber-700/40 hover:border-amber-600/60 text-amber-50 cursor-pointer"
                     : "bg-transparent border-amber-100/10 text-amber-100/25 cursor-not-allowed"
             }`}
@@ -292,7 +302,7 @@ export default function ProductInfo({ product }: ProductInfoProps) {
                 ? "Agotado"
                 : selectedSizeAtMax
                   ? "Ya está en tu carrito"
-                  : selectedSize
+                  : effectiveSize !== null
                     ? "Agregar al carrito"
                     : "Selecciona una talla"}
           </motion.button>

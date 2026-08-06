@@ -16,6 +16,10 @@ export const ProductSchema = z.object({
   stock: z.number(),
   type: z.string(),
   sizes: z.array(z.number()),
+  // false = existencia sin tallas (Fase 24): `sizes` es el array de `0` repetido
+  // `stock` veces (el centinela interno del backend), y el selector de tallas de
+  // la ficha pública debe ocultarse — nunca mostrarlo como "talla 0".
+  hasSizes: z.boolean(),
   // Galería de imágenes (Cloudinary, hasta 3). La ruta pública omite el `publicId`
   // (identificador interno de gestión, solo lo necesita el admin para borrar el
   // asset). `imageSrc` (virtual) = URL de la primera imagen, para compat con los

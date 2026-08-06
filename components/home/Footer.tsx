@@ -81,7 +81,11 @@ export default function Footer() {
                       <Link
                         href={href}
                         target={label === "Instagram" ? "_blank" : undefined}
-                        rel={label === "Instagram" ? "noopener noreferrer" : undefined}
+                        rel={
+                          label === "Instagram"
+                            ? "noopener noreferrer"
+                            : undefined
+                        }
                         className="text-sm text-amber-100/50 hover:text-amber-100/90 transition-colors duration-200"
                       >
                         {label}
@@ -103,7 +107,7 @@ export default function Footer() {
           <Link
             href="/admin"
             aria-label="Acceso administrador"
-            className="text-xs text-amber-100/20 tracking-[0.2em] uppercase hover:text-amber-100/50 transition-colors duration-300"
+            className="text-xs text-amber-100/20 tracking-[0.2em] uppercase"
           >
             Outlet
           </Link>
