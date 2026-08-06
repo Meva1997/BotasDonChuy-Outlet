@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import OrderTracking from "@/components/pedido/OrderTracking";
+import OrderTracking from "@/components/order/OrderTracking";
 
 // La ruta tiene que ser EXACTAMENTE ésta: es la que el backend construye en el
 // correo de confirmación (`publicOrderUrl` en `../backend/src/services/payment.service.ts`).

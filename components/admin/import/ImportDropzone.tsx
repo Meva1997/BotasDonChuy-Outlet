@@ -8,8 +8,14 @@ import { COPY } from "./labels";
 // Selector del .xlsx. Espeja los límites del backend (../backend/src/middlewares/upload.ts:
 // 2 MB, mimetype OOXML) para no gastar una petición en un archivo que va a rebotar.
 
-/** Ruta de la plantilla con el encabezado canónico (ver scripts/generate-plantilla-importacion.mjs). */
-export const TEMPLATE_HREF = "/plantilla-importacion-productos.xlsx";
+/** Ruta de la plantilla con el encabezado canónico (ver scripts/generate-import-template.mjs). */
+export const TEMPLATE_HREF = "/product-import-template.xlsx";
+
+/**
+ * Nombre con el que se guarda la descarga. El archivo vive en inglés como el resto del repo,
+ * pero quien lo abre es el dueño de la tienda: en su carpeta de descargas debe leerse en español.
+ */
+export const TEMPLATE_DOWNLOAD_NAME = "plantilla-importacion-productos.xlsx";
 
 /**
  * Valida el archivo antes de subirlo.
@@ -171,7 +177,7 @@ export default function ImportDropzone({
 
       <a
         href={TEMPLATE_HREF}
-        download
+        download={TEMPLATE_DOWNLOAD_NAME}
         className="inline-flex items-center gap-2 text-[10px] tracking-[0.25em] uppercase text-amber-100/45 hover:text-amber-400 transition-colors"
       >
         <Download className="size-3.5" strokeWidth={1.5} />

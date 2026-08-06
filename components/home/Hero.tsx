@@ -11,9 +11,9 @@ import { CATEGORIES, type ProductType } from "@/lib/domain/categories";
 
 // La foto de portada de cada categoría; "ropa" aún no tiene una.
 const CATEGORY_IMAGES: Record<ProductType, string> = {
-  bota: "/botasOutlet.png",
-  sombrero: "/sombreroOutlet.png",
-  ropa: "/chaquetaOutlet.png",
+  bota: "/boots-outlet.png",
+  sombrero: "/hat-outlet.png",
+  ropa: "/jacket-outlet.png",
 };
 
 // Solo nos interesa `total` (conteo de piezas de la categoría), así que

@@ -16,7 +16,7 @@ Online store for Botas Don Chuy, specializing in western-style footwear and acce
 - **sileo** — toast notifications (admin panel only)
 - **pnpm** as package manager
 
-> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). Specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen; see that folder's `README.md` for the layout — plus eight pure modules: `lib/domain/__tests__/idempotency.test.ts`, `lib/domain/__tests__/publicOrderToken.test.ts`, `lib/domain/__tests__/catalogFilters.test.ts`, `components/checkout/__tests__/checkoutErrors.test.ts`, `components/admin/orders/__tests__/shipmentLabel.test.ts`, `components/admin/coupons/__tests__/couponStatus.test.ts`, `components/admin/expenses/__tests__/expenseStatus.test.ts` and `components/pedido/__tests__/orderTimeline.test.ts`.
+> **Jest + React Testing Library** are installed (`jest.config.ts`, `jest.setup.ts`). Specs today cover the Excel import (`components/admin/import/__tests__/`) — both its pure modules and every component of that screen; see that folder's `README.md` for the layout — plus eight pure modules: `lib/domain/__tests__/idempotency.test.ts`, `lib/domain/__tests__/publicOrderToken.test.ts`, `lib/domain/__tests__/catalogFilters.test.ts`, `components/checkout/__tests__/checkoutErrors.test.ts`, `components/admin/orders/__tests__/shipmentLabel.test.ts`, `components/admin/coupons/__tests__/couponStatus.test.ts`, `components/admin/expenses/__tests__/expenseStatus.test.ts` and `components/order/__tests__/orderTimeline.test.ts`.
 
 ## Commands
 
@@ -66,20 +66,21 @@ components/
   checkout/       # 4-step checkout wizard, incl. ShippingOptions (live Skydropx rate quoting),
                   #   CouponField (discount code, validated server-side) and checkoutErrors.ts
                   #   (pure order/payment error mapping, with specs)
-  pedido/         # Public order tracking (the only buyer-facing screen): OrderTracking (query owner),
+  order/          # Public order tracking (the only buyer-facing screen): OrderTracking (query owner),
                   #   OrderStatusTimeline, TrackedOrderItems, OrderLookupForm + orderTimeline.ts
                   #   (pure status → timeline derivation, with specs)
   legal/          # TermsConditions, PrivacyPolicy, ShippingInfo — static legal pages
-  nosotros/       # AboutUs — static "About Us" page
+  about/          # AboutUs — static "About Us" page
   auth/           # AuthShell, LoginForm, ForgotPasswordForm (+ CodeInput/ResetCodeForm/NewPasswordForm), AdminGuard
-  admin/          # Sidebar, types.ts + sections/ (Marca, Productos, Importar, Cupones, Pedidos,
-                  #   Datos, Reportes, Gastos, Configuración)
+  admin/          # Sidebar, types.ts + sections/ (Brand, Product, Import, Coupons, Orders,
+                  #   Data, Reports, Expenses, Config — file names are English, the Spanish
+                  #   labels/AdminSection keys they render are not)
                   #   orders/ — orders table, pagination, detail modal (cancel/refund, manual
                   #   shipped/delivered, Skydropx label retry) + shipmentLabel.ts (pure, with specs)
                   #   coupons/ — coupons table, form, status badge + couponStatus.ts (pure, with
                   #   specs: derived state, labels, and the store-timezone date helper)
                   #   data/ — chart/table subcomponents (recharts)
-                  #   reportes/ — SalesReport (historical) + ReplenishmentReport (forecast)
+                  #   reports/ — SalesReport (historical) + ReplenishmentReport (forecast)
                   #   import/ — Excel import review screen: pure modules (types, rowInput, importReducer,
                   #   dependencies, labels) + components. The only screen fully covered by Jest
                   #   specs; they live in import/__tests__/ (see its README.md)
@@ -106,7 +107,9 @@ store/
   importStore.ts  # Zustand store (no persist) — Excel import review state, kept outside the
                   #   component tree so an in-progress review survives switching admin tabs
 scripts/
-  generate-plantilla-importacion.mjs  # one-off script that generated public/plantilla-importacion-productos.xlsx
+  generate-import-template.mjs  # one-off script that generated public/product-import-template.xlsx
+                                #   (served under that English URL, but downloaded as
+                                #   plantilla-importacion-productos.xlsx — see ImportDropzone)
 ```
 
 See `CLAUDE.md` for the full architecture reference (file-by-file responsibilities, auth/data-fetching patterns, checkout internals, reports/forecast pipeline, and the backend contract).
@@ -183,7 +186,7 @@ There are no customer accounts, so a buyer's only handle on their order used to 
 
 Nothing is remembered in the browser — the credential lives in the email. `/pedido` (linked from the footer of every page) is just a "paste the tracking code we emailed you" form. It asks for the **code**, not the link: the email prints the code in its own copyable box, whereas the link only ever existed inside the button's `href`, where getting it meant knowing how to "copy link address" in your mail client. `lib/domain/publicOrderToken.ts` still accepts **both** shapes — bare UUID and full pasted URL — and must keep doing so, since already-sent emails only carry the link; it only judges whether the input *looks* like a token, so a bad paste doesn't spend one of the endpoint's 30 requests/minute. Whether the order exists is the backend's 404 to answer, with its own copy. There's no polling for the same reason — a manual refresh button plus `refetchOnWindowFocus`.
 
-Key files: `app/(public)/pedido/`, `components/pedido/`, `lib/domain/publicOrderToken.ts`, `lib/domain/shipmentStatus.ts`, `lib/api/orders.ts` (`lookupOrder`, `PublicOrderSchema`).
+Key files: `app/(public)/pedido/`, `components/order/`, `lib/domain/publicOrderToken.ts`, `lib/domain/shipmentStatus.ts`, `lib/api/orders.ts` (`lookupOrder`, `PublicOrderSchema`).
 
 ## Shipping
 

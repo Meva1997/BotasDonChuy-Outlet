@@ -53,7 +53,7 @@ export default function ExpenseHistory() {
 
   // El mes elegido no puede inicializarse desde datos async: se guarda como `null`
   // hasta que el usuario elige, y se cae al último mes mientras tanto (mismo
-  // patrón que ReportesSection).
+  // patrón que ReportsSection).
   const [selected, setSelected] = useState<string | null>(null);
 
   if (isPending) {

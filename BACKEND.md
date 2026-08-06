@@ -264,7 +264,7 @@ model AdminUser {
 
 ### 3.5 `BrandSettings` — identidad de la tienda (singleton)
 
-Fuente: `MarcaSection.tsx` (`MarcaData`). Es una sola fila editable.
+Fuente: `BrandSection.tsx` (`MarcaData`). Es una sola fila editable.
 
 | Campo | Tipo | Default actual |
 |---|---|---|
@@ -640,10 +640,10 @@ Algoritmo exacto en [sección 6.2](#62-reposición). **Excluir los meses `partia
 #### `GET /api/admin/brand`
 Devuelve `BrandSettings`. Pensado como **lectura pública** (para que la tienda pinte estos textos) y escritura protegida.
 
-> **Estado real (verificado):** la tienda aún no consume `BrandSettings` (datos dinámicos), pero los textos de marca ya están **centralizados en `lib/domain/brand.ts`** (`BRAND`): `NavHeader`, `Hero`, `Footer`, `Cart` y los **defaults de `MarcaSection`** salen todos de ahí — ya no hay strings duplicados. Cuando exista el endpoint, el cableado consiste en sustituir el `BRAND` estático por los valores servidos (con `BRAND` como fallback). El backend debe persistir estos campos igual.
+> **Estado real (verificado):** la tienda aún no consume `BrandSettings` (datos dinámicos), pero los textos de marca ya están **centralizados en `lib/domain/brand.ts`** (`BRAND`): `NavHeader`, `Hero`, `Footer`, `Cart` y los **defaults de `BrandSection`** salen todos de ahí — ya no hay strings duplicados. Cuando exista el endpoint, el cableado consiste en sustituir el `BRAND` estático por los valores servidos (con `BRAND` como fallback). El backend debe persistir estos campos igual.
 
 #### `PUT /api/admin/brand` `[auth]`
-Body parcial de `BrandSettings`. El `MarcaSection` autoguarda campo por campo, así que aceptar updates parciales. Respuesta `200`: `BrandSettings`.
+Body parcial de `BrandSettings`. El `BrandSection` autoguarda campo por campo, así que aceptar updates parciales. Respuesta `200`: `BrandSettings`.
 
 #### `GET /api/admin/users` `[auth]`
 Lista de administradores (`AdminUser[]` **sin `passwordHash`**).

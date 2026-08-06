@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import OrderLookupForm from "@/components/pedido/OrderLookupForm";
+import OrderLookupForm from "@/components/order/OrderLookupForm";
 
 // Entrada al seguimiento sin token: es lo que enlaza el Footer desde todas las
 // páginas. `noindex` igual que `/pedido/[token]` — no es contenido de la tienda y
