@@ -44,6 +44,16 @@ Consecuencias concretas para cada fase de este roadmap:
 - Correr `pnpm test -- --coverage` (o configurar el script) antes de marcar una fase como
   completa, y revisar el reporte por archivo, no solo el resumen global.
 
+**El branch % de este proyecto es un piso, no una garantía.** La instrumentación de cobertura de
+`next/jest` (SWC, no el Istanbul clásico) **no registra todos los `&&` que viven como hijos de
+JSX**: se detectó en Fase 3 leyendo el `branchMap` crudo de `coverage/coverage-final.json` —
+`OrderTracking.tsx` marcaba 100% de branches mientras la rama
+`{order.shippingAddress.references && …}` no se había ejecutado ni una vez, porque ni siquiera
+existía como entrada en el mapa. Un `&&` de render condicional puede estar sin probar y no aparecer
+como línea descubierta. Consecuencia para las fases 4–10: **hay que leer el componente y listar sus
+ramas a mano**, no dar por cubierto lo que el reporte no señala. Si una rama no se ve reflejada,
+`coverage/coverage-final.json` (`branchMap` + `b`) dice qué se instrumentó de verdad.
+
 ## Convenciones (ya establecidas, no reinventar)
 
 - Stack: Jest + React Testing Library + `@testing-library/user-event`, vía `next/jest`.
@@ -102,13 +112,13 @@ La zona de mayor riesgo: un bug aquí cobra de más, cobra de menos, o duplica u
 
 Buyer-facing, sin autenticación — el token en la URL es la única credencial.
 
-- [ ] `components/order/OrderLookupForm.tsx` — pide el código de rastreo (no el link, Fase 21);
+- [x] `components/order/OrderLookupForm.tsx` — pide el código de rastreo (no el link, Fase 21);
       `extractPublicOrderToken` debe aceptar ambas formas (emails viejos solo traen el link).
-- [ ] `components/order/OrderStatusTimeline.tsx` — usa `orderTimeline.ts` (ya con specs); casos
+- [x] `components/order/OrderStatusTimeline.tsx` — usa `orderTimeline.ts` (ya con specs); casos
       `pending` y `cancelled` se manejan fuera de los 4 pasos.
-- [ ] `components/order/TrackedOrderItems.tsx` — usa `nameSnapshot` + precios congelados, NO un
+- [x] `components/order/TrackedOrderItems.tsx` — usa `nameSnapshot` + precios congelados, NO un
       `Product` en vivo; oculta la fila si `size === 0` (producto sin tallas).
-- [ ] `components/order/OrderTracking.tsx` — sin `refetchInterval` (refresh manual únicamente);
+- [x] `components/order/OrderTracking.tsx` — sin `refetchInterval` (refresh manual únicamente);
       `retry: false` porque un 404 es definitivo.
 
 ## Fase 4 — Outlet / catálogo público
