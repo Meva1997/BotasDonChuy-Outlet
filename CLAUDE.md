@@ -19,6 +19,10 @@ pnpm test       # Jest (--passWithNoTests; no specs yet)
 
 Package manager is **pnpm**. Use `pnpm add` to install.
 
+## CI
+
+`.github/workflows/ci.yml` runs on every push/PR to `main`: lint, `tsc --noEmit`, test, build. Deploys are unrelated to this workflow — Vercel's own GitHub integration handles previews/production on push, independent of Actions.
+
 ## Stack
 
 - **Next.js 16** (App Router, all pages in `app/`), **React 19**, **TypeScript**
