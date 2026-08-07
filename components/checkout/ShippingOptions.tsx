@@ -372,6 +372,19 @@ export default function ShippingOptions() {
       }
     : null;
 
+  // Fuente ÚNICA del número de cajas: el aviso sobre la lista de tarifas y el
+  // resumen de la derecha describen el mismo envío, así que no pueden salir de
+  // dos cálculos distintos —si algún día dos paqueterías empacaran diferente, se
+  // contradirían en pantalla—. Con una tarifa ya elegida manda la suya: es la que
+  // se va a cobrar. Antes de elegir no hay una "suya", y se toma el MÁXIMO de la
+  // cotización, no `rates[0]`: hoy todas salen del mismo acomodo de cajas del
+  // backend y traen el mismo número, pero leer la primera es apostarle a eso.
+  const packageCount =
+    selected?.packageCount ??
+    (data && data.rates.length > 0
+      ? Math.max(...data.rates.map((r) => r.packageCount))
+      : null);
+
   const onSubmit = () => {
     if (!selected || couponBlocked) return;
     placeOrder(items, confirmedCustomer, selected, coupon?.code ?? null, (order) =>
@@ -444,21 +457,17 @@ export default function ShippingOptions() {
                 canCompare && deliveryDays.length
                   ? Math.min(...deliveryDays)
                   : null;
-              // Del MÁXIMO y no de `rates[0]`: hoy todas las tarifas salen del
-              // mismo acomodo de cajas del backend y traen el mismo número, pero
-              // leer la primera es apostarle a eso. Va aquí arriba, no solo en el
-              // sidebar, porque es donde el comprador está comparando precios y
-              // preguntándose por qué son más altos de lo que esperaba.
-              const packageCount = Math.max(
-                ...data.rates.map((r) => r.packageCount)
-              );
+              // `packageCount` sale del cálculo compartido de arriba. Se avisa
+              // aquí y no solo en el sidebar porque es donde el comprador está
+              // comparando precios y preguntándose por qué son más altos de lo
+              // que esperaba.
               return (
                 <div
                   role="radiogroup"
                   aria-label="Método de envío"
                   className="space-y-3"
                 >
-                  {packageCount > 1 && (
+                  {packageCount != null && packageCount > 1 && (
                     <p className="rounded-md border border-amber-600/25 bg-amber-500/5 px-4 py-3 text-[12px] leading-relaxed text-amber-100/60">
                       Tu pedido va en{" "}
                       <span className="text-amber-200/90 font-medium">
@@ -502,7 +511,7 @@ export default function ShippingOptions() {
             discount={
               coupon ? { code: coupon.code, amount: coupon.discount } : undefined
             }
-            packageCount={selected?.packageCount}
+            packageCount={packageCount}
           />
         ) : (
           <p className="text-xs text-amber-100/50 leading-relaxed">
