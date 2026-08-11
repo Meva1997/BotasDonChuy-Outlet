@@ -54,6 +54,21 @@ como línea descubierta. Consecuencia para las fases 4–10: **hay que leer el c
 ramas a mano**, no dar por cubierto lo que el reporte no señala. Si una rama no se ve reflejada,
 `coverage/coverage-final.json` (`branchMap` + `b`) dice qué se instrumentó de verdad.
 
+**Y un test verde tampoco garantiza que la rama se probó.** En Fase 4 salieron dos casos así, ambos
+detectados mutando el fuente a propósito y comprobando que la prueba efectivamente fallara:
+
+- `isError && !result` en `OutletView` aparece como **una sola** entrada del `branchMap` (SWC no
+  separa los dos operandos), así que el caso "error con datos previos en pantalla" salía 100%
+  cubierto sin haberse ejecutado nunca.
+- Una aserción de **ausencia** hecha justo después de un cambio de estado de TanStack Query se
+  evalúa contra el DOM viejo: la librería notifica a sus suscriptores en un **macrotask**, así que
+  `await act(async () => { await queryClient.refetchQueries(); })` no alcanza — hace falta un
+  `await new Promise((r) => setTimeout(r, 0))` dentro del mismo `act`. Sin él la prueba pasa igual
+  con y sin el guard, que es exactamente el test que no sirve de nada.
+
+Regla práctica: ante una rama que "ya está cubierta", romperla en el fuente y correr la suite. Si
+sigue verde, el test es decorativo.
+
 ## Convenciones (ya establecidas, no reinventar)
 
 - Stack: Jest + React Testing Library + `@testing-library/user-event`, vía `next/jest`.
@@ -125,15 +140,22 @@ Buyer-facing, sin autenticación — el token en la URL es la única credencial.
 
 Lo primero que ve un comprador. `OutletFilters` es la pieza más intrincada fuera de checkout.
 
-- [ ] `components/outlet/OutletFilters.tsx` — URL como fuente de verdad; draft local con debounce
+- [x] `components/outlet/OutletFilters.tsx` — URL como fuente de verdad; draft local con debounce
       de 300ms committeado con `replace: true` (no `push`); inputs muestran el texto crudo de la
       URL, no el valor saneado; `precioMin > precioMax` da cero resultados a propósito.
-- [ ] `components/outlet/OutletView.tsx` — el `<Suspense fallback={<OutletSkeleton />}>` alrededor
-      de `useSearchParams`; que el listado nunca filtra/ordena client-side.
-- [ ] `components/outlet/EmptyState.tsx` — dos variantes: sin filtros → "Agotado"; con filtros → "No
+- [x] `components/outlet/OutletView.tsx` — que el listado nunca filtra/ordena client-side (ni
+      siquiera cuando la respuesta contradice el `orden` de la URL); cambiar cualquier filtro
+      vuelve a la página 1; un refetch fallido con datos ya en pantalla NO muestra el estado de
+      error (`isError && !result`). El `<Suspense fallback={<OutletSkeleton />}>` vive en las
+      páginas de `app/`, no en este componente: fuera de alcance de un test de componente.
+- [x] `components/outlet/EmptyState.tsx` — dos variantes: sin filtros → "Agotado"; con filtros → "No
       encontramos nada" + botón de limpiar filtros que conserva la categoría.
-- [ ] `components/outlet/OutletCard.tsx` — render de precio/descuento/talla.
-- [ ] `components/outlet/OutletPagination.tsx` — límites de página, deshabilitado en extremos.
+- [x] `components/outlet/OutletCard.tsx` — render de precio y descuento; las tres ramas de `stock`
+      (agotado / última pieza / N disponibles) y el fallback cuando la pieza no tiene foto. **No
+      pinta talla** — eso es del detalle de producto.
+- [x] `components/outlet/OutletPagination.tsx` — no se renderiza con una sola página (ni con cero);
+      un botón por página, el actual resaltado. **No hay prev/next ni estado `disabled`**: no hay
+      "extremos" que deshabilitar.
 
 ## Fase 5 — Auth
 

@@ -30,7 +30,7 @@ interface TextFilters {
   precioMax: string;
 }
 
-interface OutletFiltersProps {
+export interface OutletFiltersProps {
   showCategoria: boolean;
   showTalla: boolean;
   selectedCategoria?: string;
