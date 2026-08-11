@@ -41,8 +41,10 @@ Consecuencias concretas para cada fase de este roadmap:
   paginación en el primer/último extremo.
 - Si un módulo llega a 100% de statements pero su reporte de branches muestra líneas sin cubrir,
   la fase **no** se considera terminada — faltan casos, no es un umbral que se pueda redondear.
-- Correr `pnpm test -- --coverage` (o configurar el script) antes de marcar una fase como
-  completa, y revisar el reporte por archivo, no solo el resumen global.
+- Correr **`pnpm test:coverage`** antes de marcar una fase como completa, y revisar el reporte por
+  archivo, no solo el resumen global. Ojo: `pnpm test -- --coverage` **no** funciona — el `--` deja
+  las banderas del lado equivocado y Jest las interpreta como un patrón de tests (`Invalid
+  testPattern … Running all tests instead`), corriendo la suite completa **sin** medir cobertura.
 
 **El branch % de este proyecto es un piso, no una garantía.** La instrumentación de cobertura de
 `next/jest` (SWC, no el Istanbul clásico) **no registra todos los `&&` que viven como hijos de
@@ -159,12 +161,25 @@ Lo primero que ve un comprador. `OutletFilters` es la pieza más intrincada fuer
 
 ## Fase 5 — Auth
 
-- [ ] `components/auth/LoginForm.tsx` — mapeo de errores (401 → credenciales, 429 → rate-limit).
-- [ ] `components/auth/ForgotPasswordForm.tsx` — wizard de 3 pasos, estado local no persistido:
-      email → código de 5 dígitos → nueva contraseña → `/login`.
-- [ ] `components/auth/CodeInput.tsx` — el OTP de 5 cajas: foco automático, pegar código completo,
-      backspace entre cajas.
-- [ ] `components/auth/AdminGuard.tsx` — un error **no-401** (500/red) no bloquea acceso (outage
+- [x] `components/auth/LoginForm.tsx` — mapeo de errores (401 → credenciales, 429 → rate-limit).
+- [x] `components/auth/ForgotPasswordForm.tsx` — wizard de 3 pasos, estado local no persistido:
+      email → código de 5 dígitos → nueva contraseña → `/login`. Se probó como flujo integrado
+      junto con `ResetCodeForm`/`NewPasswordForm` (no tienen sentido aislados: el "código" depende
+      del email del paso previo). **Única excepción**: `NewPasswordForm` se monta suelto para el
+      caso `onExpired` ausente — el wizard siempre la pasa, así que la rama
+      `codeExpired && onExpired` (hija de JSX, invisible para la instrumentación de SWC) solo se
+      ejercita rompiendo el acoplamiento con el wizard.
+- [x] `components/auth/CodeInput.tsx` — el OTP de 5 cajas: foco automático, pegar código completo,
+      backspace entre cajas. **Bug real encontrado y corregido durante esta fase**: el auto-avance
+      leía `value` de un closure obsoleto dentro del evento `focus` síncrono que él mismo disparaba
+      (React no re-renderiza a mitad del mismo call stack), así que rebotaba a la MISMA casilla en
+      vez de ir a la siguiente — tecleando un código dígito por dígito, cada segunda pulsación
+      sobrescribía la anterior en vez de avanzar (confirmado tecleando "13579" → terminaba en
+      "245"). Pegar no se veía afectado (el valor se fija antes del rebote). Arreglado con una ref
+      (`latestValue`) que `setValue()` actualiza en el momento exacto del commit — no se puede
+      mutar la ref durante el render (regla de lint `react-hooks/refs`), así que el `useEffect` que
+      la sincroniza solo cubre cambios *externos* de `value`.
+- [x] `components/auth/AdminGuard.tsx` — un error **no-401** (500/red) no bloquea acceso (outage
       transitorio no debe encerrar al admin); 401 sí redirige (vía interceptor).
 
 ## Fase 6 — Admin: Órdenes

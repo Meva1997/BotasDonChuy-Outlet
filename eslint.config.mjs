@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Reporte generado por `jest --coverage`: es código de terceros (lcov-report)
+    // que ensucia el lint local después de medir cobertura.
+    "coverage/**",
   ]),
 ]);
 
