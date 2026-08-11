@@ -182,20 +182,41 @@ Lo primero que ve un comprador. `OutletFilters` es la pieza más intrincada fuer
 - [x] `components/auth/AdminGuard.tsx` — un error **no-401** (500/red) no bloquea acceso (outage
       transitorio no debe encerrar al admin); 401 sí redirige (vía interceptor).
 
-## Fase 6 — Admin: Órdenes
+## Fase 6 — Admin: Órdenes ✅
 
 Donde el dueño opera pedidos reales — cancelaciones y reembolsos son operaciones sensibles.
 
-- [ ] `components/admin/orders/StatusBadges.tsx` — `status` y `paymentStatus` son campos
+- [x] `components/admin/orders/StatusBadges.tsx` — `status` y `paymentStatus` son campos
       independientes con rampas de color disjuntas (no deben compartir tono).
-- [ ] `components/admin/orders/OrdersTable.tsx` — paginación server-side (page size 20
-      desktop / 5 mobile vía `matchMedia`), a diferencia de `SalesTable` (client-side).
-- [ ] `components/admin/orders/OrderDetailModal.tsx` — fila de cupón solo aparece con
+- [x] `components/admin/orders/OrdersTable.tsx` — selección de renglón, suma de piezas, las
+      cuatro ramas de `labelNote` en la columna "Envío". La paginación server-side (page size 20
+      desktop / 5 mobile vía `matchMedia`) en realidad vive en `OrdersSection` (fuera del alcance
+      de esta fase), no en `OrdersTable` — el componente solo recibe `orders` ya paginado.
+- [x] `components/admin/orders/OrderDetailModal.tsx` — fila de cupón solo aparece con
       `couponDiscount > 0` y va sobre Shipping; columna "Talla" oculta si `size === 0`;
       cancelar/reembolsar visible solo en pending/paid; avance manual de estado
       forward-only (409 al ir hacia atrás o en cancelled/unpaid); reintento de guía Skydropx
       (`force: true` es la única vía para una segunda etiqueta pagada, con confirmación extra).
-- [ ] `components/admin/orders/OrdersPagination.tsx` — análogo a outlet pero server-driven.
+- [x] `components/admin/orders/OrdersPagination.tsx` — análogo a outlet pero server-driven.
+
+101 tests nuevos (`components/admin/orders/__tests__/` + `helpers/`); 112 en la carpeta contando los
+11 de `shipmentLabel.test.ts`, que ya existían. Branch coverage 100% en `OrdersTable`,
+`OrdersPagination`, `StatusBadges` y `shipmentLabel`; 97.72% en `OrderDetailModal` — las tres ramas
+restantes son la trampa de foco (`?? []` y `items.length === 0`, inalcanzables con un panel que
+siempre trae botones) y `reduceMotion: true` (solo el desplazamiento de entrada).
+
+Las ramas que faltaban al cerrar la fase **no las señaló el reporte** — son `&&`/`||` hijos de JSX,
+que la instrumentación de SWC no registra (ver la advertencia de arriba): el bloque de reembolso
+(`refundId`/`refundedAt`), el aviso de `shippingRequiresDropoff` dentro del modal, `references` con
+valor, la línea "· actualizado", y los handlers propios de la vista de cards de `OrdersTable`
+(jsdom la pinta en cada test, así que se veía ejercitada sin haber recibido un solo clic). Se
+encontraron leyendo el fuente a mano y se cerraron después; cada una se verificó rompiendo el
+fuente. Ver el `__tests__/README.md` de la carpeta.
+
+> `OrdersSection.tsx` (el contenedor) **sigue sin specs y no lo reclama ninguna fase**: el
+> `perPage` 20/5 vía `matchMedia`, la firma por renglón que decide cuándo suena el toast de Sileo,
+> y la distinción entre refetch automático y manual. Es lo más delicado que queda del módulo de
+> pedidos — está anotado en la Fase 9.
 
 ## Fase 7 — Admin: Productos
 
@@ -231,6 +252,13 @@ Donde el dueño opera pedidos reales — cancelaciones y reembolsos son operacio
       `ventas-<YYYY-MM>.csv` / `reposicion-<YYYY-MM>.csv`).
 - [ ] `components/admin/config/AccountCard.tsx` — requiere `currentPassword` para cualquier cambio.
 - [ ] `components/admin/config/AdminsCard.tsx` — listar/agregar/quitar admins.
+- [ ] `components/admin/sections/OrdersSection.tsx` — quedó fuera de la Fase 6 (que cubrió los
+      subcomponentes de `components/admin/orders/`) y es lo más delicado que sigue sin specs del
+      módulo de pedidos: `perPage` 20 desktop / 5 mobile vía `matchMedia`; el toast de Sileo, que
+      debe sonar **solo** cuando el refetch automático encuentra una firma de renglón distinta
+      (`status|paymentStatus|shipmentStatus|labelUrl|trackingNumber`) — nunca en la primera carga,
+      nunca tras un refresh manual, nunca tras cancelar desde el modal; y el filtro por día, que es
+      server-side aquí (a diferencia de `SalesTable`).
 
 ## Fase 10 — UI compartida y home (baja prioridad)
 
