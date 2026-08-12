@@ -218,14 +218,40 @@ fuente. Ver el `__tests__/README.md` de la carpeta.
 > y la distinción entre refetch automático y manual. Es lo más delicado que queda del módulo de
 > pedidos — está anotado en la Fase 9.
 
-## Fase 7 — Admin: Productos
+## Fase 7 — Admin: Productos ✅
 
-- [ ] `components/admin/products/ProductForm.tsx` — toggle "Maneja tallas" intercambia el input de
+- [x] `components/admin/products/ProductForm.tsx` — toggle "Maneja tallas" intercambia el input de
       tallas por "Cantidad en existencia" (`stockQuantity`); el submit manda solo el campo que
       corresponde al toggle, nunca ambos; galería de hasta 3 imágenes.
-- [ ] `components/admin/products/ProductCategoryView.tsx` — listado + filtros de categoría.
-- [ ] `components/admin/products/ProductDetailModal.tsx` — oculta el bloque "Tallas" completo
+- [x] `components/admin/products/ProductCategoryView.tsx` — listado + filtros de categoría.
+- [x] `components/admin/products/ProductDetailModal.tsx` — oculta el bloque "Tallas" completo
       cuando `product.hasSizes === false`.
+
+90 tests nuevos (`components/admin/products/__tests__/` + `helpers/`). Branch coverage 100% en
+`ProductForm` y `ProductCategoryView`; 97.05% en `ProductDetailModal` — la única rama restante es
+`reduceMotion ? 0 : 16` del desplazamiento de entrada (framer-motion), mismo tipo de gap aceptado
+que `reduceMotion: true` en `OrderDetailModal` (Fase 6). Ver el `__tests__/README.md` de la
+carpeta.
+
+**Bug real encontrado y corregido durante esta fase**: `ProductForm.tsx` fugaba los `blob:`
+previews de la galería. El `useEffect` de limpieza al desmontar tenía deps `[]`, así que su
+cleanup cerraba sobre el `newImages` del momento del MONTAJE (siempre vacío) y nunca sobre el
+estado real al desmontar — ninguna imagen agregada durante la sesión se revocaba. Mismo patrón de
+closure obsoleta que el bug de `CodeInput` (Fase 5). Arreglado con un ref sincronizado por un
+segundo efecto, que la cleanup sí lee al vuelo.
+
+Dos invariantes del reintento de imágenes llegaron a estar **en verde sin estar probadas** (el
+reporte marcaba 100% de branches en `ProductForm` de todos modos, porque no son ramas sino orden
+y bookkeeping dentro del `mutationFn`): que el borrado de imágenes va **antes** de la subida
+—libera cupo dentro del tope de 3— y que un `publicId` ya borrado se saca de `removedPublicIds`
+para que un reintento no vuelva a pegarle a una imagen fantasma. Se detectaron rompiendo el
+fuente (invertir el orden / quitar el `setRemovedPublicIds`) y comprobando que la suite seguía
+verde; hoy cada una tiene su aserción y ambas mutaciones fallan.
+
+Otra trampa (no un bug, una particularidad del entorno de test): un `<input type="number"
+step={1}>` bloquea el `submit` del lado del **navegador** cuando el valor no calza con el step
+(p. ej. `"2.5"` en `stockQuantity`) — el evento nunca llega a React. Probar la rama `.int()` de
+zod para ese campo necesitó `fireEvent.submit(form)` en vez de un clic normal en el botón.
 
 ## Fase 8 — Admin: Cupones y Gastos
 
