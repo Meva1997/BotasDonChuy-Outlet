@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -65,6 +66,7 @@ export default function ExpenseForm({
     register,
     handleSubmit,
     control,
+    setValue,
     formState: { errors },
   } = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseFormSchema(!editing)),
@@ -77,6 +79,16 @@ export default function ExpenseForm({
   // de optimizar el componente entero.
   const frequency = useWatch({ control, name: "frequency" });
   const isOnce = frequency === "once";
+
+  // react-hook-form no desregistra un input al desmontarlo (default
+  // `shouldUnregister: false`): un `endsAt` tecleado en mensual sobrevive el
+  // cambio a "única vez" aunque el campo —y su `FieldError`— ya no estén en el
+  // DOM. Sin este efecto, el guardado fallaba en silencio: `superRefine` sigue
+  // rechazando ese valor fantasma, pero no hay ningún mensaje visible que lo
+  // explique porque vive dentro del mismo `{!isOnce && …}` que el input.
+  useEffect(() => {
+    if (isOnce) setValue("endsAt", "");
+  }, [isOnce, setValue]);
 
   return (
     <form

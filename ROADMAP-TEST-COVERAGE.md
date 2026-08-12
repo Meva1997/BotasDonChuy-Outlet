@@ -253,18 +253,87 @@ step={1}>` bloquea el `submit` del lado del **navegador** cuando el valor no cal
 (p. ej. `"2.5"` en `stockQuantity`) — el evento nunca llega a React. Probar la rama `.int()` de
 zod para ese campo necesitó `fireEvent.submit(form)` en vez de un clic normal en el botón.
 
-## Fase 8 — Admin: Cupones y Gastos
+## Fase 8 — Admin: Cupones y Gastos ✅
 
-- [ ] `components/admin/coupons/CouponForm.tsx` — reglas cruzadas del formulario (porcentaje ≤
+- [x] `components/admin/coupons/CouponForm.tsx` — reglas cruzadas del formulario (porcentaje ≤
       100%, tope solo en tipo porcentaje, fin > inicio) espejo del backend.
-- [ ] `components/admin/coupons/CouponsTable.tsx` — "Cancelar" es `PUT { active:false }`, no
+- [x] `components/admin/coupons/CouponsTable.tsx` — "Cancelar" es `PUT { active:false }`, no
       delete; usa `couponStatus.ts` (ya con specs) para el badge de estado.
-- [ ] `components/admin/expenses/ExpenseForm.tsx` — nunca manda `amount`/`amountEffectiveFrom`
+- [x] `components/admin/expenses/ExpenseForm.tsx` — nunca manda `amount`/`amountEffectiveFrom`
       (eso vive en `ExpenseAmountForm`, formulario separado a propósito).
-- [ ] `components/admin/expenses/ExpenseAmountForm.tsx` — cada envío agrega una **versión** con
+- [x] `components/admin/expenses/ExpenseAmountForm.tsx` — cada envío agrega una **versión** con
       fecha, nunca sobreescribe historial.
-- [ ] `components/admin/expenses/ExpenseHistory.tsx` + `ShippingCostNote.tsx` — el costo de envío
+- [x] `components/admin/expenses/ExpenseHistory.tsx` + `ShippingCostNote.tsx` — el costo de envío
       derivado se muestra pero nunca se suma a totales/categorías (ya restado en GANANCIA BRUTA).
+      `ShippingCostNote` se prueba desde sus **dos** consumidores (historial y tarjeta de resumen):
+      existe compartido justamente porque la advertencia se pinta en dos pantallas.
+- [x] `components/admin/expenses/ExpensesTable.tsx` — la gemela de `CouponsTable`: "Dar de baja" es
+      `PUT { active:false }`, no delete; "Cambiar precio" es su propia acción, separada de editar
+      (el monto es una versión fechada, no una columna); `RunRateCell` pinta "—" y nunca "$0.00".
+- [x] `components/admin/expenses/ExpenseSummaryCard.tsx` — `monthlyRunRate` y `upcomingTotal` son
+      cifras independientes (sumarlas sería contar dos veces); la nota de los `once` que no entran
+      al run-rate; el tope de cuatro categorías; el timeline agrupado por fecha y el recorte "ver
+      más".
+- [x] `components/admin/expenses/ExpenseStateBadge.tsx` — los cinco estados con tonos disjuntos
+      (`cobrado` y `terminado` son los dos pasado y comparten familia, pero no tono).
+
+40 tests nuevos en `components/admin/coupons/__tests__/` (`CouponForm` + `CouponsTable`) y 117 en
+`components/admin/expenses/__tests__/` (`ExpenseForm` + `ExpenseAmountForm` + `ExpenseHistory` +
+`ShippingCostNote` + `ExpensesTable` + `ExpenseSummaryCard` + `ExpenseStateBadge`). Branch coverage
+100% en todo `expenses/` salvo `ExpenseForm` (90.32%), y 100% en `CouponsTable` — 92.3% en
+`CouponForm`.
+
+Las ramas que quedan fuera **no son todas el mismo tipo de gap**, y por eso se listan una por una
+en el `__tests__/README.md` de cada carpeta en vez de agruparse bajo una sola justificación:
+
+- **Controles que no pueden fallar su propia validación** (las 3 de `ExpenseForm` y 2 de
+  `CouponForm`): un `<select>` acotado a un enum, y un `<input type="date">`, que normaliza
+  cualquier texto fuera de formato antes de que React lo vea.
+- **Un error bloqueado por el DOM antes de zod** (`errors.description` en `CouponForm`): el único
+  mensaje posible es "Máximo 200 caracteres" y el `maxLength={200}` nativo del input ya impide
+  teclear o pegar más allá de eso.
+- **Código defensivo muerto** (el `?? ""` de `current[field]` en `CouponForm`): no es un error de
+  campo — `useWatch` corre sobre un formulario cuyos `defaultValues` ya traen las cinco claves de
+  `CLEARABLE_LABELS` como string, así que ese valor nunca es `undefined` en ejecución real.
+- **`formatY` de `ExpenseHistory` no es una rama sin cubrir sino una función entera**: el branch %
+  de ese archivo es 100%; lo que el reporte marca es su statement (y el 57% de `% Funcs`). Solo la
+  invoca `<YAxis tickFormatter={formatY}>`, y sin dimensiones reales `ResponsiveContainer` no
+  renderiza el eje en jsdom.
+
+Mismo criterio, en los cuatro casos, que los gaps de `reduceMotion`/`step` ya aceptados en
+`orders/`/`products/__tests__/README.md`.
+
+**Bug real encontrado y corregido durante esta fase**: `ExpenseForm.tsx` fallaba en silencio al
+guardar. El campo "Fecha de término" (y su `FieldError`) solo existen en el DOM cuando
+`frequency !== "once"`, pero react-hook-form no desregistra un input al desmontarlo por default
+(`shouldUnregister: false`) — un `endsAt` tecleado en mensual sobrevivía el cambio a "única vez" y
+`superRefine` seguía rechazándolo al enviar, sin ningún mensaje visible que lo explicara (vivía
+dentro del mismo bloque condicional ya invisible). Se arregló con un `useEffect` que limpia
+`endsAt` en cuanto `frequency` se vuelve `"once"`, en vez de solo esconder el campo. Se verificó
+rompiéndolo de nuevo y confirmando que la prueba correspondiente fallaba — mismo patrón de bug que
+`CodeInput` (Fase 5) y `ProductForm` (Fase 7), aunque de naturaleza distinta (aquí RHF *conserva*
+el valor de un campo desmontado en vez de perderlo).
+
+La ambigüedad de texto es la trampa recurrente de este módulo y aparece en las tres pantallas
+(documentada en `expenses/__tests__/README.md`): el total del mes activo de `ExpenseHistory`
+coincide con el monto de un `byExpense` de un solo renglón; "Monto vigente" y "Carga mensual" son
+el mismo número en un gasto mensual (los casos que prueban ambas columnas usan uno **semanal**); y
+el `upcomingTotal` de `ExpenseSummaryCard` coincide con el total del día cuando la ventana trae un
+solo bloque. En los tres casos las aserciones se acotan (`heading.nextElementSibling`,
+`within(fecha.parentElement)`) o las fixtures se eligen para que los números difieran, en vez de
+buscar el texto suelto.
+
+Cada invariante nueva se verificó rompiendo el fuente: "Dar de baja" convertido en delete, el
+`RunRateCell` pintando "$0.00", el `PriceHistoryHint` apareciendo sin cambios, el tope de
+categorías subido a 5, el monto por cargo repetido con un solo cargo en el día, el envío derivado
+sumado a la carga mensual, y `cobrado` compartiendo tono con `terminado` — las siete mutaciones
+hacen fallar la suite.
+
+> Quedan sin specs `CouponsSection.tsx` y `ExpensesSection.tsx` (los contenedores), que **no los
+> reclama ninguna fase** — mismo caso que `OrdersSection` en la Fase 6. Son quienes deciden qué
+> mandar al backend: el `couponWriteErrorMessage`, el `deactivated: true` del DELETE de cupones
+> (soft-deactivate cuando ya hay canjes) y la invalidación de queries tras cada escritura. Es lo
+> más delicado que sigue descubierto del módulo — anotado en la Fase 9 junto a `OrdersSection`.
 
 ## Fase 9 — Admin: Dashboard, Reportes, Config
 
@@ -285,6 +354,13 @@ zod para ese campo necesitó `fireEvent.submit(form)` en vez de un clic normal e
       (`status|paymentStatus|shipmentStatus|labelUrl|trackingNumber`) — nunca en la primera carga,
       nunca tras un refresh manual, nunca tras cancelar desde el modal; y el filtro por día, que es
       server-side aquí (a diferencia de `SalesTable`).
+- [ ] `components/admin/sections/CouponsSection.tsx` + `ExpensesSection.tsx` — quedaron fuera de la
+      Fase 8 (que cubrió los subcomponentes de `coupons/` y `expenses/`) por el mismo motivo que
+      `OrdersSection` quedó fuera de la Fase 6: los subcomponentes reciben `onSubmit`/`onToggleActive`
+      como props y son estas secciones las que deciden qué mandar al backend. Lo que falta probar es
+      justo eso: `couponWriteErrorMessage`, el `deactivated: true` del DELETE de cupones (el backend
+      hace soft-deactivate cuando el cupón ya tiene canjes, y la UI debe reportar lo que de verdad
+      pasó, no lo que pidió), y que cada escritura invalide las queries correctas.
 
 ## Fase 10 — UI compartida y home (baja prioridad)
 
