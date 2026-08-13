@@ -85,8 +85,11 @@ export default function AccountCard() {
       <form onSubmit={onSubmit} noValidate className="space-y-5">
         {/* Email */}
         <div>
-          <label className={LABEL_BASE}>Correo</label>
+          <label className={LABEL_BASE} htmlFor="account-form-email">
+            Correo
+          </label>
           <input
+            id="account-form-email"
             type="email"
             autoComplete="email"
             className={inputCls(!!errors.email)}
@@ -97,8 +100,11 @@ export default function AccountCard() {
 
         {/* Contraseña actual (obligatoria para cualquier cambio) */}
         <div>
-          <label className={LABEL_BASE}>Contraseña Actual</label>
+          <label className={LABEL_BASE} htmlFor="account-form-current-password">
+            Contraseña Actual
+          </label>
           <input
+            id="account-form-current-password"
             type="password"
             autoComplete="current-password"
             className={inputCls(!!errors.currentPassword)}
@@ -109,8 +115,11 @@ export default function AccountCard() {
 
         {/* Nueva contraseña (opcional) */}
         <div>
-          <label className={LABEL_BASE}>Nueva Contraseña (opcional)</label>
+          <label className={LABEL_BASE} htmlFor="account-form-new-password">
+            Nueva Contraseña (opcional)
+          </label>
           <input
+            id="account-form-new-password"
             type="password"
             autoComplete="new-password"
             className={inputCls(!!errors.newPassword)}
@@ -123,8 +132,11 @@ export default function AccountCard() {
         </div>
 
         <div>
-          <label className={LABEL_BASE}>Confirmar Nueva Contraseña</label>
+          <label className={LABEL_BASE} htmlFor="account-form-confirm-password">
+            Confirmar Nueva Contraseña
+          </label>
           <input
+            id="account-form-confirm-password"
             type="password"
             autoComplete="new-password"
             className={inputCls(!!errors.confirmPassword)}

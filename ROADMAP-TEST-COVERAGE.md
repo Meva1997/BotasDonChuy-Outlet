@@ -335,32 +335,90 @@ hacen fallar la suite.
 > (soft-deactivate cuando ya hay canjes) y la invalidación de queries tras cada escritura. Es lo
 > más delicado que sigue descubierto del módulo — anotado en la Fase 9 junto a `OrdersSection`.
 
-## Fase 9 — Admin: Dashboard, Reportes, Config
+## Fase 9 — Admin: Dashboard, Reportes, Config ✅
 
-- [ ] `components/admin/data/KpiGrid.tsx` — render genérico por label (el KPI "COSTO DE ENVÍO" con
+- [x] `components/admin/data/KpiGrid.tsx` — render genérico por label (el KPI "COSTO DE ENVÍO" con
       `trend.positive` invertido a propósito — verificar que el signo se lea bien, no el número).
-- [ ] `components/admin/data/SalesTable.tsx` — paginación 5/página + filtro por día, client-side.
-- [ ] `components/admin/data/InventoryTable.tsx`, `RevenueChart.tsx` — render básico con datos
+- [x] `components/admin/data/SalesTable.tsx` — paginación 5/página + filtro por día, client-side.
+- [x] `components/admin/data/InventoryTable.tsx`, `RevenueChart.tsx` — render básico con datos
       precomputados del backend (nada de matemática local salvo lo ya cubierto en specs puros).
-- [ ] `components/admin/reports/SalesReport.tsx` / `ReplenishmentReport.tsx` — selector de mes,
+- [x] `components/admin/reports/SalesReport.tsx` / `ReplenishmentReport.tsx` — selector de mes,
       export CSV (`csvField` con BOM — verificar que el nombre de archivo sea
-      `ventas-<YYYY-MM>.csv` / `reposicion-<YYYY-MM>.csv`).
-- [ ] `components/admin/config/AccountCard.tsx` — requiere `currentPassword` para cualquier cambio.
-- [ ] `components/admin/config/AdminsCard.tsx` — listar/agregar/quitar admins.
-- [ ] `components/admin/sections/OrdersSection.tsx` — quedó fuera de la Fase 6 (que cubrió los
+      `ventas-<YYYY-MM>.csv` / `reposicion-<YYYY-MM>.csv`). El **selector de mes** resultó vivir en
+      `ReportsSection`, no en los reportes, así que se probó ahí (mes por defecto = el último
+      completo, y su reconciliación cuando el set de meses cambia bajo los pies).
+- [x] `components/admin/config/AccountCard.tsx` — requiere `currentPassword` para cualquier cambio.
+- [x] `components/admin/config/AdminsCard.tsx` — listar/agregar/quitar admins.
+- [x] `components/admin/sections/OrdersSection.tsx` — quedó fuera de la Fase 6 (que cubrió los
       subcomponentes de `components/admin/orders/`) y es lo más delicado que sigue sin specs del
       módulo de pedidos: `perPage` 20 desktop / 5 mobile vía `matchMedia`; el toast de Sileo, que
       debe sonar **solo** cuando el refetch automático encuentra una firma de renglón distinta
       (`status|paymentStatus|shipmentStatus|labelUrl|trackingNumber`) — nunca en la primera carga,
       nunca tras un refresh manual, nunca tras cancelar desde el modal; y el filtro por día, que es
       server-side aquí (a diferencia de `SalesTable`).
-- [ ] `components/admin/sections/CouponsSection.tsx` + `ExpensesSection.tsx` — quedaron fuera de la
+- [x] `components/admin/sections/CouponsSection.tsx` + `ExpensesSection.tsx` — quedaron fuera de la
       Fase 8 (que cubrió los subcomponentes de `coupons/` y `expenses/`) por el mismo motivo que
       `OrdersSection` quedó fuera de la Fase 6: los subcomponentes reciben `onSubmit`/`onToggleActive`
       como props y son estas secciones las que deciden qué mandar al backend. Lo que falta probar es
       justo eso: `couponWriteErrorMessage`, el `deactivated: true` del DELETE de cupones (el backend
       hace soft-deactivate cuando el cupón ya tiene canjes, y la UI debe reportar lo que de verdad
       pasó, no lo que pidió), y que cada escritura invalide las queries correctas.
+- [x] `components/admin/sections/DataSection.tsx` + `ConfigSection.tsx` — no estaban en la lista
+      original, pero son los contenedores de las dos pantallas que sí nombra el título de la fase.
+      `DataSection` decide **qué ventana de tiempo se mira**, y ese dato viaja por dos caminos que
+      tienen que coincidir (el rótulo "últimos N días" y el índice de `kpisByPeriod`); `ConfigSection`
+      tiene una sola decisión, pero importa: cerrar sesión limpia el store **y** navega.
+
+210 tests nuevos: 43 en `components/admin/data/__tests__/`, 45 en `reports/__tests__/`, 40 en
+`config/__tests__/` y 82 en `sections/__tests__/`. Branch coverage 100% en `KpiGrid`, `SalesTable`,
+`InventoryTable`, `RevenueChart`, `SalesReport`, `ReplenishmentReport`, `formUi`, `OrdersSection`,
+`DataSection` y `ConfigSection`; 96% en `ReportsSection`, 96.36% en `ExpensesSection`, 95.12% en
+`CouponsSection`, 97.05% en `AdminsCard` y 92.85% en `AccountCard`. Cada carpeta tiene su
+`__tests__/README.md` con las ramas que quedan fuera, una por una — todas son código defensivo
+inalcanzable desde la UI real (`?? null` sobre un `variables` que TanStack Query siempre fija,
+`?? ""` bajo un guard que ya garantiza el valor, un `<select>` acotado a un enum) más el `formatter`
+del tooltip de recharts, que jsdom no llega a activar.
+
+**Se verificaron 21 invariantes rompiendo el fuente** y comprobando que la suite falla: el color
+invertido de la tendencia, el envío fuera de la ganancia por fila, el corte de `StockBadge`, el BOM
+del CSV, el centinela 999 pintado como cobertura, la comparación de ids sin `String()`, la
+contraseña nueva mandada siempre, "Cancelar"/"Dar de baja" convertidos en delete, el `code` en la
+edición de un cupón, el `deactivated` ignorado, la invalidación del dashboard, el monto colado en la
+edición de un gasto, el mes por defecto parcial, el mes elegido sin reconciliar, los KPIs de
+rentabilidad clavados en 30 días, el logout sin navegación, y las cuatro supresiones del toast de
+pedidos.
+
+**Dos bugs reales encontrados y corregidos durante esta fase:**
+
+1. **`OrdersSection.tsx` — el toast se apagaba solo.** `isManualRefreshRef` se limpia dentro del
+   efecto que compara firmas, y ese efecto dependía de `[data, …]`; pero TanStack Query **comparte
+   estructura**: si un refetch devuelve exactamente lo mismo, `data` conserva la misma referencia y
+   el efecto no vuelve a correr. Un refresh manual que no encontraba nada nuevo —el caso más común,
+   porque el dueño refresca justo para ver si cambió algo— dejaba la marca armada para siempre, y el
+   **siguiente** refetch automático se comía su aviso en silencio. Arreglado agregando
+   `dataUpdatedAt` a las dependencias. Es el tercer bug de esta familia (`CodeInput` Fase 5,
+   `ProductForm` Fase 7, `ExpenseForm` Fase 8).
+2. **`AccountCard.tsx` y `AdminsCard.tsx` — ocho campos sin etiqueta accesible.** Los `<label>` eran
+   hermanos de sus inputs, sin `htmlFor` ni anidamiento: para un lector de pantalla los campos no
+   tenían nombre (dos `<input type="password">` indistinguibles entre sí) y hacer clic en la
+   etiqueta no enfocaba el campo. Salió a la luz porque `getByLabelText` falla con *"no form control
+   was found associated to that label"*. Corregido con `htmlFor`/`id`, que es el patrón que ya
+   seguían `ExpenseForm`, `CouponForm` y `ProductForm` — las tarjetas de configuración eran las
+   únicas del panel sin él. (Del mismo tipo, pero **no** un bug —nada estaba roto para nadie— es el
+   `role="group"` + `aria-label` que ganó el selector de periodo de `DataSection.tsx`: sus tres
+   botones ya tenían nombre propio, el que faltaba era el del contenedor, y `RevenueChart` pinta
+   otros tres con las mismas etiquetas. Es el único cambio de fuente de esta fase que no salió de
+   un defecto; se documenta en `sections/__tests__/README.md`.)
+
+`RevenueChart` cerró un hueco que la Fase 8 había dado por incubrible: mockeando
+`recharts.ResponsiveContainer` para clonar a su hijo con dimensiones fijas, el gráfico sí renderiza
+en jsdom y las dos ramas de `formatY` se leen del DOM. **El mismo truco sirve para el `formatY` de
+`ExpenseHistory`**, anotado como gap en `expenses/__tests__/README.md`.
+
+> Siguen sin specs, y no los reclama ninguna fase: `BrandSection.tsx` (autosave con debounce, logo
+> como preview `blob:` no persistido) y `ProductSection.tsx` (contenedor de `ProductForm` +
+> `ProductCategoryView`, ambos ya cubiertos en la Fase 7). `ImportSection.tsx` está en la misma
+> situación desde la Fase 13, con sus subcomponentes cubiertos y el contenedor no.
 
 ## Fase 10 — UI compartida y home (baja prioridad)
 

@@ -73,7 +73,7 @@ export default function OrdersSection() {
   const isDesktop = useIsDesktopViewport();
   const perPage = isDesktop ? PER_PAGE_DESKTOP : PER_PAGE_MOBILE;
 
-  const { data, isPending, isFetching, isError, refetch } = useQuery({
+  const { data, dataUpdatedAt, isPending, isFetching, isError, refetch } = useQuery({
     queryKey: adminOrderKeys.list(page, perPage, selectedDay || undefined),
     queryFn: () => getAdminOrders(page, perPage, selectedDay || undefined),
     placeholderData: keepPreviousData,
@@ -112,7 +112,13 @@ export default function OrdersSection() {
 
     snapshotsRef.current.set(key, current);
     isManualRefreshRef.current = false;
-  }, [data, page, perPage, selectedDay]);
+    // `dataUpdatedAt` (y no solo `data`) porque TanStack Query comparte
+    // estructura: si un refetch devuelve exactamente lo mismo, `data` conserva
+    // la MISMA referencia y este efecto no volvería a correr. Con `data` solo, un
+    // refresh manual que no encuentra nada nuevo —el caso más común— dejaba
+    // `isManualRefreshRef` armada para siempre, y el siguiente refetch
+    // automático se comía su toast en silencio.
+  }, [data, dataUpdatedAt, page, perPage, selectedDay]);
 
   const handleManualRefresh = () => {
     isManualRefreshRef.current = true;
