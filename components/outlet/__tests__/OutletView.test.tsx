@@ -394,8 +394,12 @@ describe("OutletView", () => {
     const input = screen.getByLabelText("Buscar en el catálogo");
     await user.clear(input);
 
-    await waitFor(() =>
-      expect(mockReplace).toHaveBeenLastCalledWith(expect.not.stringContaining("q="))
+    await waitFor(
+      () =>
+        expect(mockReplace).toHaveBeenLastCalledWith(
+          expect.not.stringContaining("q=")
+        ),
+      { timeout: 1500 }
     );
   });
 
@@ -407,8 +411,10 @@ describe("OutletView", () => {
 
     await user.type(screen.getByLabelText("Buscar en el catálogo"), "b");
 
-    await waitFor(() =>
-      expect(mockReplace).toHaveBeenCalledWith(expect.stringContaining("q=b"))
+    await waitFor(
+      () =>
+        expect(mockReplace).toHaveBeenCalledWith(expect.stringContaining("q=b")),
+      { timeout: 1500 }
     );
     expect(mockPush).not.toHaveBeenCalled();
   });

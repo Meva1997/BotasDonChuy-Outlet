@@ -83,6 +83,29 @@ export function needsShipmentReview(order: AdminOrder): boolean {
 }
 
 /**
+ * True mientras el flujo manual de "Marcar como enviado" (OrderDetailModal)
+ * sigue disponible para este pedido — única fuente de verdad para esa
+ * condición, para que no se desincronice del botón que gobierna.
+ */
+export function canMarkOrderShipped(order: AdminOrder): boolean {
+  return order.status === "paid";
+}
+
+/**
+ * `Order.shippingRequiresDropoff` es una bandera congelada al pagar (viene de
+ * la tarifa de Skydropx elegida en el checkout) y el backend NUNCA la limpia
+ * — es dato histórico, igual que `unitCost` en un `OrderItem` (ver
+ * CLAUDE.md). Por eso mostrarla es responsabilidad del frontend: solo tiene
+ * sentido como aviso de acción mientras el pedido sigue `paid` sin enviar —
+ * una vez que pasa a `shipped`/`delivered` el dueño ya llevó el paquete a la
+ * sucursal (o nunca lo hará vía este flujo, si se marcó a mano), así que
+ * seguir pidiéndolo es ruido. Espeja `canMarkOrderShipped`.
+ */
+export function needsDropoffAction(order: AdminOrder): boolean {
+  return order.shippingRequiresDropoff === true && canMarkOrderShipped(order);
+}
+
+/**
  * El backend redacta en es-MX y con instrucciones concretas (qué buscar en el
  * panel de Skydropx, si conviene reintentar), así que su `message` siempre gana
  * al genérico — que solo cubre el caso de red.

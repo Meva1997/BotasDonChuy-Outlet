@@ -20,8 +20,13 @@ const ARROW_STYLE: React.CSSProperties = {
   backgroundPosition: "right 12px center",
 };
 
-/** Cuánto se espera tras la última tecla antes de tocar la URL (y por tanto la query). */
-const DEBOUNCE_MS = 300;
+/**
+ * Cuánto se espera tras la última tecla antes de tocar la URL (y por tanto la
+ * query). 1s porque es el campo donde más se escribe seguido (nombre o
+ * código completo) — con menos tiempo se dispara una consulta por cada letra
+ * antes de que el comprador termine de escribir la palabra.
+ */
+const DEBOUNCE_MS = 1000;
 
 /** Los tres campos de texto que viajan juntos en un solo commit. */
 interface TextFilters {

@@ -537,6 +537,14 @@ describe("OrderDetailModal — sin recolección a domicilio", () => {
     renderModal({ shippingRequiresDropoff: false });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it.each(["shipped", "delivered"] as const)(
+    "pedido %s ya no muestra el aviso aunque la bandera siga en true",
+    (status) => {
+      renderModal({ shippingRequiresDropoff: true, status });
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    }
+  );
 });
 
 describe("OrderDetailModal — campo Referencias", () => {

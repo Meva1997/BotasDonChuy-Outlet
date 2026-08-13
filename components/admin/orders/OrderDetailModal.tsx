@@ -16,7 +16,9 @@ import { productKeys } from "@/lib/api/products";
 import { formatPrice } from "@/lib/utils";
 import { EASE_LUXE } from "@/lib/ui/motion";
 import {
+  canMarkOrderShipped,
   canRetryShipment,
+  needsDropoffAction,
   retryShipmentErrorMessage,
   shipmentLabelState,
 } from "./shipmentLabel";
@@ -155,7 +157,7 @@ export default function OrderDetailModal({
   const canCancel = order.status === "pending" || order.status === "paid";
   // Los estados que el backend rechaza con 409 no ofrecen acción. Un pedido ya
   // `shipped` puede repetir el estado para agregar la guía que le falta.
-  const canMarkShipped = order.status === "paid";
+  const canMarkShipped = canMarkOrderShipped(order);
   const canAddTracking = order.status === "shipped" && !order.trackingNumber;
   const canMarkDelivered =
     order.status === "paid" || order.status === "shipped";
@@ -450,7 +452,7 @@ export default function OrderDetailModal({
               </Field>
             </div>
 
-            {order.shippingRequiresDropoff && (
+            {needsDropoffAction(order) && (
               <div
                 role="alert"
                 className="flex items-start gap-2.5 rounded-md border border-red-400/40 bg-red-500/10 px-4 py-3"

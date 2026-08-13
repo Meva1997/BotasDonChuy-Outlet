@@ -1,7 +1,9 @@
 import { AxiosError, AxiosHeaders } from "axios";
 import type { AdminOrder } from "@/lib/api/adminOrders";
 import {
+  canMarkOrderShipped,
   canRetryShipment,
+  needsDropoffAction,
   needsShipmentReview,
   retryShipmentErrorMessage,
   shipmentLabelState,
@@ -152,6 +154,39 @@ describe("needsShipmentReview", () => {
     expect(needsShipmentReview(order({ skydropxShipmentId: "shp_1" }))).toBe(
       false
     );
+  });
+});
+
+describe("canMarkOrderShipped", () => {
+  it("solo lo permite con el pedido pagado — único estado donde el 409 del backend no aplica", () => {
+    expect(canMarkOrderShipped(order({ status: "paid" }))).toBe(true);
+    for (const status of ["pending", "shipped", "delivered", "cancelled"] as const) {
+      expect(canMarkOrderShipped(order({ status }))).toBe(false);
+    }
+  });
+});
+
+describe("needsDropoffAction", () => {
+  it("solo avisa con la bandera activa y el pedido todavía pagado sin enviar", () => {
+    expect(
+      needsDropoffAction(order({ status: "paid", shippingRequiresDropoff: true }))
+    ).toBe(true);
+  });
+
+  it("no avisa sin la bandera, sin importar el estado", () => {
+    expect(
+      needsDropoffAction(order({ status: "paid", shippingRequiresDropoff: false }))
+    ).toBe(false);
+  });
+
+  it("deja de avisar en cuanto el pedido avanza — enviado, entregado, pendiente o cancelado", () => {
+    // `shipped`/`delivered`: el dueño ya llevó el paquete (o lo marcó a mano).
+    // `pending`/`cancelled`: canMarkOrderShipped ya es false por su cuenta.
+    for (const status of ["pending", "shipped", "delivered", "cancelled"] as const) {
+      expect(
+        needsDropoffAction(order({ status, shippingRequiresDropoff: true }))
+      ).toBe(false);
+    }
   });
 });
 

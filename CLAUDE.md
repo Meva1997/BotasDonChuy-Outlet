@@ -88,7 +88,7 @@ components/
                   #   orden + price range): the backend resolves everything in SQL — front NEVER
                   #   filters/sorts/trims client-side (would break pagination). URL is the source of
                   #   truth, sanitized via lib/domain/catalogFilters.ts. Search + price fields share
-                  #   one local draft (300ms debounce) committed via `replace: true` (not `push`, or
+                  #   one local draft (1000ms debounce) committed via `replace: true` (not `push`, or
                   #   every keystroke would pollute history); inputs show the raw URL text, not the
                   #   sanitized value (sanitizing mid-type would erase what's being typed — garbage in
                   #   the URL is harmless, the backend silently ignores it). Draft re-seeding on URL

@@ -90,16 +90,14 @@ describe("OrdersTable — vista de cards (móvil)", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("con dropoff pero sin guía ni nota, la card pinta el badge y ninguna nota", () => {
-    // Rama `note === null` de LabelNote: cancelado (no puede haber guía) pero la
-    // paquetería sigue sin recoger a domicilio.
+  it("cancelado con dropoff no pinta el badge (nunca va a haber envío)", () => {
     const order = makeAdminOrder({
       status: "cancelled",
       shippingRequiresDropoff: true,
       skydropxShipmentId: null,
     });
     render(<OrdersTable orders={[order]} onSelect={jest.fn()} />);
-    expect(screen.getAllByText("Sin recolección").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Sin recolección")).not.toBeInTheDocument();
     expect(screen.queryByText("Guía en proceso")).not.toBeInTheDocument();
     expect(screen.queryByText("Sin guía")).not.toBeInTheDocument();
   });
@@ -197,6 +195,19 @@ describe("OrdersTable — sin recolección a domicilio", () => {
     const table = screen.getByRole("table");
     expect(within(table).getByText("—")).toBeInTheDocument();
   });
+
+  it.each(["shipped", "delivered"] as const)(
+    "pedido %s con dropoff ya no pinta el badge (la acción ya se hizo o no aplica)",
+    (status) => {
+      const order = makeAdminOrder({
+        status,
+        shippingRequiresDropoff: true,
+        labelUrl: "https://example.com/label.pdf",
+      });
+      render(<OrdersTable orders={[order]} onSelect={jest.fn()} />);
+      expect(screen.queryByText("Sin recolección")).not.toBeInTheDocument();
+    }
+  );
 });
 
 describe("OrdersTable — formato de fecha", () => {

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import OutletFilters, { type OutletFiltersProps } from "../OutletFilters";
 
 // La pieza más intrincada fuera de checkout: URL como fuente de verdad, un
-// borrador local con debounce de 300ms, y la regla de que los inputs pintan el
+// borrador local con debounce de 1000ms, y la regla de que los inputs pintan el
 // texto CRUDO de la URL (nunca el valor saneado) para no borrarle al comprador
 // lo que está escribiendo. Ver el comentario largo en OutletFilters.tsx.
 
@@ -27,7 +27,7 @@ function baseProps(overrides: Partial<OutletFiltersProps> = {}) {
 }
 
 /**
- * Los dos tests del debounce corren con timers falsos: esperar 350 ms reales por
+ * Los dos tests del debounce corren con timers falsos: esperar más de 1s reales por
  * cada uno solo alarga la suite. `advanceTimers` mantiene a user-event en sincronía
  * con el reloj falso (sin él, `user.type` se cuelga esperando su propio delay).
  */
@@ -53,7 +53,7 @@ describe("OutletFilters", () => {
     expect(screen.getByLabelText("Precio máximo")).toHaveValue("900");
   });
 
-  it("commitea los tres campos de texto juntos tras el debounce de 300ms", async () => {
+  it("commitea los tres campos de texto juntos tras el debounce de 1000ms", async () => {
     const onTextFiltersCommit = jest.fn();
     const user = withFakeTimers();
     render(<OutletFilters {...baseProps({ onTextFiltersCommit })} />);
@@ -63,7 +63,7 @@ describe("OutletFilters", () => {
     expect(onTextFiltersCommit).not.toHaveBeenCalled();
 
     act(() => {
-      jest.advanceTimersByTime(350);
+      jest.advanceTimersByTime(1050);
     });
 
     // Cuatro teclas, un solo commit: el `clearTimeout` del cleanup es lo que
@@ -82,7 +82,7 @@ describe("OutletFilters", () => {
     render(<OutletFilters {...baseProps({ qText: "bota", onTextFiltersCommit })} />);
 
     act(() => {
-      jest.advanceTimersByTime(350);
+      jest.advanceTimersByTime(1050);
     });
 
     expect(onTextFiltersCommit).not.toHaveBeenCalled();

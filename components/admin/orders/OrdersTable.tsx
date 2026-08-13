@@ -2,7 +2,11 @@
 
 import type { AdminOrder } from "@/lib/api/adminOrders";
 import { formatPrice } from "@/lib/utils";
-import { canRetryShipment, needsShipmentReview } from "./shipmentLabel";
+import {
+  canRetryShipment,
+  needsDropoffAction,
+  needsShipmentReview,
+} from "./shipmentLabel";
 import {
   OrderStatusBadge,
   PaymentStatusBadge,
@@ -133,7 +137,7 @@ export default function OrdersTable({
                   <PaymentStatusBadge status={order.paymentStatus} />
                 </div>
               </div>
-              {(order.shippingRequiresDropoff ||
+              {(needsDropoffAction(order) ||
                 order.labelUrl ||
                 labelNote(order)) && (
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -141,7 +145,7 @@ export default function OrdersTable({
                     Envío
                   </span>
                   <div className="flex items-center gap-2 flex-wrap justify-end">
-                    {order.shippingRequiresDropoff && <DropoffBadge />}
+                    {needsDropoffAction(order) && <DropoffBadge />}
                     {order.labelUrl ? (
                       <a
                         href={order.labelUrl}
@@ -220,7 +224,7 @@ export default function OrdersTable({
                 </td>
                 <td className={td}>
                   <div className="flex flex-col items-center gap-1.5">
-                    {order.shippingRequiresDropoff && <DropoffBadge />}
+                    {needsDropoffAction(order) && <DropoffBadge />}
                     {order.labelUrl ? (
                       <a
                         href={order.labelUrl}
@@ -237,9 +241,7 @@ export default function OrdersTable({
                         className="text-[10px] tracking-[0.15em] uppercase"
                       />
                     ) : (
-                      !order.shippingRequiresDropoff && (
-                        <span className="text-amber-100/20">—</span>
-                      )
+                      <span className="text-amber-100/20">—</span>
                     )}
                   </div>
                 </td>
