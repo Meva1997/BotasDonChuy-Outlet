@@ -420,17 +420,60 @@ en jsdom y las dos ramas de `formatY` se leen del DOM. **El mismo truco sirve pa
 > `ProductCategoryView`, ambos ya cubiertos en la Fase 7). `ImportSection.tsx` está en la misma
 > situación desde la Fase 13, con sus subcomponentes cubiertos y el contenedor no.
 
-## Fase 10 — UI compartida y home (baja prioridad)
+## Fase 10 — UI compartida y home (baja prioridad) ✅
 
 Mayormente presentacional; útil pero de menor riesgo que lo anterior.
 
-- [ ] `components/ui/Cart.tsx` — fila oculta si `item.size === 0`.
-- [ ] `components/ui/ImageCarousel.tsx` — respeta `useReducedMotion()`.
-- [ ] `components/ui/FormControls.tsx` — `TextField`/`SelectField` compartidos por checkout/auth.
-- [ ] `components/home/Hero.tsx` — conteo de piezas por categoría vía `getProducts({ categoria,
+- [x] `components/ui/Cart.tsx` — fila oculta si `item.size === 0`.
+- [x] `components/ui/ImageCarousel.tsx` — respeta `useReducedMotion()`.
+- [x] `components/ui/FormControls.tsx` — `TextField`/`SelectField` compartidos por checkout/auth.
+- [x] `components/home/Hero.tsx` — conteo de piezas por categoría vía `getProducts({ categoria,
       perPage: 1 })`, solo lee `total`.
-- [ ] `components/home/NavHeader.tsx`, `Footer.tsx`, `CategoryCard.tsx` — smoke tests de render y
+- [x] `components/home/NavHeader.tsx`, `Footer.tsx`, `CategoryCard.tsx` — smoke tests de render y
       links.
+
+66 tests nuevos: 21 en `Cart.test.tsx`, 12 en `ImageCarousel.test.tsx`, 11 en
+`FormControls.test.tsx` (`components/ui/__tests__/`), 6 en `Hero.test.tsx`, 8 en
+`NavHeader.test.tsx`, 4 en `Footer.test.tsx`, 4 en `CategoryCard.test.tsx`
+(`components/home/__tests__/`). Branch coverage 100% en `FormControls`, `Hero`, `Footer` y
+`CategoryCard`; 95.23% en `NavHeader`; 92.3% en `Cart`; 91.17% en `ImageCarousel`. Statements/lines/
+funcs 100% en los siete archivos. Cada carpeta tiene su `__tests__/README.md` y su propio
+`helpers/factories.ts` (los de `home/` están duplicados de los de `ui/` a propósito: un `__tests__/`
+no importa de una carpeta hermana, mismo criterio que el `apiError.ts` duplicado entre `checkout/` y
+`auth/`).
+
+**Bug de infraestructura encontrado y corregido**: `jest.setup.ts` stubeaba `matchMedia` (para
+`useReducedMotion()`) pero no `IntersectionObserver`, que framer-motion necesita para
+`whileInView` — nadie lo había notado porque ningún test anterior montaba un componente con esa
+prop. `Hero.tsx` y `Footer.tsx` (ambos de esta fase) la usan, y sin el stub cualquier intento de
+montarlos revienta con `ReferenceError: IntersectionObserver is not defined`. Se agregó un mock
+mínimo (`observe`/`unobserve`/`disconnect` no-op), mismo patrón que el stub de `matchMedia` ya
+existente.
+
+**Hallazgo real, documentado pero no "arreglado"**: el estado `navigating` de `Cart.tsx` (el
+"Cargando..." + spinner del botón de checkout) nunca es visible. `setNavigating(true)`,
+`closeCart()` y `router.push()` viajan en el mismo handler síncrono; React los agrupa en un solo
+render, así que `isOpen` ya es `false` en ese primer render posterior al clic —
+`AnimatePresence` anima la salida usando el **último árbol que sí se pintó** (con
+`navigating: false`, de antes del clic), no uno intermedio. Verificado con un test que hace clic y
+confirma que el botón sigue diciendo "Proceder al checkout" y que "Cargando..." no aparece en el
+DOM. No se tocó el componente: decidir si el carrito debe
+permanecer abierto durante la navegación (para que el loading sí se vea) es una decisión de
+producto fuera del alcance de este roadmap — ver `components/ui/__tests__/README.md`.
+
+Las ramas que quedan fuera son, otra vez, el patrón `reduceMotion ? 0 : ...` de framer-motion (el
+stub global de `matchMedia` fija `reduceMotion` en `false` siempre) más un guard defensivo muerto
+en `ImageCarousel.paginate` (`if (count === 0) return`, inalcanzable porque las flechas que lo
+llaman no se renderizan con `count === 0`) y la rama de hidratación SSR de `useSyncExternalStore`
+en `NavHeader` (mismo gap ya aceptado en `AdminGuard`, Fase 5) — una por una en cada README, no
+agrupadas.
+
+Cada invariante de esta fase se verificó rompiendo el fuente y confirmando que la suite falla: la
+fila de talla sin el guard `size > 0`, el `atMax` del botón `+` fijado en `false`, el `perPage: 1`
+de `Hero` subido a 24, el listener de `mousedown` de `NavHeader` quitado, y el
+`if (isOpen) setNavigating(false)` de `Cart` eliminado — esta última empezó **verde** con el test
+original (que montaba el carrito ya cerrado, donde `navigating` nunca había sido `true`) y solo
+falla desde que el test hace el viaje completo: clic en checkout → reabrir → aserción.
 
 ---
 
