@@ -186,8 +186,11 @@ export default function AdminsCard() {
       </h4>
       <form onSubmit={onSubmit} noValidate className="space-y-5">
         <div>
-          <label className={LABEL_BASE}>Nombre</label>
+          <label className={LABEL_BASE} htmlFor="new-admin-name">
+            Nombre
+          </label>
           <input
+            id="new-admin-name"
             type="text"
             className={inputCls(!!errors.name)}
             {...register("name")}
@@ -195,8 +198,11 @@ export default function AdminsCard() {
           <FieldError message={errors.name?.message} />
         </div>
         <div>
-          <label className={LABEL_BASE}>Correo</label>
+          <label className={LABEL_BASE} htmlFor="new-admin-email">
+            Correo
+          </label>
           <input
+            id="new-admin-email"
             type="email"
             className={inputCls(!!errors.email)}
             {...register("email")}
@@ -204,8 +210,11 @@ export default function AdminsCard() {
           <FieldError message={errors.email?.message} />
         </div>
         <div>
-          <label className={LABEL_BASE}>Contraseña Temporal</label>
+          <label className={LABEL_BASE} htmlFor="new-admin-temp-password">
+            Contraseña Temporal
+          </label>
           <input
+            id="new-admin-temp-password"
             type="password"
             autoComplete="new-password"
             className={inputCls(!!errors.tempPassword)}
@@ -217,9 +226,12 @@ export default function AdminsCard() {
           </p>
         </div>
         <div>
-          <label className={LABEL_BASE}>Rol</label>
+          <label className={LABEL_BASE} htmlFor="new-admin-role">
+            Rol
+          </label>
           <div className="relative">
             <select
+              id="new-admin-role"
               className={`${inputCls(!!errors.role)} appearance-none cursor-pointer pr-10`}
               {...register("role")}
             >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent } from "react";
 
 const LENGTH = 5;
 
@@ -33,14 +33,32 @@ export default function CodeInput({
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const digits = Array.from({ length: LENGTH }, (_, i) => value[i] ?? "");
 
+  // Refleja `value` sin esperar al próximo render. focusBox() dispara un
+  // evento `focus` SÍNCRONO, dentro del mismo call stack que el cambio que lo
+  // originó — su handler (handleFocus) necesita la longitud YA ACTUALIZADA;
+  // leer la prop `value` ahí todavía apunta al closure del render anterior, y
+  // el auto-avance rebotaba a la misma casilla en vez de ir a la siguiente.
+  // setValue() (abajo) actualiza esta ref en el momento exacto del commit,
+  // que es lo que importa para ese caso; el efecto solo cubre cambios
+  // externos de `value` (montaje, o el padre reseteándolo).
+  const latestValue = useRef(value);
+  useEffect(() => {
+    latestValue.current = value;
+  }, [value]);
+
   const focusBox = (index: number) => {
     const clamped = Math.max(0, Math.min(LENGTH - 1, index));
     inputs.current[clamped]?.focus();
     inputs.current[clamped]?.select();
   };
 
-  const commit = (next: string) => {
+  const setValue = (next: string) => {
+    latestValue.current = next;
     onChange(next);
+  };
+
+  const commit = (next: string) => {
+    setValue(next);
     if (next.length === LENGTH) onComplete?.(next);
   };
 
@@ -61,7 +79,7 @@ export default function CodeInput({
 
   const handleFocus = (index: number) => {
     // Evita que el foco quede en una casilla-hueco: redirige a la primera libre.
-    if (index > value.length) focusBox(value.length);
+    if (index > latestValue.current.length) focusBox(latestValue.current.length);
     else inputs.current[index]?.select();
   };
 
@@ -69,9 +87,9 @@ export default function CodeInput({
     if (e.key === "Backspace") {
       e.preventDefault();
       if (digits[index]) {
-        onChange(value.slice(0, index) + value.slice(index + 1));
+        setValue(value.slice(0, index) + value.slice(index + 1));
       } else if (index > 0) {
-        onChange(value.slice(0, index - 1) + value.slice(index));
+        setValue(value.slice(0, index - 1) + value.slice(index));
         focusBox(index - 1);
       }
     } else if (e.key === "ArrowLeft") {

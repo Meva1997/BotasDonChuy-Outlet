@@ -218,13 +218,21 @@ export default function ProductForm({ category, product, onBack }: Props) {
 
   const galleryCount = existing.length + newImages.length;
 
-  // Revoca los blob: previews al desmontar para no filtrar memoria.
+  // Revoca los blob: previews al desmontar para no filtrar memoria. Necesita un
+  // ref (no leer `newImages` directo en la cleanup de abajo): con deps `[]` el
+  // efecto solo corre una vez, así que su cleanup cerraría sobre el `newImages`
+  // de ESE render (el del montaje, siempre vacío) y nunca revocaría nada
+  // agregado después — mismo bug de closure obsoleta que CodeInput.tsx.
+  const newImagesRef = useRef(newImages);
+  useEffect(() => {
+    newImagesRef.current = newImages;
+  }, [newImages]);
+
   useEffect(
     () => () => {
-      newImages.forEach((img) => URL.revokeObjectURL(img.preview));
+      newImagesRef.current.forEach((img) => URL.revokeObjectURL(img.preview));
     },
     // Solo al desmontar: los blobs individuales ya se revocan al quitarlos.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 

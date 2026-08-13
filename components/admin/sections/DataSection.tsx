@@ -36,8 +36,15 @@ export default function DataSection() {
         </span>
       </div>
 
+      {/* `RevenueChart` pinta su propio selector con las MISMAS etiquetas (son
+          independientes a propósito), así que este grupo lleva nombre: sin él,
+          ni un lector de pantalla ni un test pueden distinguir cuál es cuál. */}
       {data && (
-        <div className="flex gap-1 self-start">
+        <div
+          role="group"
+          aria-label="Periodo de las métricas"
+          className="flex gap-1 self-start"
+        >
           {PERIODS.map((p) => (
             <button
               key={p.value}
