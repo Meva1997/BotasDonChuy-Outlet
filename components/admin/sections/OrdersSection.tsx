@@ -4,10 +4,16 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { sileo } from "sileo";
-import { adminOrderKeys, getAdminOrders, type AdminOrder } from "@/lib/api/adminOrders";
+import {
+  adminOrderKeys,
+  getAdminOrders,
+  type AdminOrder,
+  type AdminOrderEstadoFilter,
+} from "@/lib/api/adminOrders";
 import OrdersTable from "../orders/OrdersTable";
 import OrdersPagination from "../orders/OrdersPagination";
 import OrderDetailModal from "../orders/OrderDetailModal";
+import PrintPendingOrders from "../orders/PrintPendingOrders";
 
 const PER_PAGE_DESKTOP = 20;
 const PER_PAGE_MOBILE = 5;
@@ -58,7 +64,7 @@ function useIsDesktopViewport() {
   return useSyncExternalStore(
     subscribeToViewport,
     () => window.matchMedia(DESKTOP_QUERY).matches,
-    () => true
+    () => true,
   );
 }
 
@@ -66,19 +72,76 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// "todos" no existe como valor de AdminOrderEstadoFilter: se resuelve a
+// `undefined` (sin filtro) al armar la query, ver estadoParam().
+type OrderTab = AdminOrderEstadoFilter | "todos";
+
+const TABS: { value: OrderTab; label: string }[] = [
+  { value: "pendientes_envio", label: "Pendientes de enviar" },
+  { value: "enviados", label: "Enviados" },
+  { value: "entregados", label: "Entregados" },
+  { value: "todos", label: "Todos" },
+];
+
+function estadoParam(tab: OrderTab): AdminOrderEstadoFilter | undefined {
+  return tab === "todos" ? undefined : tab;
+}
+
+// Mensaje de tabla vacía: el filtro de día manda (si el admin ya acotó a un
+// día, "no hay pedidos ese día" es más útil que hablar de la pestaña); sin
+// día, el mensaje varía por pestaña para no leer "Aún no hay pedidos" en la
+// pestaña de Entregados cuando en realidad sí hay pedidos, solo que ninguno
+// entregado.
+function emptyMessage(tab: OrderTab, selectedDay: string): string {
+  if (selectedDay) return "Sin pedidos ese día";
+  switch (tab) {
+    case "pendientes_envio":
+      return "No hay pedidos pendientes de enviar";
+    case "enviados":
+      return "No hay pedidos enviados sin entregar";
+    case "entregados":
+      return "Aún no hay pedidos entregados";
+    default:
+      return "Aún no hay pedidos";
+  }
+}
+
 export default function OrdersSection() {
   const [page, setPage] = useState(1);
   const [selectedDay, setSelectedDay] = useState("");
+  const [tab, setTab] = useState<OrderTab>("pendientes_envio");
   const [viewing, setViewing] = useState<AdminOrder | null>(null);
   const isDesktop = useIsDesktopViewport();
   const perPage = isDesktop ? PER_PAGE_DESKTOP : PER_PAGE_MOBILE;
+  const estado = estadoParam(tab);
 
-  const { data, dataUpdatedAt, isPending, isFetching, isError, refetch } = useQuery({
-    queryKey: adminOrderKeys.list(page, perPage, selectedDay || undefined),
-    queryFn: () => getAdminOrders(page, perPage, selectedDay || undefined),
-    placeholderData: keepPreviousData,
-    refetchInterval: POLL_INTERVAL_MS,
+  const { data, dataUpdatedAt, isPending, isFetching, isError, refetch } =
+    useQuery({
+      queryKey: adminOrderKeys.list(
+        page,
+        perPage,
+        selectedDay || undefined,
+        estado,
+      ),
+      queryFn: () =>
+        getAdminOrders(page, perPage, selectedDay || undefined, estado),
+      placeholderData: keepPreviousData,
+      refetchInterval: POLL_INTERVAL_MS,
+    });
+
+  // Chequeo aparte (mismo truco que Hero.tsx: perPage:1, solo se lee `total`)
+  // para decidir si mostrar "Imprimir pendientes". No puede reusar `data`
+  // de arriba porque esa lista respeta `selectedDay`, y el botón imprime
+  // TODOS los pendientes de enviar ignorando el filtro de día — con un día
+  // sin pedidos pendientes, `data.total` sería 0 aunque sí hubiera algo que
+  // imprimir en otro día.
+  const { data: pendingToPrint } = useQuery({
+    queryKey: adminOrderKeys.list(1, 1, undefined, "pendientes_envio"),
+    queryFn: () => getAdminOrders(1, 1, undefined, "pendientes_envio"),
+    enabled: tab === "pendientes_envio",
   });
+  const hasPendingToPrint =
+    pendingToPrint === undefined || pendingToPrint.total > 0;
 
   // Foto por vista (página+perPage+día) de la última respuesta vista, para
   // distinguir "el polling trajo un cambio" de "el admin cambió de página/filtro"
@@ -89,13 +152,15 @@ export default function OrdersSection() {
 
   useEffect(() => {
     if (!data) return;
-    const key = JSON.stringify([page, perPage, selectedDay || null]);
+    const key = JSON.stringify([page, perPage, selectedDay || null, tab]);
     const previous = snapshotsRef.current.get(key);
     const current = snapshotOrders(data.orders);
 
     if (previous && !isManualRefreshRef.current) {
       const changed = data.orders.filter(
-        (o) => previous.get(o.id) !== undefined && previous.get(o.id) !== orderSignature(o)
+        (o) =>
+          previous.get(o.id) !== undefined &&
+          previous.get(o.id) !== orderSignature(o),
       );
       if (changed.length === 1) {
         sileo.info({
@@ -118,7 +183,7 @@ export default function OrdersSection() {
     // refresh manual que no encuentra nada nuevo —el caso más común— dejaba
     // `isManualRefreshRef` armada para siempre, y el siguiente refetch
     // automático se comía su toast en silencio.
-  }, [data, dataUpdatedAt, page, perPage, selectedDay]);
+  }, [data, dataUpdatedAt, page, perPage, selectedDay, tab]);
 
   const handleManualRefresh = () => {
     isManualRefreshRef.current = true;
@@ -138,6 +203,11 @@ export default function OrdersSection() {
 
   const handleDayChange = (value: string) => {
     setSelectedDay(value);
+    setPage(1);
+  };
+
+  const handleTabChange = (value: OrderTab) => {
+    setTab(value);
     setPage(1);
   };
 
@@ -184,6 +254,20 @@ export default function OrdersSection() {
               ✕ Limpiar
             </button>
           )}
+          {/* Siempre imprime TODOS los pendientes de enviar (ignora el filtro
+              de día): por eso solo aparece en esta pestaña, para no sugerir
+              que imprime lo que se ve en pantalla en otra vista. Si ya se
+              sabe que no hay ninguno (hasPendingToPrint === false, no solo
+              "todavía no se sabe"), se oculta el botón y se avisa en su
+              lugar en vez de dejar que abra un listado vacío. */}
+          {tab === "pendientes_envio" &&
+            (hasPendingToPrint ? (
+              <PrintPendingOrders />
+            ) : (
+              <p className="text-[10px] tracking-[0.2em] uppercase text-amber-100/40 font-sans px-1 py-2.5 border border-amber-400/20 rounded cursor-not-allowed">
+                Nada pendiente por imprimir
+              </p>
+            ))}
           <button
             type="button"
             onClick={handleManualRefresh}
@@ -199,6 +283,32 @@ export default function OrdersSection() {
         </div>
       </div>
 
+      <div
+        className="flex flex-wrap gap-2"
+        role="tablist"
+        aria-label="Pestañas de pedidos"
+      >
+        {TABS.map((t) => {
+          const active = tab === t.value;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => handleTabChange(t.value)}
+              className={`text-[10px] tracking-[0.2em] uppercase px-3 py-2 rounded border transition-colors cursor-pointer font-sans ${
+                active
+                  ? "border-amber-400/60 text-amber-400 bg-amber-400/10"
+                  : "border-amber-400/20 text-amber-100/40 hover:text-amber-400 hover:border-amber-400/40"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
       {isPending && (
         <p className="text-amber-100/40 text-sm tracking-[0.15em] uppercase">
           Cargando pedidos…
@@ -208,7 +318,8 @@ export default function OrdersSection() {
       {isError && !data && (
         <div className="max-w-md space-y-4">
           <p className="text-red-400/90 text-sm border border-red-500/30 bg-red-500/5 rounded-md px-4 py-3">
-            No pudimos cargar los pedidos. Revisa tu conexión e inténtalo de nuevo.
+            No pudimos cargar los pedidos. Revisa tu conexión e inténtalo de
+            nuevo.
           </p>
           <button
             type="button"
@@ -237,9 +348,7 @@ export default function OrdersSection() {
           <OrdersTable
             orders={data.orders}
             onSelect={setViewing}
-            emptyMessage={
-              selectedDay ? "Sin pedidos ese día" : "Aún no hay pedidos"
-            }
+            emptyMessage={emptyMessage(tab, selectedDay)}
           />
           <OrdersPagination
             currentPage={data.page}

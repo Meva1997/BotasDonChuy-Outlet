@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ArrowLeft, X } from "lucide-react";
 import { EASE_LUXE } from "@/lib/ui/motion";
 import { usePendingImportCount } from "@/store/importStore";
 import type { AdminSection } from "@/components/admin/types";
@@ -62,20 +63,7 @@ function SidebarBody({
             aria-label="Cerrar menú"
             className="p-1.5 text-amber-100/30 hover:text-amber-100/70 transition-colors cursor-pointer"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <X size={18} strokeWidth={2} />
           </button>
         )}
       </div>
@@ -127,21 +115,11 @@ function SidebarBody({
           onClick={onClose}
           className="group flex items-center gap-2.5 text-amber-100/40 hover:text-amber-400 transition-colors mb-4"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+          <ArrowLeft
+            size={15}
+            strokeWidth={2}
             className="transition-transform group-hover:-translate-x-0.5"
-          >
-            <line x1="19" y1="12" x2="5" y2="12" />
-            <polyline points="12 19 5 12 12 5" />
-          </svg>
+          />
           <span className="text-[11px] tracking-[0.25em] uppercase font-medium">
             Volver a la tienda
           </span>
@@ -170,7 +148,7 @@ export default function Sidebar({
   return (
     <>
       {/* Desktop — estático, siempre visible */}
-      <aside className="hidden md:flex w-72 shrink-0 h-full bg-stone-900 border-r border-amber-400/10 flex-col">
+      <aside className="hidden md:flex w-56 shrink-0 h-full bg-stone-900 border-r border-amber-400/10 flex-col">
         <SidebarBody
           active={active}
           onSelect={handleSelect}
@@ -199,7 +177,7 @@ export default function Sidebar({
               animate={{ x: 0 }}
               exit={{ x: reduceMotion ? 0 : "-100%" }}
               transition={{ duration: 0.3, ease: EASE_LUXE }}
-              className="fixed inset-y-0 left-0 z-50 w-72 bg-stone-900 border-r border-amber-400/10 flex flex-col md:hidden"
+              className="fixed inset-y-0 left-0 z-50 w-64 bg-stone-900 border-r border-amber-400/10 flex flex-col md:hidden"
             >
               <SidebarBody
                 active={active}

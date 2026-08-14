@@ -99,26 +99,45 @@ export type AdminOrderListResponse = z.infer<typeof AdminOrderListResponseSchema
 
 const DEFAULT_PER_PAGE = 20;
 
+// Filtro por pestaña (Fase 25). "todos" no es un valor de este tipo a propósito:
+// se traduce a "omitir el parámetro `estado`" en vez de mandarse como string,
+// para que un `estado: "todos"` nunca viaje por accidente (el backend ya lo
+// interpreta igual que ausente, pero es una petición de menos).
+// "enviados" se agregó después del cierre inicial de la fase (`status = "shipped"`,
+// entre "pendientes_envio" y "entregados") — mismo criterio, un tercer estado
+// intermedio del ciclo de vida del pedido.
+export type AdminOrderEstadoFilter =
+  | "pendientes_envio"
+  | "enviados"
+  | "entregados";
+
 // Query key factory (mismo patrón que adminProductKeys / productKeys). El listado
-// es paginado, así que la key incluye page/perPage/date para que TanStack Query
-// cachee y refetchee por página y por filtro de fecha.
+// es paginado, así que la key incluye page/perPage/date/estado para que TanStack
+// Query cachee y refetchee por página, filtro de fecha y pestaña activa.
 export const adminOrderKeys = {
   all: ["adminOrders"] as const,
-  list: (page: number, perPage: number, date?: string) =>
-    ["adminOrders", "list", page, perPage, date ?? null] as const,
+  list: (
+    page: number,
+    perPage: number,
+    date?: string,
+    estado?: AdminOrderEstadoFilter
+  ) => ["adminOrders", "list", page, perPage, date ?? null, estado ?? null] as const,
 };
 
-// GET /api/admin/orders?page=&perPage=&date= — `date` (YYYY-MM-DD, opcional)
-// acota a los pedidos de ese día. Sin filtro por status: el listado siempre
-// trae todo lo del día/página y el estado se avanza desde el detalle
-// (`updateAdminOrderStatus`, abajo).
+// GET /api/admin/orders?page=&perPage=&date=&estado= — `date` (YYYY-MM-DD,
+// opcional) acota a los pedidos de ese día. `estado` (Fase 25, opcional) acota
+// por pestaña: "pendientes_envio" → `status = "paid"`, "enviados" →
+// `status = "shipped"`, "entregados" → `status = "delivered"`; sin mandarlo
+// (pestaña "Todos") el backend no filtra por estado. Filtrado 100% en SQL,
+// mismo criterio que el catálogo público con categoria/talla/orden.
 export async function getAdminOrders(
   page = 1,
   perPage = DEFAULT_PER_PAGE,
-  date?: string
+  date?: string,
+  estado?: AdminOrderEstadoFilter
 ): Promise<AdminOrderListResponse> {
   const { data } = await api.get("/admin/orders", {
-    params: { page, perPage, date },
+    params: { page, perPage, date, estado },
   });
   return AdminOrderListResponseSchema.parse(data);
 }

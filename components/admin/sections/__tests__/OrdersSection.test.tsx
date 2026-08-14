@@ -74,7 +74,7 @@ describe("OrdersSection", () => {
     renderWithQueryClient(<OrdersSection />);
 
     await waitFor(() => expect(mockGetOrders).toHaveBeenCalled());
-    expect(mockGetOrders).toHaveBeenCalledWith(1, 5, undefined);
+    expect(mockGetOrders).toHaveBeenCalledWith(1, 5, undefined, "pendientes_envio");
   });
 
   it("en escritorio pide páginas de 20", async () => {
@@ -82,7 +82,7 @@ describe("OrdersSection", () => {
     renderWithQueryClient(<OrdersSection />);
 
     await waitFor(() => expect(mockGetOrders).toHaveBeenCalled());
-    expect(mockGetOrders).toHaveBeenCalledWith(1, 20, undefined);
+    expect(mockGetOrders).toHaveBeenCalledWith(1, 20, undefined, "pendientes_envio");
   });
 
   // ── Estados de la query ──
@@ -308,12 +308,14 @@ describe("OrdersSection", () => {
     await screen.findByText(/40 pedidos/);
 
     await user.click(screen.getByRole("button", { name: "Página 2" }));
-    await waitFor(() => expect(mockGetOrders).toHaveBeenCalledWith(2, 5, undefined));
+    await waitFor(() =>
+      expect(mockGetOrders).toHaveBeenCalledWith(2, 5, undefined, "pendientes_envio"),
+    );
 
     pickDay("2026-07-13");
 
     await waitFor(() =>
-      expect(mockGetOrders).toHaveBeenCalledWith(1, 5, "2026-07-13"),
+      expect(mockGetOrders).toHaveBeenCalledWith(1, 5, "2026-07-13", "pendientes_envio"),
     );
     expect(await screen.findByText(/· día seleccionado/)).toBeInTheDocument();
   });
@@ -323,7 +325,9 @@ describe("OrdersSection", () => {
     await screen.findByText("1 pedido");
 
     pickDay("2026-07-13");
-    await waitFor(() => expect(mockGetOrders).toHaveBeenCalledWith(1, 5, "2026-07-13"));
+    await waitFor(() =>
+      expect(mockGetOrders).toHaveBeenCalledWith(1, 5, "2026-07-13", "pendientes_envio"),
+    );
 
     await user.click(screen.getByRole("button", { name: /Limpiar/ }));
 
@@ -379,12 +383,159 @@ describe("OrdersSection", () => {
 
   it("el mensaje de la tabla vacía distingue «no hay pedidos» de «no hay ese día»", async () => {
     mockGetOrders.mockResolvedValue(makeOrdersPage([]));
-    renderWithQueryClient(<OrdersSection />);
+    const { user } = renderWithQueryClient(<OrdersSection />);
 
-    expect(await screen.findByText("Aún no hay pedidos")).toBeInTheDocument();
+    // Pestaña default "Pendientes de enviar".
+    expect(
+      await screen.findByText("No hay pedidos pendientes de enviar"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Enviados" }));
+    expect(
+      await screen.findByText("No hay pedidos enviados sin entregar"),
+    ).toBeInTheDocument();
 
     pickDay("2026-07-13");
     expect(await screen.findByText("Sin pedidos ese día")).toBeInTheDocument();
+  });
+
+  // ── Pestañas de estado (Fase 25) ──
+
+  it("al montar, la pestaña activa es «Pendientes de enviar»", async () => {
+    renderWithQueryClient(<OrdersSection />);
+
+    await waitFor(() =>
+      expect(mockGetOrders).toHaveBeenCalledWith(1, 5, undefined, "pendientes_envio"),
+    );
+    expect(screen.getByRole("tab", { name: "Pendientes de enviar" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("cambiar de pestaña pide el estado correcto y vuelve a la página 1", async () => {
+    mockGetOrders.mockResolvedValue(
+      makeOrdersPage([makeAdminOrder()], { total: 40, totalPages: 2 }),
+    );
+    const { user } = renderWithQueryClient(<OrdersSection />);
+    await screen.findByText(/40 pedidos/);
+
+    await user.click(screen.getByRole("button", { name: "Página 2" }));
+    await waitFor(() =>
+      expect(mockGetOrders).toHaveBeenCalledWith(2, 5, undefined, "pendientes_envio"),
+    );
+
+    await user.click(screen.getByRole("tab", { name: "Entregados" }));
+    await waitFor(() =>
+      expect(mockGetOrders).toHaveBeenCalledWith(1, 5, undefined, "entregados"),
+    );
+  });
+
+  it("la pestaña «Enviados» pide status = shipped", async () => {
+    const { user } = renderWithQueryClient(<OrdersSection />);
+    await screen.findByText("1 pedido");
+
+    await user.click(screen.getByRole("tab", { name: "Enviados" }));
+
+    await waitFor(() =>
+      expect(mockGetOrders).toHaveBeenCalledWith(1, 5, undefined, "enviados"),
+    );
+  });
+
+  it("la pestaña «Todos» no manda filtro de estado", async () => {
+    const { user } = renderWithQueryClient(<OrdersSection />);
+    await screen.findByText("1 pedido");
+
+    await user.click(screen.getByRole("tab", { name: "Todos" }));
+
+    await waitFor(() =>
+      expect(mockGetOrders).toHaveBeenCalledWith(1, 5, undefined, undefined),
+    );
+  });
+
+  it("pestaña y día se combinan en la misma petición", async () => {
+    const { user } = renderWithQueryClient(<OrdersSection />);
+    await screen.findByText("1 pedido");
+
+    await user.click(screen.getByRole("tab", { name: "Entregados" }));
+    await waitFor(() =>
+      expect(mockGetOrders).toHaveBeenCalledWith(1, 5, undefined, "entregados"),
+    );
+
+    pickDay("2026-07-13");
+    await waitFor(() =>
+      expect(mockGetOrders).toHaveBeenCalledWith(1, 5, "2026-07-13", "entregados"),
+    );
+  });
+
+  it("cambiar de pestaña empieza una foto nueva: el primer refetch de esa vista no avisa", async () => {
+    const { user } = renderWithQueryClient(<OrdersSection />);
+    await screen.findByText("1 pedido");
+
+    // Id distinto al de la pestaña anterior — mismo motivo que el caso análogo
+    // de cambio de página: mientras la nueva pestaña carga, `keepPreviousData`
+    // sigue mostrando los pedidos de la pestaña vieja bajo la key nueva (sin
+    // foto previa), y si el pedido "nuevo" comparte id con uno de esos, se lee
+    // como un cambio de ese pedido en vez de como una vista sin historial.
+    mockGetOrders.mockResolvedValue(
+      makeOrdersPage([makeAdminOrder({ id: 200, status: "delivered" })]),
+    );
+    await user.click(screen.getByRole("tab", { name: "Entregados" }));
+    await waitFor(() =>
+      expect(mockGetOrders).toHaveBeenCalledWith(1, 5, undefined, "entregados"),
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  // ── Botón de impresión (solo en "Pendientes de enviar") ──
+
+  it("el botón de imprimir pendientes solo aparece en la pestaña «Pendientes de enviar»", async () => {
+    const { user } = renderWithQueryClient(<OrdersSection />);
+    await screen.findByText("1 pedido");
+
+    expect(
+      screen.getByRole("button", { name: "Imprimir pendientes" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Entregados" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Imprimir pendientes" }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("sin pedidos pendientes de enviar, oculta el botón de imprimir y avisa", async () => {
+    mockGetOrders.mockResolvedValue(makeOrdersPage([]));
+    renderWithQueryClient(<OrdersSection />);
+
+    await screen.findByText("No hay pedidos pendientes de enviar");
+    expect(
+      screen.queryByRole("button", { name: "Imprimir pendientes" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Nada pendiente por imprimir")).toBeInTheDocument();
+  });
+
+  it("el chequeo de impresión ignora el filtro de día: con pendientes en otro día, el botón se muestra", async () => {
+    // Vista filtrada por día sin pedidos, pero el chequeo sin filtro (perPage:1)
+    // sí encuentra pendientes en otras fechas.
+    mockGetOrders.mockImplementation(async (_page, perPage) =>
+      perPage === 1 ? makeOrdersPage([makeAdminOrder()], { total: 1 }) : makeOrdersPage([]),
+    );
+    renderWithQueryClient(<OrdersSection />);
+    await screen.findByText("No hay pedidos pendientes de enviar");
+
+    pickDay("2026-07-13");
+    await screen.findByText("Sin pedidos ese día");
+
+    expect(
+      await screen.findByRole("button", { name: "Imprimir pendientes" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Nada pendiente por imprimir")).not.toBeInTheDocument();
   });
 
   it("deshabilita el botón de refrescar mientras hay una petición en vuelo", async () => {

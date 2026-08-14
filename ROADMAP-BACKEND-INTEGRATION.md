@@ -6,10 +6,9 @@ axios única `lib/api/client.ts` (adjunta `Bearer` del `authStore` + maneja el `
 contratos Zod centralizados en `lib/api/*.ts` — el patrón de referencia es `lib/api/products.ts`
 (axios + validación Zod en runtime + query-key factory para TanStack Query).
 
-**Estado: las 24 fases están cerradas. No quedan fases pendientes.** El detalle de arquitectura
-resultante (qué componente consume qué endpoint, invariantes, decisiones de diseño) vive en
-`CLAUDE.md` — este documento queda como bitácora histórica de cómo se llegó ahí, no como
-referencia activa.
+**Estado: las 25 fases están cerradas.** El detalle de arquitectura resultante (qué componente
+consume qué endpoint, invariantes, decisiones de diseño) vive en `CLAUDE.md` — este documento
+queda como bitácora histórica de cómo se llegó ahí, no como referencia activa.
 
 ## Fases (orden numérico, no de dependencia)
 
@@ -39,6 +38,7 @@ referencia activa.
 | 22 | Panel: envío como costo de venta | GANANCIA BRUTA resta el envío; `shippingCost` derivado, no editable |
 | 23 | Checkout: envío por caja | `packageCount`; se eliminó el cálculo local de envío en `lib/domain/cart.ts` |
 | 24 | Admin: productos sin tallas | `hasSizes`/`stockQuantity`; centinela `size: 0` |
+| 25 | Admin: pedidos por pestañas | `?estado=` en `GET /admin/orders`; filtrado 100% en el backend |
 
 ## Notas que siguen vigentes
 
