@@ -10,11 +10,25 @@ jest.mock("../../../../lib/api/reports", () => ({
   getReplenishmentReport: jest.fn(),
 }));
 
+// `SalesReport` dueña su propia query de gastos (`getExpenseHistory`). Sin este
+// mock, montar la pestaña Ventas dispara una petición axios REAL desde jsdom
+// contra `NEXT_PUBLIC_API_URL ?? /api`: hoy pasaría igual (con `retry: false` el
+// fallo se ve como el "—" de siempre), pero deja la suite dependiendo de la red
+// y una promesa resolviéndose después del teardown.
+jest.mock("../../../../lib/api/adminExpenses", () => ({
+  ...jest.requireActual("../../../../lib/api/adminExpenses"),
+  getExpenseHistory: jest.fn(),
+}));
+
 import { getMonthlyReport, getReplenishmentReport } from "@/lib/api/reports";
+import { getExpenseHistory } from "@/lib/api/adminExpenses";
 
 const mockMonthly = getMonthlyReport as jest.MockedFunction<typeof getMonthlyReport>;
 const mockReplenishment = getReplenishmentReport as jest.MockedFunction<
   typeof getReplenishmentReport
+>;
+const mockExpenseHistory = getExpenseHistory as jest.MockedFunction<
+  typeof getExpenseHistory
 >;
 
 // `SalesReport` y `ReplenishmentReport` ya tienen sus suites; lo que decide esta
@@ -28,10 +42,15 @@ const mockReplenishment = getReplenishmentReport as jest.MockedFunction<
 //  - El selector solo aplica a Ventas; en Reposición se esconde (no se
 //    desmonta) porque el forecast no es de un mes en particular.
 
-// Cada mes lleva un producto con costo para que la UTILIDAD no coincida con los
+// Cada mes lleva productos con costo para que la UTILIDAD no coincida con los
 // INGRESOS: con `byProduct` vacío el costo es 0 y las dos tarjetas pintan el
 // mismo número, así que una aserción de texto suelto no distinguiría cuál mes se
 // está mostrando (la trampa de ambigüedad documentada en expenses/__tests__).
+// Van DOS productos (no uno) a propósito: `SalesReport` ahora también pinta la
+// utilidad de cada producto en pesos en la tabla de "Productos más vendidos",
+// así que con un solo producto su utilidad sería idéntica a la del mes entero
+// y "$4,200.00" (u otro monto) aparecería dos veces en pantalla — la misma
+// trampa de ambigüedad, un nivel más abajo.
 function monthly(overrides: Partial<MonthlyReport>): MonthlyReport {
   const base = {
     key: "2026-07",
@@ -48,8 +67,16 @@ function monthly(overrides: Partial<MonthlyReport>): MonthlyReport {
         productId: 1,
         name: "Bota vaquera",
         type: "bota",
-        unitsSold: base.totalUnits,
-        revenue: base.totalRevenue,
+        unitsSold: base.totalUnits - 1,
+        revenue: base.totalRevenue - 1000,
+        unitCost: 100,
+      },
+      {
+        productId: 2,
+        name: "Sombrero de palma",
+        type: "sombrero",
+        unitsSold: 1,
+        revenue: 1000,
         unitCost: 100,
       },
     ],
@@ -65,8 +92,12 @@ const TRES_MESES = [
 beforeEach(() => {
   mockMonthly.mockReset();
   mockReplenishment.mockReset();
+  mockExpenseHistory.mockReset();
   mockMonthly.mockResolvedValue(TRES_MESES);
   mockReplenishment.mockResolvedValue([]);
+  // Historial vacío: los gastos son cosa de la suite de SalesReport, aquí solo
+  // hace falta que la query resuelva sin salir a la red.
+  mockExpenseHistory.mockResolvedValue([]);
 });
 
 describe("ReportsSection", () => {

@@ -2,6 +2,7 @@ import type {
   MonthlyReport,
   ReplenishmentRow,
 } from "@/components/admin/data/types";
+import type { ExpenseMonth } from "@/lib/api/adminExpenses";
 
 // Fixtures compartidas por components/admin/reports/__tests__/ — defaults
 // mínimos válidos + `overrides`, mismo criterio que el resto de `helpers/`
@@ -41,6 +42,35 @@ export function makeMonthlyReport(
       { category: "bota", label: "Botas", revenue: 6000, units: 5 },
       { category: "sombrero", label: "Sombreros", revenue: 4000, units: 3 },
     ],
+    ...overrides,
+  };
+}
+
+// Un mes del historial de gastos (`getExpenseHistory`), usado por
+// `SalesReport` para cruzar gastos operativos reales contra `MonthlyReport.key`
+// (mismo `isoMonth` en formato `YYYY-MM`). Default con `total: 0` y sin envío
+// derivado — los tests que necesitan un monto real lo pasan por `overrides`.
+export function makeExpenseMonth(
+  overrides: Partial<ExpenseMonth> = {},
+): ExpenseMonth {
+  return {
+    isoMonth: "2026-07",
+    label: "Julio 2026",
+    partial: false,
+    total: 0,
+    byCategory: [],
+    byExpense: [],
+    changes: [],
+    shippingCost: {
+      category: "paqueteria",
+      derived: true,
+      includedInGrossProfit: true,
+      from: "2026-07-01",
+      to: "2026-07-31",
+      partial: false,
+      amount: 0,
+      orders: 0,
+    },
     ...overrides,
   };
 }

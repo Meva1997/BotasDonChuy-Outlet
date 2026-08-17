@@ -181,11 +181,12 @@ textarea:focus-visible,
   }
 }
 
-/* Imprimir SOLO #print-pedidos-pendientes (PrintPendingOrders.tsx), ocultando
-   el resto de la app (sidebar admin, header, etc.) sin tener que tocar el
-   layout — patrón estándar de "imprimir un elemento": todo se oculta por
-   visibility (no display, para no romper el layout del elemento a imprimir)
-   y solo el contenedor imprimible y sus hijos se revierten a visible. */
+/* Imprimir SOLO el elemento con id de impresión activo (PrintPendingOrders.tsx /
+   SalesReport.tsx), ocultando el resto de la app (sidebar admin, header, etc.)
+   sin tener que tocar el layout — patrón estándar de "imprimir un elemento":
+   todo se oculta por visibility (no display, para no romper el layout del
+   elemento a imprimir) y solo el contenedor imprimible activo y sus hijos se
+   revierten a visible. */
 @media print {
   @page {
     size: letter;
@@ -195,10 +196,13 @@ textarea:focus-visible,
     visibility: hidden;
   }
   #print-pedidos-pendientes,
-  #print-pedidos-pendientes * {
+  #print-pedidos-pendientes *,
+  #print-reporte-ventas,
+  #print-reporte-ventas * {
     visibility: visible;
   }
-  #print-pedidos-pendientes {
+  #print-pedidos-pendientes,
+  #print-reporte-ventas {
     position: absolute;
     inset: 0;
     width: 100%;
