@@ -23,11 +23,12 @@ const mockGetExpenseHistory = getExpenseHistory as jest.MockedFunction<
 //
 //  1. La utilidad bruta del mes (ingresos − costo de mercancía) y su margen —
 //     es el único lugar del panel donde `unitCost` se agrega sobre todo un mes.
-//  2. La utilidad neta del mes (utilidad bruta − gastos operativos), cruzando
-//     `ExpenseMonth.isoMonth` contra `MonthlyReport.key`. Mientras la query de
-//     gastos está en vuelo, falla, o el mes no tiene match en el historial
-//     (p. ej. ventas de antes de trackear gastos), el resultado es "no se sabe
-//     todavía" — nunca $0.00, que se leería como "no hubo gastos ese mes".
+//  2. La utilidad neta del mes (utilidad bruta − gastos operativos − gasto en
+//     paquetería), cruzando `ExpenseMonth.isoMonth` contra `MonthlyReport.key`.
+//     Mientras la query de gastos está en vuelo, falla, o el mes no tiene
+//     match en el historial (p. ej. ventas de antes de trackear gastos), el
+//     resultado es "no se sabe todavía" — nunca $0.00, que se leería como "no
+//     hubo gastos ese mes".
 //  3. La comparación contra el mes anterior, que tiene DOS formas de no existir
 //     (es el primer mes / el anterior no facturó nada) y no debe inventar un
 //     porcentaje en ninguna.
@@ -378,12 +379,11 @@ describe("SalesReport", () => {
       expect(screen.queryByText(/ingresos a la fecha/)).not.toBeInTheDocument();
     });
 
-    // El envío se ignora A PROPÓSITO: `totalRevenue` es mercancía a precio de
-    // lista, sin el envío cobrado al cliente, así que restar la guía castigaría
-    // el mismo peso dos veces (el dashboard sí la resta porque su base es
-    // `order.total`, que sí lo incluye). Si alguien "arregla" esto restando
-    // `shippingCost`, este test lo detiene.
-    it("no resta el envío derivado del mes a la utilidad neta", async () => {
+    // La utilidad NETA sí resta el envío derivado del mes, además de los
+    // gastos operativos — a diferencia de la utilidad BRUTA, que se queda sin
+    // tocar (cubierta por el siguiente `describe`). Si alguien revierte esto
+    // silenciosamente, este test lo detiene.
+    it("resta el envío derivado del mes a la utilidad neta, además de los gastos operativos", async () => {
       mockGetExpenseHistory.mockResolvedValue([
         makeExpenseMonth({
           isoMonth: "2026-07",
@@ -399,14 +399,89 @@ describe("SalesReport", () => {
         <SalesReport monthKey="2026-07" reports={reportsWith({ key: "2026-07" })} />,
       );
 
-      // 6,300 − 2,000 = 4,300, no 2,800. Se escopea a la tarjeta: "$2,800.00"
-      // también es la utilidad del sombrero en la tabla de productos (6,300 −
-      // 2,000 − 1,500 daría justo ese mismo número — la coincidencia es la que
-      // hace obligatorio el `within`).
-      expect(await screen.findByText("$4,300.00")).toBeInTheDocument();
+      // 6,300 (utilidad bruta) − 2,000 (gastos operativos) − 1,500 (envío) =
+      // 2,800. Coincide con la utilidad del sombrero en la tabla de productos
+      // (4,000 − 3×400 = 2,800) — la coincidencia es la que hace obligatorio
+      // el `within`.
       const netaCard = screen.getByText("Utilidad neta del mes").closest("div");
-      expect(within(netaCard!).getByText("$4,300.00")).toBeInTheDocument();
-      expect(within(netaCard!).queryByText("$2,800.00")).not.toBeInTheDocument();
+      expect(await within(netaCard!).findByText("$2,800.00")).toBeInTheDocument();
+      expect(within(netaCard!).getByText("28% de margen")).toBeInTheDocument();
+    });
+  });
+
+  // ── Gasto en paquetería (informativo, no toca la utilidad) ──
+
+  describe("gasto en paquetería", () => {
+    it("muestra el monto, la ventana de fechas y el número de pedidos", async () => {
+      mockGetExpenseHistory.mockResolvedValue([
+        makeExpenseMonth({
+          isoMonth: "2026-07",
+          shippingCost: {
+            ...makeExpenseMonth().shippingCost,
+            amount: 1500,
+            orders: 9,
+          },
+        }),
+      ]);
+      renderWithQueryClient(
+        <SalesReport monthKey="2026-07" reports={reportsWith({ key: "2026-07" })} />,
+      );
+
+      const card = screen.getByText("Gasto en paquetería").closest("div");
+      expect(await within(card!).findByText("$1,500.00")).toBeInTheDocument();
+      expect(
+        within(card!).getByText("del 1 al 31 de julio · 9 pedidos"),
+      ).toBeInTheDocument();
+    });
+
+    it("usa el singular «pedido» cuando solo hubo uno", async () => {
+      mockGetExpenseHistory.mockResolvedValue([
+        makeExpenseMonth({
+          isoMonth: "2026-07",
+          shippingCost: {
+            ...makeExpenseMonth().shippingCost,
+            amount: 200,
+            orders: 1,
+          },
+        }),
+      ]);
+      renderWithQueryClient(
+        <SalesReport monthKey="2026-07" reports={reportsWith({ key: "2026-07" })} />,
+      );
+
+      expect(await screen.findByText(/· 1 pedido$/)).toBeInTheDocument();
+    });
+
+    // Mientras la query de gastos está en vuelo (o sin match), el dato de envío
+    // viaja en el mismo `ExpenseMonth` que los gastos operativos: mismo estado
+    // "no se sabe todavía", nunca $0.00.
+    it("mientras la query de gastos está en vuelo muestra «—», nunca $0.00", () => {
+      mockGetExpenseHistory.mockReturnValue(new Promise(() => {}));
+      renderWithQueryClient(
+        <SalesReport monthKey="2026-07" reports={reportsWith({ key: "2026-07" })} />,
+      );
+
+      const card = screen.getByText("Gasto en paquetería").closest("div");
+      expect(within(card!).getByText("—")).toBeInTheDocument();
+    });
+
+    // `gastosOperativos` y `shippingCost` llegan del mismo `ExpenseMonth`, así
+    // que si el mes no tiene match en el historial, ninguno de los dos "se
+    // sabe" — la utilidad neta no debe calcularse a medias con solo uno de los
+    // dos restado (se leería como una utilidad neta real que en verdad ya no
+    // incluye el envío).
+    it("sin match en el historial de gastos, la utilidad neta no se calcula a medias", async () => {
+      mockGetExpenseHistory.mockResolvedValue([
+        makeExpenseMonth({ isoMonth: "2026-05" }),
+      ]);
+      renderWithQueryClient(
+        <SalesReport monthKey="2026-07" reports={reportsWith({ key: "2026-07" })} />,
+      );
+
+      await waitFor(() => expect(mockGetExpenseHistory).toHaveBeenCalledTimes(1));
+
+      const netaCard = screen.getByText("Utilidad neta del mes").closest("div");
+      expect(within(netaCard!).getByText("—")).toBeInTheDocument();
     });
   });
 
@@ -518,7 +593,15 @@ describe("SalesReport", () => {
 
     it("el bloque imprimible incluye el resumen de KPIs del mes", async () => {
       mockGetExpenseHistory.mockResolvedValue([
-        makeExpenseMonth({ isoMonth: "2026-07", total: 2000 }),
+        makeExpenseMonth({
+          isoMonth: "2026-07",
+          total: 2000,
+          shippingCost: {
+            ...makeExpenseMonth().shippingCost,
+            amount: 1500,
+            orders: 9,
+          },
+        }),
       ]);
       const { user, container } = renderWithQueryClient(
         <SalesReport
@@ -546,7 +629,7 @@ describe("SalesReport", () => {
       // de KPIs entero también "contiene" la subcadena).
       const field = (label: string) => printable.getByText(label).closest("div")!;
 
-      // costo = 5×500 + 3×400 = 3,700 → utilidad bruta 6,300; neta 6,300−2,000 = 4,300.
+      // costo = 5×500 + 3×400 = 3,700 → utilidad bruta 6,300; neta 6,300−2,000−1,500 = 2,800.
       expect(printable.getByText(/Reporte de ventas — Julio 2026/)).toBeInTheDocument();
       expect(within(field("Ingresos:")).getByText(/\$10,000\.00/)).toBeInTheDocument();
       expect(within(field("Costo de mercancía:")).getByText(/\$3,700\.00/)).toBeInTheDocument();
@@ -555,7 +638,10 @@ describe("SalesReport", () => {
       ).toBeInTheDocument();
       expect(within(field("Gastos operativos:")).getByText(/\$2,000\.00/)).toBeInTheDocument();
       expect(
-        within(field("Utilidad neta:")).getByText(/\$4,300\.00 \(43% margen\)/),
+        within(field("Gasto en paquetería:")).getByText(/\$1,500\.00/),
+      ).toBeInTheDocument();
+      expect(
+        within(field("Utilidad neta:")).getByText(/\$2,800\.00 \(28% margen\)/),
       ).toBeInTheDocument();
       expect(within(field("Piezas vendidas:")).getByText(/8/)).toBeInTheDocument();
     });

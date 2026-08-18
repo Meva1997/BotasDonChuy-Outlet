@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { MonthlyReport } from "@/components/admin/data/types";
 import { categorySingular } from "@/lib/domain/categories";
 import { adminExpenseKeys, getExpenseHistory } from "@/lib/api/adminExpenses";
+import { shippingWindowLabel } from "../expenses/expenseStatus";
 
 function pct(value: number, total: number) {
   if (total === 0) return 0;
@@ -107,16 +108,23 @@ export default function SalesReport({ monthKey, reports }: Props) {
   // no tiene match en el historial) — nunca se confunde con "gastos en $0".
   const monthExpense = expenseHistory?.find((e) => e.isoMonth === report.key);
   const gastosOperativos = monthExpense?.total;
-  // El envío NO se resta aquí, a diferencia de la GANANCIA BRUTA del dashboard.
-  // Allá `ingresos` es `order.total`, que SÍ incluye el envío cobrado al cliente,
-  // así que hay que restarle la guía. Aquí `totalRevenue` es `unidades ×
-  // salePrice`: mercancía sola, sin envío cobrado. Como el envío es pass-through
-  // (se cobra lo que cuesta la guía), restarlo contra una base que no lo incluye
-  // lo castigaría dos veces. Por eso `ExpenseMonth.shippingCost` se ignora a
-  // propósito, y por eso esta cifra NO reconcilia con la del dashboard — la nota
+  // Envío pagado ese mes (guías), fuera de `gastosOperativos` — ver
+  // DerivedShippingCostSchema. Se muestra aparte como su propio KPI Y se resta
+  // en `utilidadNeta` (ver abajo): es un costo real del mes, igual que
+  // `unitCost` de cada pieza.
+  const shippingCost = monthExpense?.shippingCost;
+  // La utilidad BRUTA no toca el envío: `totalRevenue` es `unidades ×
+  // salePrice` (mercancía sola, sin envío cobrado), así que restar la guía ahí
+  // la castigaría contra ingresos que nunca la incluyeron.
+  // La utilidad NETA sí la resta, además de los gastos operativos — es la
+  // cifra pensada para reflejar lo que realmente quedó ese mes. Por eso puede
+  // no reconciliar con GANANCIA OPERATIVA del dashboard (esa parte de
+  // `order.total`, ya neto de cupón y con el envío cobrado dentro) — la nota
   // de abajo lo dice en pantalla y en el impreso.
   const utilidadNeta =
-    gastosOperativos !== undefined ? utilidad - gastosOperativos : undefined;
+    gastosOperativos !== undefined && shippingCost !== undefined
+      ? utilidad - gastosOperativos - shippingCost.amount
+      : undefined;
   const margenNetoPct =
     utilidadNeta !== undefined
       ? pct(utilidadNeta, report.totalRevenue)
@@ -191,18 +199,6 @@ export default function SalesReport({ monthKey, reports }: Props) {
 
           <div className="rounded-lg border border-amber-400/15 bg-stone-900/60 p-4">
             <p className="text-[9px] tracking-[0.25em] uppercase text-amber-100/40 font-sans mb-1.5">
-              Utilidad bruta del mes
-            </p>
-            <p className="font-serif text-2xl text-amber-50">
-              {fmtMXN(utilidad)}
-            </p>
-            <p className="text-xs font-sans mt-1 text-amber-100/40">
-              {margenPct}% de margen
-            </p>
-          </div>
-
-          <div className="rounded-lg border border-amber-400/15 bg-stone-900/60 p-4">
-            <p className="text-[9px] tracking-[0.25em] uppercase text-amber-100/40 font-sans mb-1.5">
               Gastos operativos
             </p>
             <p className="font-serif text-2xl text-amber-50">
@@ -220,6 +216,42 @@ export default function SalesReport({ monthKey, reports }: Props) {
                 No se pudieron cargar · Reintentar
               </button>
             )}
+          </div>
+
+          <div className="rounded-lg border border-amber-400/15 bg-stone-900/60 p-4">
+            <p className="text-[9px] tracking-[0.25em] uppercase text-amber-100/40 font-sans mb-1.5">
+              Gasto en paquetería
+            </p>
+            <p className="font-serif text-2xl text-amber-50">
+              {shippingCost !== undefined ? fmtMXN(shippingCost.amount) : "—"}
+            </p>
+            {/* Se muestra aparte para verlo de un vistazo, y también se resta
+              en "Utilidad neta del mes" más abajo. El rango de fechas evita
+              leer un acumulado a media quincena como si el envío saliera
+              baratísimo. */}
+            {shippingCost !== undefined && (
+              <p className="text-[10px] text-amber-100/30 font-sans mt-1 leading-snug tabular-nums">
+                {shippingWindowLabel(
+                  shippingCost.from,
+                  shippingCost.to,
+                  shippingCost.partial,
+                )}{" "}
+                · {shippingCost.orders} pedido
+                {shippingCost.orders === 1 ? "" : "s"}
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-amber-400/15 bg-stone-900/60 p-4">
+            <p className="text-[9px] tracking-[0.25em] uppercase text-amber-100/40 font-sans mb-1.5">
+              Utilidad bruta del mes
+            </p>
+            <p className="font-serif text-2xl text-amber-50">
+              {fmtMXN(utilidad)}
+            </p>
+            <p className="text-xs font-sans mt-1 text-amber-100/40">
+              {margenPct}% de margen
+            </p>
           </div>
 
           <div className="rounded-lg border border-amber-400/15 bg-stone-900/60 p-4">
@@ -264,14 +296,15 @@ export default function SalesReport({ monthKey, reports }: Props) {
 
         {/* Qué incluye y qué no. Sin esto, "Utilidad neta del mes" invita a
           compararse con GANANCIA OPERATIVA del dashboard, que se calcula sobre
-          otra base (`order.total`, ya neto de cupón y con el envío dentro) y
-          nunca va a dar el mismo número. */}
+          otra base (`order.total`, ya neto de cupón y con el envío cobrado
+          dentro) y nunca va a dar el mismo número. */}
         <p className="text-[10px] text-amber-100/30 font-sans leading-relaxed -mt-3">
           Calculado sobre el precio de lista vigente de cada pieza: no refleja
-          descuentos por cupón ni cambios de precio posteriores a la venta. El
-          envío queda fuera de los dos lados (ni se suma lo cobrado al cliente ni
-          se resta la guía pagada). Para la ganancia con cupones y envío
-          incluidos, ver el Dashboard.
+          descuentos por cupón ni cambios de precio posteriores a la venta. La
+          utilidad bruta no incluye el envío (ni lo cobrado al cliente ni la
+          guía pagada, mostrada aparte en &quot;Gasto en paquetería&quot;); la
+          utilidad neta sí resta esa guía, además de los gastos operativos.
+          Para la ganancia con cupones incluidos, ver el Dashboard.
         </p>
 
         {/* Top productos */}
@@ -432,12 +465,16 @@ export default function SalesReport({ monthKey, reports }: Props) {
               {fmtMXN(totalCost)}
             </div>
             <div>
-              <span className="font-semibold">Utilidad bruta:</span>{" "}
-              {fmtMXN(utilidad)} ({margenPct}% margen)
-            </div>
-            <div>
               <span className="font-semibold">Gastos operativos:</span>{" "}
               {gastosOperativos !== undefined ? fmtMXN(gastosOperativos) : "—"}
+            </div>
+            <div>
+              <span className="font-semibold">Gasto en paquetería:</span>{" "}
+              {shippingCost !== undefined ? fmtMXN(shippingCost.amount) : "—"}
+            </div>
+            <div>
+              <span className="font-semibold">Utilidad bruta:</span>{" "}
+              {fmtMXN(utilidad)} ({margenPct}% margen)
             </div>
             <div>
               <span className="font-semibold">Utilidad neta:</span>{" "}
@@ -470,9 +507,11 @@ export default function SalesReport({ monthKey, reports }: Props) {
           )}
           <p className="text-[10px] text-gray-600 mb-5 leading-relaxed">
             Calculado sobre el precio de lista vigente de cada pieza: no refleja
-            descuentos por cupón ni cambios de precio posteriores a la venta. El
-            envío queda fuera de los dos lados (ni se suma lo cobrado al cliente
-            ni se resta la guía pagada).
+            descuentos por cupón ni cambios de precio posteriores a la venta. La
+            utilidad bruta no incluye el envío (ni lo cobrado al cliente ni la
+            guía pagada, mostrada aparte en &quot;Gasto en paquetería&quot;);
+            la utilidad neta sí resta esa guía, además de los gastos
+            operativos.
           </p>
 
           <table className="w-full text-[11px] mb-6">
