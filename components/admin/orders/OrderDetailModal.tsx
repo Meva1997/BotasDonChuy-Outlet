@@ -8,6 +8,7 @@ import {
   adminOrderKeys,
   cancelAdminOrder,
   retryAdminOrderShipment,
+  rotateAdminOrderToken,
   updateAdminOrderStatus,
   type AdminOrder,
 } from "@/lib/api/adminOrders";
@@ -92,6 +93,18 @@ function statusUpdateErrorMessage(error: unknown): string {
   return "No pudimos actualizar el pedido. Inténtalo de nuevo.";
 }
 
+// La rotación del código de rastreo (Fase 26) es la única de estas rutas que NO
+// tiene 409: no hay estado del pedido que la bloquee. Solo quedan el 404 (el
+// pedido dejó de existir) y el caso de red.
+function rotateTokenErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const message = error.response?.data?.message as string | undefined;
+    if (error.response?.status === 404) return "El pedido ya no existe.";
+    if (message) return message;
+  }
+  return "No pudimos regenerar el código. Inténtalo de nuevo.";
+}
+
 function formatDate(iso?: string): string | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -153,6 +166,10 @@ export default function OrderDetailModal({
   const [confirmingRetry, setConfirmingRetry] = useState<null | "normal" | "force">(
     null
   );
+  // Rotar el código deja fuera al comprador legítimo hasta que le llegue el
+  // correo con el nuevo: mismo tratamiento de dos pasos que cancelar y reintentar
+  // guía, para que un clic accidental no la dispare.
+  const [confirmingRotate, setConfirmingRotate] = useState(false);
 
   const canCancel = order.status === "pending" || order.status === "paid";
   // Los estados que el backend rechaza con 409 no ofrecen acción. Un pedido ya
@@ -221,6 +238,20 @@ export default function OrderDetailModal({
     // en `unreconciled:*` y `force` limpia el marcador antes de intentar. El
     // mensaje del backend se queda visible; la tabla sí se pone al día.
     onError: () => onRequestRefresh?.(),
+  });
+
+  // Rotación del código de rastreo público (Fase 26).
+  //
+  // NO invalida `adminOrderKeys` ni llama a `onOrderUpdated`, y las dos
+  // omisiones son deliberadas: `publicToken` no se pinta en ninguna vista admin,
+  // así que no queda nada desincronizado en pantalla, y `onOrderUpdated` arma de
+  // paso el `isManualRefreshRef` de OrdersSection —que existe para suprimir el
+  // toast del polling— aunque esta acción no toca ni un solo campo de
+  // `orderSignature`. Usarlo aquí se comería el aviso del SIGUIENTE cambio real
+  // hecho por el webhook, que es justo lo que ese toast tiene que reportar.
+  const rotateMutation = useMutation({
+    mutationFn: () => rotateAdminOrderToken(order.id),
+    onSuccess: () => setConfirmingRotate(false),
   });
 
   const openShippingAction = (action: Exclude<ShippingAction, null>) => {
@@ -975,6 +1006,98 @@ export default function OrderDetailModal({
                 </div>
               </>
             )}
+
+            {/* Código de rastreo del comprador (Fase 26). Sin condición de
+                visibilidad a propósito, a diferencia de todos los bloques de
+                arriba: el backend no tiene ningún estado que rechace la
+                rotación, porque un código filtrado hay que poder apagarlo
+                aunque el pedido ya esté entregado o cancelado. */}
+            <div className="border-t border-stone-700/40" />
+            <div>
+              <span className={labelCls}>Código de rastreo del comprador</span>
+
+              {!confirmingRotate ? (
+                <div className="space-y-2.5">
+                  <p className="text-[13px] text-amber-100/70 leading-relaxed">
+                    Regénéralo solo si el comprador reporta que su código o su
+                    liga quedaron expuestos. El anterior deja de funcionar en el
+                    acto.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      rotateMutation.reset();
+                      setConfirmingRotate(true);
+                    }}
+                    className="text-[11px] uppercase tracking-[0.2em] text-amber-400/90 border border-amber-400/40 px-4 py-2 hover:text-amber-300 hover:border-amber-400/70 transition-colors cursor-pointer"
+                  >
+                    Regenerar código de rastreo
+                  </button>
+
+                  {/* La confirmación va inline y no en un toast de Sileo: el
+                      Toaster vive en app/admin/layout.tsx, empata en z-index
+                      con este modal y se pinta antes en el DOM, así que el
+                      aviso quedaría detrás del backdrop justo cuando hace
+                      falta leerlo. */}
+                  {rotateMutation.isSuccess && (
+                    <p
+                      role="status"
+                      className="text-[12px] text-emerald-400/90 leading-relaxed"
+                    >
+                      Listo: el código anterior quedó invalidado y le enviamos al
+                      comprador un correo con el nuevo.
+                    </p>
+                  )}
+
+                  {rotateMutation.isError && (
+                    <p role="alert" className="text-[12px] text-red-400/90">
+                      {rotateTokenErrorMessage(rotateMutation.error)}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3 border border-amber-400/25 bg-amber-400/5 rounded-md p-4">
+                  <p className="text-[13px] text-amber-100/70 leading-relaxed">
+                    El código y la liga que el comprador tiene hoy{" "}
+                    <strong className="text-amber-200">
+                      dejarán de funcionar
+                    </strong>
+                    . Le enviaremos por correo el código nuevo, así que hasta que
+                    lo reciba no podrá consultar su pedido.
+                  </p>
+
+                  {rotateMutation.isError && (
+                    <p role="alert" className="text-[12px] text-red-400/90">
+                      {rotateTokenErrorMessage(rotateMutation.error)}
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={rotateMutation.isPending}
+                      onClick={() => rotateMutation.mutate()}
+                      className="border border-amber-400/60 text-amber-400 uppercase tracking-[0.2em] text-[10px] px-5 py-2.5 hover:bg-amber-400/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {rotateMutation.isPending
+                        ? "Regenerando…"
+                        : "Confirmar y enviar código nuevo"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={rotateMutation.isPending}
+                      onClick={() => {
+                        setConfirmingRotate(false);
+                        rotateMutation.reset();
+                      }}
+                      className="text-[10px] uppercase tracking-widest text-amber-100/40 hover:text-amber-100/70 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      Volver
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {canCancel && (
               <>

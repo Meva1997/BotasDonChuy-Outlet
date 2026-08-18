@@ -4,6 +4,13 @@ import { motion } from "framer-motion";
 import { fadeUp, EASE_LUXE } from "@/lib/ui/motion";
 
 interface LegalSection {
+  /**
+   * Ancla estable de la sección. Va en el `id` del `<section>` y en el índice.
+   * Existe porque anclar por el índice del array rompe todo enlace ya compartido
+   * (`/terminos#section-2`) en cuanto se inserta una sección nueva — y estos
+   * documentos se renumeran cada vez que cambia la ley o la operación.
+   */
+  slug: string;
   title: string;
   body: string[];
 }
@@ -56,10 +63,10 @@ export default function LegalLayout({
                 Índice
               </p>
               <ol className="space-y-2.5 list-none border-l border-amber-900/40">
-                {sections.map(({ title: sectionTitle }, i) => (
-                  <li key={sectionTitle} className="pl-4 -ml-px border-l border-transparent">
+                {sections.map(({ slug, title: sectionTitle }) => (
+                  <li key={slug} className="pl-4 -ml-px border-l border-transparent">
                     <a
-                      href={`#section-${i}`}
+                      href={`#${slug}`}
                       className="font-sans text-[11px] leading-snug text-amber-100/35 hover:text-amber-300 transition-colors duration-200 line-clamp-2"
                     >
                       {sectionTitle}
@@ -121,10 +128,10 @@ export default function LegalLayout({
 
             {/* Sections */}
             <div className="space-y-10">
-              {sections.map(({ title: sectionTitle, body }, i) => (
+              {sections.map(({ slug, title: sectionTitle, body }) => (
                 <motion.section
-                  key={sectionTitle}
-                  id={`section-${i}`}
+                  key={slug}
+                  id={slug}
                   initial={{ opacity: 0, y: 16 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-60px" }}

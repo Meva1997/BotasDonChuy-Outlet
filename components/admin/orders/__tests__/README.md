@@ -9,7 +9,7 @@ nombre que el módulo que prueba:
 | `StatusBadges.test.tsx` | Las cuatro píldoras (status/pago/dropoff/envío) + el invariante de color: `STATUS_META` y `PAYMENT_META` no comparten ningún hue, porque se pintan una junto a la otra |
 | `OrdersPagination.test.tsx` | Ventana + elipsis, flechas con `disabled` en los extremos (a diferencia de `OutletPagination`, que no tiene extremos que deshabilitar) |
 | `OrdersTable.test.tsx` | Selección de renglón (clic/teclado) **y de card**, suma de piezas, y las cuatro ramas de `labelNote` en la columna "Envío" |
-| `OrderDetailModal.test.tsx` | El detalle completo: fila de cupón antes de Envío, talla `0` como guion, cancelar/reembolsar solo en pending/paid, el bloque de reembolso ya emitido, el aviso de dropoff, avance de estado forward-only, y las cinco ramas de `shipmentLabel.ts` en el flujo de reintento de guía (incluido el `force`) |
+| `OrderDetailModal.test.tsx` | El detalle completo: fila de cupón antes de Envío, talla `0` como guion, cancelar/reembolsar solo en pending/paid, el bloque de reembolso ya emitido, el aviso de dropoff, avance de estado forward-only, las cinco ramas de `shipmentLabel.ts` en el flujo de reintento de guía (incluido el `force`), y la rotación del código de rastreo (Fase 26) |
 | `shipmentLabel.test.ts` | Ya existía — clasificación pura de `skydropxShipmentId` y mapeo de errores del reintento |
 | `helpers/` | **No son suites**: `factories` (`makeAdminOrder`/`makeAdminOrderItem`), `apiError`, `render` (QueryClientProvider) |
 
@@ -34,6 +34,16 @@ reporte no marque nada. La card se ataca por `name: /^Pedido #N/` (el `<tr>` se 
 `OrderDetailModal` tiene su propia trampa: **dos** elementos con el texto "Estado del envío" — el
 `Field` que muestra el badge de Skydropx (siempre presente) y el encabezado de la sección de
 acciones (solo si `hasShippingActions`). Contar ocurrencias (`getAllByText`) distingue el caso.
+
+La rotación del código de rastreo (Fase 26) va al revés de todo lo demás en este archivo: es la
+única acción **sin 409**, así que la suite afirma que el botón se ofrece en los **cinco** estados
+del pedido — un código filtrado hay que poder apagarlo aunque ya se haya entregado o cancelado, y
+el reflejo de esconder acciones por estado dejaría al dueño sin forma de cumplir lo que el Aviso
+de Privacidad le promete al comprador. La otra aserción que parece de más y no lo es: que **no**
+invalide `adminOrderKeys` ni llame a `onOrderUpdated`. `onOrderUpdated` arma de paso el
+`isManualRefreshRef` de `OrdersSection` —el que suprime el toast del polling— y rotar no toca un
+solo campo de `orderSignature`, así que usarlo ahí se comería el aviso del *siguiente* cambio real
+del webhook. El token nuevo tampoco se pinta: lo entrega el correo automático del backend.
 
 ## Convenciones
 

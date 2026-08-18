@@ -35,7 +35,14 @@ export default function Footer() {
     ...FOOTER_SECTIONS,
     {
       heading: "Contacto",
-      links: [{ label: "Instagram", href: brand.instagram }],
+      links: [
+        { label: "Instagram", href: brand.instagram },
+        // El correo no es decorativo: los documentos legales lo señalan como el
+        // canal oficial para reportes formales y para el ejercicio de derechos
+        // ARCO, y la LFPDPPP (art. 16) exige un medio real donde quede
+        // constancia. Instagram por sí solo no cumple eso.
+        { label: "Correo", href: `mailto:${brand.email}` },
+      ],
     },
   ];
 

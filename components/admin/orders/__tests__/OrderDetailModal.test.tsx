@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import {
   cancelAdminOrder,
   retryAdminOrderShipment,
+  rotateAdminOrderToken,
   updateAdminOrderStatus,
 } from "@/lib/api/adminOrders";
 import OrderDetailModal from "../OrderDetailModal";
@@ -21,11 +22,13 @@ jest.mock("../../../../lib/api/adminOrders", () => ({
   cancelAdminOrder: jest.fn(),
   updateAdminOrderStatus: jest.fn(),
   retryAdminOrderShipment: jest.fn(),
+  rotateAdminOrderToken: jest.fn(),
 }));
 
 const cancelAdminOrderMock = cancelAdminOrder as jest.Mock;
 const updateAdminOrderStatusMock = updateAdminOrderStatus as jest.Mock;
 const retryAdminOrderShipmentMock = retryAdminOrderShipment as jest.Mock;
+const rotateAdminOrderTokenMock = rotateAdminOrderToken as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -762,5 +765,158 @@ describe("OrderDetailModal — estados 'pendiente' de las mutations", () => {
     await user.click(screen.getByRole("button", { name: "Confirmar entrega" }));
 
     expect(await screen.findByRole("button", { name: "Guardando…" })).toBeDisabled();
+  });
+});
+
+describe("OrderDetailModal — rotación del código de rastreo (Fase 26)", () => {
+  // Es la única acción del modal sin 409: el backend la acepta en cualquier
+  // estado, porque un código filtrado hay que poder apagarlo aunque el pedido
+  // ya se haya entregado o cancelado. Ocultarla por estado —el reflejo que
+  // siguen todos los demás bloques de este panel— dejaría al dueño sin forma de
+  // cumplir lo que el Aviso de Privacidad le promete al comprador.
+  const ALL_STATUSES = [
+    "pending",
+    "paid",
+    "shipped",
+    "delivered",
+    "cancelled",
+  ] as const;
+
+  it.each(ALL_STATUSES)("el botón se ofrece con status '%s'", (status) => {
+    renderModal({ status });
+    expect(
+      screen.getByRole("button", { name: "Regenerar código de rastreo" })
+    ).toBeInTheDocument();
+  });
+
+  it("el primer clic solo revela la confirmación, no llama al backend", async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(
+      screen.getByRole("button", { name: "Regenerar código de rastreo" })
+    );
+
+    expect(screen.getByText(/dejarán de funcionar/i)).toBeInTheDocument();
+    expect(rotateAdminOrderTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("el segundo clic rota el código y confirma que el correo salió", async () => {
+    const user = userEvent.setup();
+    rotateAdminOrderTokenMock.mockResolvedValue(makeAdminOrder());
+    const { order } = renderModal();
+
+    await user.click(
+      screen.getByRole("button", { name: "Regenerar código de rastreo" })
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar y enviar código nuevo" })
+    );
+
+    await waitFor(() =>
+      expect(rotateAdminOrderTokenMock).toHaveBeenCalledWith(order.id)
+    );
+    // Vuelve al estado plegado con el aviso de éxito: el token nuevo NO se
+    // pinta en ningún lado (es la credencial que abre /pedido/<token>), el
+    // correo automático del backend es quien se lo entrega al comprador.
+    expect(
+      await screen.findByText(/le enviamos al comprador un correo con el nuevo/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Regenerar código de rastreo" })
+    ).toBeInTheDocument();
+  });
+
+  it("'Volver' cierra la confirmación sin rotar nada", async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(
+      screen.getByRole("button", { name: "Regenerar código de rastreo" })
+    );
+    await user.click(screen.getByRole("button", { name: "Volver" }));
+
+    expect(rotateAdminOrderTokenMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Regenerar código de rastreo" })
+    ).toBeInTheDocument();
+  });
+
+  it("no invalida el listado ni sincroniza el modal tras rotar", async () => {
+    // Las dos omisiones son el invariante de esta fase, no un olvido:
+    // `publicToken` no se pinta en ninguna vista admin (nada queda
+    // desincronizado), y `onOrderUpdated` arma de paso el `isManualRefreshRef`
+    // de OrdersSection —el que suprime el toast del polling— pese a que rotar
+    // no toca un solo campo de `orderSignature`. Usarlo aquí se comería el
+    // aviso del SIGUIENTE cambio real hecho por el webhook.
+    const user = userEvent.setup();
+    rotateAdminOrderTokenMock.mockResolvedValue(makeAdminOrder());
+    const { onOrderUpdated, onRequestRefresh, queryClient } = renderModal();
+    const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
+
+    await user.click(
+      screen.getByRole("button", { name: "Regenerar código de rastreo" })
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar y enviar código nuevo" })
+    );
+
+    await waitFor(() => expect(rotateAdminOrderTokenMock).toHaveBeenCalled());
+    expect(invalidateSpy).not.toHaveBeenCalled();
+    expect(onOrderUpdated).not.toHaveBeenCalled();
+    expect(onRequestRefresh).not.toHaveBeenCalled();
+  });
+
+  it("un 404 explica que el pedido ya no existe", async () => {
+    const user = userEvent.setup();
+    rotateAdminOrderTokenMock.mockRejectedValue(apiError(404));
+    renderModal();
+
+    await user.click(
+      screen.getByRole("button", { name: "Regenerar código de rastreo" })
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar y enviar código nuevo" })
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "El pedido ya no existe."
+    );
+  });
+
+  it("un error de red cae al genérico y deja reintentar", async () => {
+    const user = userEvent.setup();
+    rotateAdminOrderTokenMock.mockRejectedValue(new Error("network"));
+    renderModal();
+
+    await user.click(
+      screen.getByRole("button", { name: "Regenerar código de rastreo" })
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar y enviar código nuevo" })
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No pudimos regenerar el código. Inténtalo de nuevo."
+    );
+    // El error no repliega la confirmación: el botón sigue ahí para reintentar.
+    expect(
+      screen.getByRole("button", { name: "Confirmar y enviar código nuevo" })
+    ).toBeEnabled();
+  });
+
+  it("mientras la mutation está pendiente, el botón dice 'Regenerando…'", async () => {
+    const user = userEvent.setup();
+    rotateAdminOrderTokenMock.mockImplementation(() => new Promise(() => {}));
+    renderModal();
+
+    await user.click(
+      screen.getByRole("button", { name: "Regenerar código de rastreo" })
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar y enviar código nuevo" })
+    );
+
+    expect(await screen.findByRole("button", { name: "Regenerando…" })).toBeDisabled();
   });
 });

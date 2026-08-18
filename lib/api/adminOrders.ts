@@ -78,6 +78,14 @@ export const AdminOrderSchema = z.object({
   // en Stripe. Un pedido `pending` cancelado no pasa por Stripe → quedan null.
   refundId: z.string().nullable().optional(),
   refundedAt: z.string().nullable().optional(),
+  // Código de rastreo público del comprador (Fase 26). Se declara solo para no
+  // descartarlo en el `parse` de `rotateAdminOrderToken` —Zod tira en silencio
+  // cualquier clave no declarada— pero NINGUNA vista admin lo pinta, y no debe
+  // empezar a hacerlo: es la credencial que abre /pedido/<token> sin
+  // contraseña, y el correo automático de la rotación ya se lo entrega al
+  // comprador. Es `.nullable()` porque la columna lo es (pedidos anteriores a
+  // la migración que la introdujo).
+  publicToken: z.string().nullable().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
   items: z.array(AdminOrderItemSchema),
@@ -217,5 +225,28 @@ export async function retryAdminOrderShipment(
 ): Promise<AdminOrder> {
   const body = opts?.force ? { force: true } : {};
   const { data } = await api.post(`/admin/orders/${id}/shipment/retry`, body);
+  return AdminOrderSchema.parse(data.order);
+}
+
+// POST /api/admin/orders/:id/rotate-token — rotación del código de rastreo
+// público (Fase 26). Existe porque el Aviso de Privacidad le promete al
+// comprador que un código expuesto (lo reenvió, le entraron al correo) se puede
+// invalidar; antes de esta fase esa promesa solo se podía cumplir metiendo mano
+// en la base de datos.
+//
+// **Sin body**: no se captura nada (el backend tampoco guarda quién la pidió).
+//
+// Rota, no borra: el `publicToken` viejo deja de servir en el acto —quien lo
+// tuviera guardado ve un 404 en /pedido/<token>— y el backend le manda al
+// comprador un correo con el código nuevo, con asunto propio para que no se
+// confunda con la confirmación de compra. Por eso el front no necesita leer ni
+// pintar el token: la entrega al comprador ya está resuelta.
+//
+// A diferencia de sus rutas hermanas **no tiene 409**: funciona en cualquier
+// estado del pedido (`pending`/`paid`/`shipped`/`delivered`/`cancelled`), porque
+// un link filtrado hay que poder apagarlo aunque el pedido ya se haya entregado.
+// 404 si el id no existe, 400 si `:id` no es numérico, 401 sin sesión.
+export async function rotateAdminOrderToken(id: number): Promise<AdminOrder> {
+  const { data } = await api.post(`/admin/orders/${id}/rotate-token`);
   return AdminOrderSchema.parse(data.order);
 }

@@ -6,9 +6,14 @@ axios única `lib/api/client.ts` (adjunta `Bearer` del `authStore` + maneja el `
 contratos Zod centralizados en `lib/api/*.ts` — el patrón de referencia es `lib/api/products.ts`
 (axios + validación Zod en runtime + query-key factory para TanStack Query).
 
-**Estado: las 25 fases están cerradas.** El detalle de arquitectura resultante (qué componente
+**Estado: las 26 fases están cerradas.** El detalle de arquitectura resultante (qué componente
 consume qué endpoint, invariantes, decisiones de diseño) vive en `CLAUDE.md` — este documento
 queda como bitácora histórica de cómo se llegó ahí, no como referencia activa.
+
+> ⚠️ **El número 26 está usado dos veces** y no es un error de este documento: el botón
+> "Imprimir pendientes" (`PrintPendingOrders.tsx`) se commiteó como Fase 26 antes de que este
+> roadmap asignara ese mismo número a la rotación del código de rastreo. Son trabajos
+> independientes; al buscar "Fase 26" en el repo van a aparecer los dos.
 
 ## Fases (orden numérico, no de dependencia)
 
@@ -39,6 +44,72 @@ queda como bitácora histórica de cómo se llegó ahí, no como referencia acti
 | 23 | Checkout: envío por caja | `packageCount`; se eliminó el cálculo local de envío en `lib/domain/cart.ts` |
 | 24 | Admin: productos sin tallas | `hasSizes`/`stockQuantity`; centinela `size: 0` |
 | 25 | Admin: pedidos por pestañas | `?estado=` en `GET /admin/orders`; filtrado 100% en el backend |
+| 26 | Admin: rotación de código de rastreo | `POST /api/admin/orders/:id/rotate-token` — invalida el código expuesto y manda uno nuevo por correo |
+
+## Fase 26 — Admin: rotación de código de rastreo ✅ Cerrada
+
+Se documenta aparte, con más detalle, porque fue la última en conectarse y quedó redactada
+mientras todavía estaba pendiente.
+
+**Por qué existe:** el Aviso de Privacidad le promete al comprador que, si su link/código de
+rastreo quedó expuesto (lo reenvió, se lo hackearon el correo, etc.), la tienda puede
+invalidarlo. Antes de esta fase esa promesa no tenía forma de cumplirse desde el panel.
+
+**Lo que el backend ya hace (referencia — no tocar):**
+- `POST /api/admin/orders/:id/rotate-token` `[auth]`. **Sin body.**
+- Genera un `publicToken` (UUID) nuevo para el pedido; el código/link anterior deja de
+  funcionar de inmediato — cualquiera que lo tuviera guardado ve un 404 al consultarlo en
+  `/pedido/<token>`.
+- Funciona **sin importar el estado del pedido** (`pending`/`paid`/`shipped`/`delivered`/
+  `cancelled`) — a diferencia de cancelar o marcar enviado, aquí no hay ningún estado que lo
+  bloquee.
+- Responde `200 { order }` (el pedido completo, misma forma que `cancel`/`status`/
+  `shipment/retry`), `404` si el id no existe, `400` si `:id` no es numérico, `401` sin sesión.
+  **No hay `409`** — es la diferencia deliberada con sus rutas hermanas.
+- El backend le manda automáticamente al comprador un correo con el código/link nuevos, con
+  asunto distinto ("Actualizamos tu código de rastreo…") para que no se confunda con la
+  confirmación de compra. **El frontend no necesita construir ni mostrar el token** — el correo
+  ya resuelve la entrega al comprador.
+- Detalle completo de diseño en `../backend/CLAUDE.md` → "Public order lookup (Fase O.4)" →
+  apartado "Token rotation (Fase O.6)".
+
+**Trabajo del frontend:**
+- [x] `lib/api/adminOrders.ts`: agregar `rotateAdminOrderToken(id: number): Promise<AdminOrder>`
+  siguiendo el patrón exacto de `retryAdminOrderShipment`/`cancelAdminOrder` (mismo archivo,
+  líneas ~145-221): `api.post(\`/admin/orders/${id}/rotate-token\`)` sin body, parseado con
+  `AdminOrderSchema.parse(data.order)`.
+- [x] `AdminOrderSchema` (mismo archivo) **no declara `publicToken` hoy** — si la UI quiere leer
+  el valor devuelto (aunque sea solo para un log/toast interno), agregarlo como
+  `publicToken: z.string().nullable().optional()`, mismo patrón que ya tuvieron que resolver
+  `couponCode`/`skydropxQuotationId` (Zod descarta silenciosamente cualquier campo no
+  declarado, aunque el backend ya lo mande).
+- [x] `components/admin/orders/OrderDetailModal.tsx`: agregar un botón "Regenerar código de
+  rastreo" (visible sin importar el estado del pedido, a diferencia del botón de cancelar/guía).
+  Seguir el mismo patrón de confirmación en dos pasos que ya usan `confirmingCancel`/
+  `confirmingRetry` en este archivo (primer clic revela la confirmación, segundo clic dispara la
+  mutación) — es una acción que rompe el acceso actual del comprador, así que un clic accidental
+  no debe dispararla directo.
+- [x] Envolver la llamada en un `useMutation` (mismo patrón que `cancelMutation`/`retryMutation`
+  en este archivo) y, al éxito, mostrar un toast confirmando que se le mandó el código nuevo al
+  comprador — no hace falta refrescar ni pintar el token en ningún lado, ya que hoy ninguna
+  vista admin muestra `publicToken`.
+- [x] Manejar `404`/errores de red con el mismo patrón que ya usan `cancelMutation`/
+  `retryMutation` en este componente.
+- [x] No hace falta invalidar queries de `adminOrderKeys` para reflejar el cambio: `publicToken`
+  no se pinta en ninguna vista admin actual, así que no queda ningún estado visible
+  desincronizado tras la rotación.
+
+**Dos desviaciones respecto a lo planeado arriba, ambas deliberadas:**
+
+1. **La confirmación de éxito va inline, no en un toast de Sileo.** El `<Toaster />` vive en
+   `app/admin/layout.tsx`, empata en `z-index` con el modal (50) y se pinta antes en el DOM, así
+   que el aviso habría quedado detrás del backdrop justo cuando hace falta leerlo.
+2. **Tampoco se llama a `onOrderUpdated`**, no solo se omite la invalidación. Ese callback arma
+   de paso el `isManualRefreshRef` de `OrdersSection` —el que suprime el toast del polling— y
+   rotar no toca ningún campo de `orderSignature`, así que usarlo se habría comido el aviso del
+   *siguiente* cambio real hecho por el webhook. El costo es que el "actualizado …" del modal
+   queda con la marca de tiempo previa hasta el siguiente refetch; se prefirió eso a perder una
+   notificación real.
 
 ## Notas que siguen vigentes
 
