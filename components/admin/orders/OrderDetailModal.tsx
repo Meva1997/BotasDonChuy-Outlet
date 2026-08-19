@@ -314,6 +314,9 @@ export default function OrderDetailModal({
 
   const created = formatDate(order.createdAt);
   const updated = formatDate(order.updatedAt);
+  // La fecha es la que manda: sin ella no hubo registro, y una versión o una IP
+  // sueltas no acreditan nada por sí solas.
+  const termsAccepted = formatDate(order.termsAcceptedAt ?? undefined);
   // La guía solo puede existir una vez pagado el pedido; antes de eso "en
   // proceso" sería engañoso (no hay envío que generar todavía).
   const canHaveLabel = order.status !== "pending" && order.status !== "cancelled";
@@ -412,6 +415,38 @@ export default function OrderDetailModal({
               <Field label="Correo">{order.customerEmail}</Field>
               <Field label="Teléfono">{order.customerPhone}</Field>
             </div>
+
+            {/* Constancia de aceptación de términos (Fase 27). Es lo que se
+                exhibe si el comprador desconoce la compra o llega una queja a
+                PROFECO: la fecha y la IP las estampó el servidor, la versión es
+                la de los documentos que él vio.
+
+                Sin constancia se pinta un guion y NUNCA un "sí": `null` son los
+                pedidos anteriores a la fase, cuando la casilla no salía del
+                navegador. Afirmar que aceptaron sería inventar la prueba. */}
+            <Field label="Términos aceptados">
+              {termsAccepted ? (
+                <span className="text-[13px]">
+                  {termsAccepted}
+                  {order.termsVersion && (
+                    <span className="text-amber-100/40">
+                      {" · versión "}
+                      {order.termsVersion}
+                    </span>
+                  )}
+                  {order.termsAcceptedIp && (
+                    <span className="text-amber-100/40">
+                      {" · IP "}
+                      {order.termsAcceptedIp}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-amber-100/30">
+                  — sin constancia (pedido anterior al registro)
+                </span>
+              )}
+            </Field>
 
             <div className="border-t border-stone-700/40" />
 

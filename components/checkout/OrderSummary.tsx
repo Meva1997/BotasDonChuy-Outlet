@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { ShoppingBag } from "lucide-react";
 import { useCartStore } from "@/store/cartStore";
 import { cartLineSignature, computeTotals } from "@/lib/domain/cart";
 import { useCheckout } from "./CheckoutContext";
@@ -50,15 +51,7 @@ export default function OrderSummary() {
       <div className="rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 space-y-6 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
         <div className="flex items-center gap-3 pb-4 border-b border-amber-600/30">
           <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-amber-500/20 to-amber-600/5 border border-amber-600/30 text-amber-500 shrink-0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M6 7h12l-1 13H7L6 7Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinejoin="round"
-              />
-              <path d="M9 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" strokeWidth="1.5" />
-            </svg>
+            <ShoppingBag size={16} strokeWidth={1.5} aria-hidden="true" />
           </span>
           <div>
             <h3 className="font-serif text-lg text-amber-50">Resumen de compra</h3>

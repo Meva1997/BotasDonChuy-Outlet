@@ -1,5 +1,5 @@
 import LegalLayout from "@/components/legal/LegalLayout";
-import { LEGAL_ENTITY } from "@/components/legal/entity";
+import { LEGAL_ENTITY, legalVersionLabel } from "@/components/legal/entity";
 
 const SECTIONS = [
   {
@@ -18,7 +18,8 @@ const SECTIONS = [
       "Para procesar y entregar tu pedido recabamos directamente de ti:",
       "• Nombre completo del destinatario.\n• Dirección de entrega: calle, número, colonia, ciudad, estado, código postal y referencias del domicilio.\n• Teléfono de contacto, que se comparte con la paquetería.\n• Correo electrónico, para enviarte la confirmación del pedido, el código de seguimiento y el número de guía.",
       "Además, el sistema genera y conserva automáticamente:",
-      "• El detalle de tu pedido —artículos, tallas, cantidades e importes cobrados— asociado a tu nombre y dirección.\n• Tu dirección IP, cuando aplicas un cupón de descuento y en los controles antiabuso que limitan el número de solicitudes por usuario. Se guarda como dato de auditoría; no se usa para perfilarte ni para publicidad.\n• Una versión normalizada de tu correo electrónico (en minúsculas y sin variantes de formato), que es el mecanismo con el que se hace cumplir el límite de «un cupón por cliente».\n• Un código único de seguimiento asociado a tu pedido.",
+      "• El detalle de tu pedido —artículos, tallas, cantidades e importes cobrados— asociado a tu nombre y dirección.\n• La constancia de que aceptaste estos documentos: la fecha y hora en que se creó tu pedido y la versión de los Términos y de este Aviso que estaban publicados en ese momento. Es lo que permite saber, más adelante, qué texto exacto aceptaste.\n• Tu dirección IP, en tres supuestos: al aceptar los Términos y este Aviso al momento de comprar, al aplicar un cupón de descuento, y en los controles antiabuso que limitan el número de solicitudes por usuario. Se guarda como dato de auditoría; no se usa para perfilarte ni para publicidad.\n• Una versión normalizada de tu correo electrónico (en minúsculas y sin variantes de formato), que es el mecanismo con el que se hace cumplir el límite de «un cupón por cliente».\n• Un código único de seguimiento asociado a tu pedido.",
+      "La constancia de aceptación y la dirección IP asociada a ella forman parte del registro de tu pedido, así que se conservan durante los mismos plazos que él (ver la sección 6) y no en un archivo aparte.",
       "No recabamos ni almacenamos datos de tarjeta bancaria. Los pagos se procesan íntegramente en Stripe: los datos de tu tarjeta viajan directamente a ese procesador y nosotros únicamente conservamos el identificador de la transacción y su estado.",
       "No recabamos datos personales sensibles.",
     ],
@@ -37,6 +38,7 @@ const SECTIONS = [
     title: "4. Fundamento y Consentimiento",
     body: [
       "Al marcar la casilla de aceptación durante el proceso de compra otorgas tu consentimiento expreso al tratamiento descrito en este aviso.",
+      "Esa aceptación queda registrada junto con tu pedido: se guarda la fecha y hora, la versión de los documentos vigente en ese momento y la dirección IP desde la que se realizó la compra. No es un trámite interno, es la constancia de tu consentimiento: sirve para acreditarlo si alguna vez hace falta, y también para que puedas saber con precisión qué texto aceptaste. Sin marcar esa casilla el pedido no se crea.",
       "El tratamiento de los datos estrictamente necesarios para cumplir con la compraventa y con las obligaciones fiscales derivadas de ella no requiere consentimiento adicional, conforme al artículo 10 de la Ley Federal de Protección de Datos Personales en Posesión de los Particulares, y subsiste mientras esas obligaciones sigan vigentes.",
     ],
   },
@@ -45,8 +47,8 @@ const SECTIONS = [
     title: "5. Transferencias y Encargados",
     body: [
       "Para poder entregarte tu pedido compartimos los datos estrictamente necesarios con los siguientes terceros, que actúan como encargados y solo pueden usarlos para la finalidad contratada:",
-      "• Empresa de paquetería, contratada a través de Skydropx (México): nombre, dirección completa, teléfono y correo electrónico, para generar la guía y realizar la entrega.\n• Stripe (Estados Unidos): correo electrónico e importe de la operación, para procesar el cobro y, en su caso, el reembolso.\n• Resend (Estados Unidos): correo electrónico y contenido del mensaje, para enviarte la confirmación del pedido, el código de seguimiento y los correos de recuperación de contraseña del panel de administración.\n• Proveedores de infraestructura (Vercel y el proveedor de alojamiento del servidor y la base de datos), que almacenan y procesan la información por cuenta del Responsable.",
-      "Transferencias internacionales: Stripe, Resend y parte de la infraestructura de alojamiento operan servidores fuera de México, principalmente en Estados Unidos. Al aceptar este aviso consientes esa transferencia, que se realiza únicamente para las finalidades primarias descritas en la sección 3 y al amparo del artículo 37 fracción V de la LFPDPPP, que la permite cuando es necesaria para el cumplimiento de un contrato celebrado en interés del titular.",
+      "• Empresa de paquetería, contratada a través de Skydropx (México): nombre, dirección completa, teléfono y correo electrónico, para generar la guía y realizar la entrega.\n• Stripe (Estados Unidos): el importe de la operación, para procesar el cobro y, en su caso, el reembolso. Los datos de tu tarjeta viajan directamente a Stripe desde tu navegador; nunca pasan por nuestros servidores ni les compartimos tu correo electrónico.\n• Resend (Estados Unidos): correo electrónico y contenido del mensaje, para enviarte la confirmación del pedido, el código de seguimiento y los correos de recuperación de contraseña del panel de administración.\n• Sentry (Estados Unidos), monitoreo técnico de errores: el número de pedido asociado y, cuando ocurre una falla en el pago o el envío, el detalle técnico de esa falla. Se usa únicamente para diagnosticar y corregir errores del sistema, nunca para perfilarte.\n• Proveedores de infraestructura (Vercel y el proveedor de alojamiento del servidor y la base de datos), que almacenan y procesan la información por cuenta del Responsable.",
+      "Transferencias internacionales: Stripe, Resend, Sentry y parte de la infraestructura de alojamiento operan servidores fuera de México, principalmente en Estados Unidos. Al aceptar este aviso consientes esa transferencia, que se realiza únicamente para las finalidades primarias descritas en la sección 3 y al amparo del artículo 37 fracción V de la LFPDPPP, que la permite cuando es necesaria para el cumplimiento de un contrato celebrado en interés del titular.",
       "No vendemos, rentamos ni cedemos tus datos personales a terceros con fines comerciales. Solo los revelaremos a una autoridad cuando medie un requerimiento fundado y motivado.",
     ],
   },
@@ -141,13 +143,11 @@ const SECTIONS = [
 ];
 
 export default function PrivacyPolicy() {
-  const lastUpdated = "18 de agosto de 2026";
-
   return (
     <LegalLayout
       eyebrow={LEGAL_ENTITY.tradeName}
       title="Aviso de Privacidad"
-      lastUpdated={lastUpdated}
+      lastUpdated={legalVersionLabel()}
       highlight={{
         label: "En corto:",
         text: (

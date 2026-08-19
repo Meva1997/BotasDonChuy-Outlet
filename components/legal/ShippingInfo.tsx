@@ -1,5 +1,5 @@
 import LegalLayout from "@/components/legal/LegalLayout";
-import { LEGAL_ENTITY } from "@/components/legal/entity";
+import { LEGAL_ENTITY, legalVersionLabel } from "@/components/legal/entity";
 
 const SECTIONS = [
   {
@@ -111,13 +111,11 @@ const SECTIONS = [
 ];
 
 export default function ShippingInfo() {
-  const lastUpdated = "18 de agosto de 2026";
-
   return (
     <LegalLayout
       eyebrow={LEGAL_ENTITY.tradeName}
       title="Política de Envíos"
-      lastUpdated={lastUpdated}
+      lastUpdated={legalVersionLabel()}
       highlight={{
         label: "Importante:",
         text: (

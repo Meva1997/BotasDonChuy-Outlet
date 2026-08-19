@@ -86,6 +86,20 @@ export const AdminOrderSchema = z.object({
   // comprador. Es `.nullable()` porque la columna lo es (pedidos anteriores a
   // la migración que la introdujo).
   publicToken: z.string().nullable().optional(),
+  // Constancia de aceptación de términos (Fase 27). `termsAcceptedAt` y
+  // `termsAcceptedIp` los estampa el servidor al crear el pedido; `termsVersion`
+  // es la versión de los documentos que se le renderizó al comprador.
+  //
+  // Los tres son `.nullable()` a propósito: los pedidos anteriores a la fase no
+  // tienen constancia, y `null` significa exactamente eso — **"no hay
+  // constancia", nunca "aceptó"**. Quien los pinte tiene que mostrar un guion,
+  // no un sí; inventar el sí sería justo el problema que esta fase resolvió.
+  //
+  // `termsAcceptedIp` solo llega por `/api/admin/*`: el backend la excluye de la
+  // respuesta del checkout y de la consulta pública del pedido.
+  termsAcceptedAt: z.string().nullable().optional(),
+  termsVersion: z.string().nullable().optional(),
+  termsAcceptedIp: z.string().nullable().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
   items: z.array(AdminOrderItemSchema),

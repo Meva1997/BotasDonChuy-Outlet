@@ -204,7 +204,9 @@ function RateCard({
 export default function ShippingOptions() {
   const items = useCartStore((s) => s.items);
   const {
+    acceptedTerms,
     confirmedCustomer,
+    goToReview,
     goToDetails,
     getAppliedCoupon,
     setAppliedCoupon,
@@ -386,7 +388,7 @@ export default function ShippingOptions() {
       : null);
 
   const onSubmit = () => {
-    if (!selected || couponBlocked) return;
+    if (!selected || couponBlocked || !acceptedTerms) return;
     placeOrder(items, confirmedCustomer, selected, coupon?.code ?? null, (order) =>
       completeOrder(confirmedCustomer, order)
     );
@@ -564,10 +566,33 @@ export default function ShippingOptions() {
           </div>
         )}
 
+        {/* Solo puede verse desmarcando la casilla del resumen DESPUÉS de haber
+            avanzado (el Stepper deja volver a un paso ya visitado). Antes de la
+            Fase 27 ese camino llegaba hasta el pago: la casilla únicamente
+            deshabilitaba el botón del paso 1 y nunca se volvía a consultar. */}
+        {!acceptedTerms && (
+          <div
+            role="alert"
+            className="space-y-2.5 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2.5"
+          >
+            <p className="text-[12px] leading-relaxed text-red-400/90">
+              Necesitas aceptar los términos y condiciones para completar tu
+              compra.
+            </p>
+            <button
+              type="button"
+              onClick={goToReview}
+              className="text-[10px] tracking-[0.2em] uppercase text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+            >
+              Volver al resumen
+            </button>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={onSubmit}
-          disabled={!selected || isProcessing || couponBlocked}
+          disabled={!selected || isProcessing || couponBlocked || !acceptedTerms}
           className="btn-shimmer w-full rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)] cursor-pointer disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isProcessing && (

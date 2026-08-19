@@ -57,6 +57,13 @@ export function makeAdminOrder(overrides: Partial<AdminOrder> = {}): AdminOrder 
     shipmentStatus: null,
     refundId: null,
     refundedAt: null,
+    // Constancia de aceptación de términos (Fase 27). El default es `null` —el
+    // pedido anterior al registro— y no una constancia plausible: es el caso que
+    // debe pintarse como "sin constancia", y tenerlo por defecto obliga a que
+    // cualquier test que afirme lo contrario lo declare explícitamente.
+    termsAcceptedAt: null,
+    termsVersion: null,
+    termsAcceptedIp: null,
     createdAt: "2026-07-03T12:00:00.000Z",
     updatedAt: "2026-07-03T12:00:00.000Z",
     items: [makeAdminOrderItem()],

@@ -83,6 +83,7 @@ export function usePlaceOrder() {
   // y reintentar" junto al mensaje del backend.
   const [couponRejected, setCouponRejected] = useState(false);
   const {
+    acceptedTerms,
     getPendingOrder,
     setPendingOrder,
     setSelectedRate,
@@ -99,6 +100,17 @@ export function usePlaceOrder() {
       couponCode: string | null,
       onSuccess: (order: OrderResponse) => void
     ) => {
+      // Constancia de aceptación (Fase 27). La casilla solo bloquea el botón del
+      // paso 1, y `acceptedTerms` no se resetea al avanzar, así que quien
+      // regresara por el Stepper y la desmarcara podía llegar hasta aquí. Esto
+      // lo corta antes de crear el pedido, en espejo del 400 del backend.
+      if (!acceptedTerms) {
+        setStatus("idle");
+        setError(
+          "Necesitas aceptar los términos y condiciones para completar tu compra."
+        );
+        return;
+      }
       setStatus("processing");
       setError(null);
       setCouponRejected(false);
@@ -118,7 +130,13 @@ export function usePlaceOrder() {
         let replayed = false;
         if (!pending) {
           const res = await createOrder(
-            buildOrderPayload(items, customer, selectedRate, couponCode),
+            buildOrderPayload(
+              items,
+              customer,
+              selectedRate,
+              couponCode,
+              acceptedTerms
+            ),
             // Misma clave mientras el intento de compra sea el mismo (la firma
             // no cambió): es lo que convierte un doble clic o un reintento del
             // navegador en un solo pedido con un solo cobro.
@@ -232,6 +250,7 @@ export function usePlaceOrder() {
       }
     },
     [
+      acceptedTerms,
       getPendingOrder,
       setPendingOrder,
       setSelectedRate,

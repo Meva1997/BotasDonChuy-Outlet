@@ -1,5 +1,5 @@
 import LegalLayout from "@/components/legal/LegalLayout";
-import { LEGAL_ENTITY } from "@/components/legal/entity";
+import { LEGAL_ENTITY, legalVersionLabel } from "@/components/legal/entity";
 
 const SECTIONS = [
   {
@@ -72,7 +72,7 @@ const SECTIONS = [
     slug: "proceso-compra",
     title: "8. Proceso de Compra en Línea y Métodos de Pago",
     body: [
-      "La compra se realiza en cuatro pasos: resumen y aceptación de términos, dirección de envío, elección del servicio de paquetería y pago. Al marcar la casilla «He leído y acepto los términos y condiciones y la política de privacidad» el comprador otorga su consentimiento expreso e informado; sin esa aceptación el proceso no avanza.",
+      "La compra se realiza en cuatro pasos: resumen y aceptación de términos, dirección de envío, elección del servicio de paquetería y pago. Al marcar la casilla «He leído y acepto los términos y condiciones y la política de privacidad» el comprador otorga su consentimiento expreso e informado; sin esa aceptación el proceso no avanza y el pedido no llega a crearse. La aceptación queda registrada con el pedido en los términos de la sección 15.",
       "Los pagos con tarjeta se procesan a través de Stripe. El Proveedor no recibe, no almacena y no tiene acceso a los datos completos de la tarjeta: viajan directamente al procesador bajo sus propios estándares de seguridad.",
       "El pedido queda confirmado cuando el pago se acredita. Un pedido creado pero no pagado se cancela automáticamente transcurrido un periodo breve y las piezas vuelven al catálogo: un carrito abandonado a medio pagar no reserva mercancía, tal como advierte el aviso «Estos artículos no se reservan».",
       "Si por un fallo de red o un doble clic se envía dos veces la misma solicitud de pago, el sistema la reconoce como repetida y no genera un segundo cargo.",
@@ -134,7 +134,8 @@ const SECTIONS = [
     title: "15. Constancia de la Operación",
     body: [
       "Cada pedido queda registrado con su fecha y hora, los artículos comprados, los descuentos aplicados y los importes cobrados. Ese registro, junto con el correo de confirmación que se envía al comprador y el código de seguimiento asociado, constituye la constancia de la operación.",
-      "Las compras realizadas antes de una modificación de estos Términos se rigen por la versión vigente en el momento de la transacción. La fecha de última actualización que aparece en el encabezado de este documento permite identificar qué versión estaba en vigor.",
+      "El registro incluye además la constancia de aceptación: la fecha y hora en que se creó el pedido, la versión de estos Términos y del Aviso de Privacidad que estaban publicados en ese momento, y la dirección IP desde la que se compró. El Aviso de Privacidad detalla el tratamiento de ese dato.",
+      "Las compras realizadas antes de una modificación de estos Términos se rigen por la versión vigente en el momento de la transacción. La fecha de última actualización que aparece en el encabezado de este documento permite identificar qué versión estaba en vigor, y la versión concreta que se aplicó a cada pedido queda guardada con él, de modo que no depende de la memoria de ninguna de las partes.",
     ],
   },
   {
@@ -178,13 +179,11 @@ const SECTIONS = [
 ];
 
 export default function TermsConditions() {
-  const lastUpdated = "18 de agosto de 2026";
-
   return (
     <LegalLayout
       eyebrow={LEGAL_ENTITY.tradeName}
       title="Términos y Condiciones"
-      lastUpdated={lastUpdated}
+      lastUpdated={legalVersionLabel()}
       highlight={{
         label: "Importante:",
         text: (

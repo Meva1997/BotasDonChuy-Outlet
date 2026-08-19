@@ -920,3 +920,49 @@ describe("OrderDetailModal — rotación del código de rastreo (Fase 26)", () =
     expect(await screen.findByRole("button", { name: "Regenerando…" })).toBeDisabled();
   });
 });
+
+describe("OrderDetailModal — constancia de aceptación de términos (Fase 27)", () => {
+  it("muestra fecha, versión e IP cuando el pedido tiene constancia", () => {
+    renderModal({
+      termsAcceptedAt: "2026-08-19T18:30:00.000Z",
+      termsVersion: "2026-08-19",
+      termsAcceptedIp: "189.203.44.12",
+    });
+
+    const label = screen.getByText("Términos aceptados");
+    const block = label.parentElement!;
+    expect(block).toHaveTextContent("versión 2026-08-19");
+    expect(block).toHaveTextContent("IP 189.203.44.12");
+    // La fecha pasa por el mismo `formatDate` que "Creado"/"actualizado".
+    expect(block).toHaveTextContent(/2026/);
+  });
+
+  it("sin constancia muestra un guion y dice por qué — nunca un 'sí'", () => {
+    // Los pedidos anteriores a la fase no tienen registro porque la casilla no
+    // salía del navegador. Pintarlos como aceptados inventaría la prueba, que es
+    // justo lo que esta fase vino a evitar.
+    renderModal({
+      termsAcceptedAt: null,
+      termsVersion: null,
+      termsAcceptedIp: null,
+    });
+
+    const block = screen.getByText("Términos aceptados").parentElement!;
+    expect(block).toHaveTextContent("—");
+    expect(block).toHaveTextContent(/sin constancia/i);
+  });
+
+  it("con fecha pero sin IP no inventa el dato faltante", () => {
+    // Puede pasar si el pedido se creó sin que `req.ip` resolviera a nada.
+    renderModal({
+      termsAcceptedAt: "2026-08-19T18:30:00.000Z",
+      termsVersion: "2026-08-19",
+      termsAcceptedIp: null,
+    });
+
+    const block = screen.getByText("Términos aceptados").parentElement!;
+    expect(block).toHaveTextContent("versión 2026-08-19");
+    expect(block).not.toHaveTextContent(/IP/);
+    expect(block).not.toHaveTextContent(/sin constancia/i);
+  });
+});

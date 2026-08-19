@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { useCheckout } from "../CheckoutContext";
 import { usePlaceOrder } from "../usePlaceOrder";
 import { createOrder } from "@/lib/api/orders";
+import { LEGAL_VERSION } from "@/components/legal/entity";
 import { getStripe } from "@/lib/stripe/client";
 import { shippingKeys } from "@/lib/api/shipping";
 import { shippingSignature } from "@/lib/domain/cart";
@@ -44,12 +45,21 @@ function makeStripeMock() {
   };
 }
 
-function renderPlaceOrder() {
+function renderPlaceOrder({ acceptedTerms = true } = {}) {
   const { Wrapper, queryClient } = checkoutHookWrapper();
   const utils = renderHook(
     () => ({ checkout: useCheckout(), place: usePlaceOrder() }),
     { wrapper: Wrapper }
   );
+  // La casilla de términos se marca en el paso 1, mucho antes de llegar al pago,
+  // así que el estado de partida de esta suite es "ya aceptó" — sin eso
+  // `placeOrder` corta antes de crear nada (Fase 27). El caso contrario tiene su
+  // propio test más abajo y pasa `acceptedTerms: false`.
+  if (acceptedTerms) {
+    act(() => {
+      utils.result.current.checkout.setAcceptedTerms(true);
+    });
+  }
   return { ...utils, queryClient };
 }
 
@@ -410,6 +420,47 @@ describe("mapeo de errores genéricos (vía checkoutErrors)", () => {
     });
 
     expect(result.current.place.error).toMatch(/conectar con el servidor/i);
+    expect(result.current.place.status).toBe("idle");
+  });
+});
+
+describe("constancia de aceptación de términos (Fase 27)", () => {
+  it("manda acceptedTerms y la versión de los documentos en el payload", async () => {
+    const order = makeOrderResponse();
+    createOrderMock.mockResolvedValueOnce({ order, clientSecret: "secret_1", replayed: false });
+    const stripe = makeStripeMock();
+    stripe.confirmCardPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
+    getStripeMock.mockReturnValue(Promise.resolve(stripe));
+
+    const { result } = renderPlaceOrder();
+    await act(async () => {
+      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+    });
+
+    // `[0][0]` es el payload; `[0][1]` es la idempotency key (lo único que esta
+    // suite miraba del `createOrder` antes de esta fase).
+    const payload = createOrderMock.mock.calls[0][0];
+    expect(payload.acceptedTerms).toBe(true);
+    // Se compara contra la constante, no contra un literal: si el literal se
+    // quedara atrás al editar los documentos, el test seguiría en verde mientras
+    // el pedido guarda una versión distinta de la que se le mostró al comprador.
+    expect(payload.termsVersion).toBe(LEGAL_VERSION);
+  });
+
+  it("sin aceptación no crea el pedido y explica por qué", async () => {
+    // Solo se llega aquí volviendo al resumen por el Stepper y desmarcando la
+    // casilla: `acceptedTerms` no se resetea al avanzar. Antes de esta fase ese
+    // camino pagaba sin problema — la casilla no se volvía a consultar nunca.
+    const { result } = renderPlaceOrder({ acceptedTerms: false });
+    const onSuccess = jest.fn();
+
+    await act(async () => {
+      await result.current.place.placeOrder(items, customer, rate, null, onSuccess);
+    });
+
+    expect(createOrderMock).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(result.current.place.error).toMatch(/aceptar los términos/i);
     expect(result.current.place.status).toBe("idle");
   });
 });

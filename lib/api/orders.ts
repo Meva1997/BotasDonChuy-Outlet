@@ -5,6 +5,7 @@ import type { CartItem } from "@/store/cartStore";
 import type { ShippingData } from "@/schemas/checkout";
 import type { SelectedShippingRate } from "@/lib/api/shipping";
 import { mapCartItemsToOrderItems } from "@/lib/domain/cart";
+import { LEGAL_VERSION } from "@/components/legal/entity";
 
 // Renglón de la orden que devuelve el backend (POST /api/orders). Refleja
 // `OrderItem` de ../backend/src/models/OrderItem.ts pero SIN `unitCost`: la ruta
@@ -108,6 +109,18 @@ export interface CreateOrderResult extends CreateOrderResponse {
 export interface CreateOrderPayload {
   items: Array<{ productId: number; size: number; quantity: number }>;
   customer: ShippingData;
+  // Constancia de aceptación de términos (Fase 27). Los dos campos son
+  // OBLIGATORIOS —a diferencia de todo lo demás aquí, que se omite cuando no
+  // aplica— porque el backend responde 400 sin ellos: es lo que hace verdadera
+  // la frase de Términos §8 ("sin esa aceptación el proceso no avanza"), que
+  // hasta esta fase solo valía para quien pasara por esta interfaz.
+  //
+  // `acceptedTerms` se LEE del contexto del checkout; no se hardcodea a `true`.
+  // Un valor fijo haría que el campo afirmara algo que el sistema no comprobó.
+  acceptedTerms: boolean;
+  // Versión de los documentos que se le renderizó al comprador (`LEGAL_VERSION`).
+  // El backend no puede saberla: solo el cliente conoce qué texto pintó.
+  termsVersion: string;
   shippingCarrier?: string;
   // Cupón de descuento (Fase 19). Va el CÓDIGO, jamás un monto: el backend
   // re-decide el descuento de forma atómica (misma regla que rige precios y
@@ -250,17 +263,25 @@ export function lookupOrderErrorMessage(error: unknown): string {
 //
 // `couponCode` (Fase 19) se OMITE cuando no hay cupón aplicado: el backend lo
 // valida con `.optional()`, y una clave presente con `""` sería un 400.
+//
+// `acceptedTerms` (Fase 27) es el único parámetro obligatorio que NO se omite
+// nunca: se pasa tal como lo tiene el contexto del checkout, incluso en `false`,
+// para que el 400 del backend sea la última red y no una formalidad que este
+// helper esquiva poniendo `true` por su cuenta.
 export function buildOrderPayload(
   items: CartItem[],
   customer: ShippingData,
   selectedRate?: SelectedShippingRate | null,
-  couponCode?: string | null
+  couponCode?: string | null,
+  acceptedTerms: boolean = false
 ): CreateOrderPayload {
   const liveRate =
     selectedRate?.quotationId && selectedRate?.rateId ? selectedRate : null;
   return {
     items: mapCartItemsToOrderItems(items),
     customer,
+    acceptedTerms,
+    termsVersion: LEGAL_VERSION,
     ...(selectedRate?.carrier ? { shippingCarrier: selectedRate.carrier } : {}),
     ...(couponCode ? { couponCode } : {}),
     ...(liveRate

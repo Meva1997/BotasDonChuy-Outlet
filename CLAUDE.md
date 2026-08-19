@@ -134,9 +134,20 @@ components/
                   #   entity.ts (LEGAL_ENTITY) es la fuente ÚNICA de razón social/RFC/domicilio/
                   #   correo/jurisdicción: los tres documentos la leen, porque un dato corregido en
                   #   uno y olvidado en otros dos es una discrepancia entre documentos vinculantes,
-                  #   que se interpreta a favor del consumidor. Sus campos `[PENDIENTE: …]` se
-                  #   renderizan en pantalla A PROPÓSITO — un aviso que aparenta estar completo sin
-                  #   estarlo es peor que uno con un hueco visible (LFPDPPP art. 16 fr. I).
+                  #   que se interpreta a favor del consumidor. Si algún dato vuelve a quedar
+                  #   pendiente, se renderiza en pantalla como `[PENDIENTE: …]` A PROPÓSITO — un
+                  #   aviso que aparenta estar completo sin estarlo es peor que uno con un hueco
+                  #   visible (LFPDPPP art. 16 fr. I).
+                  #   El mismo archivo exporta `LEGAL_VERSION` (fecha ISO) y `legalVersionLabel()`
+                  #   (Fase 27): los tres documentos versionan JUNTOS, porque el checkout los acepta
+                  #   en un solo acto. Esa constante hace dos cosas a la vez — pinta el "Última
+                  #   actualización" de los tres encabezados Y viaja en cada `POST /api/orders` para
+                  #   quedar guardada en el pedido. Derivar la etiqueta de la constante (en vez de
+                  #   dos valores) es lo que impide que la fecha impresa y la guardada diverjan; el
+                  #   `timeZone: "UTC"` de `legalVersionLabel` tampoco es opcional (sin él,
+                  #   `new Date("2026-08-18")` se imprime como 17 de agosto en México — mismo
+                  #   corrimiento que `storeDayISO()` resuelve para cupones).
+                  #   **Al editar cualquiera de los tres documentos, subir `LEGAL_VERSION`.**
                   #   Cada sección lleva un `slug` estable, NO se ancla por índice del array: estos
                   #   documentos se renumeran cada vez que cambia la ley o la operación, y anclar por
                   #   índice rompe todo enlace ya compartido (`/terminos#section-2`).
@@ -146,7 +157,11 @@ components/
                   #   La transferencia del riesgo está redactada igual en Términos §10 y Envíos §6
                   #   ("cuando la paquetería toma posesión", que cubre recolección Y dropoff, ver
                   #   `shippingRequiresDropoff`); si cambia una, cambia la otra. Al tocar cupones,
-                  #   envío por caja, seguimiento público o reembolsos, revisa aquí también
+                  #   envío por caja, seguimiento público o reembolsos, revisa aquí también.
+                  #   Fase 27: Privacidad §2/§4 y Términos §8/§15 describen la constancia de
+                  #   aceptación (fecha + versión + IP) que hoy sí se guarda. La IP quedó declarada
+                  #   en §2 porque es un dato personal con finalidad nueva — guardarla sin decirlo
+                  #   sería un tratamiento no informado (LFPDPPP art. 16 fr. II)
   about/          # AboutUs — static "Sobre nosotros", linked from footer
   auth/           # AuthShell + LoginForm (RHF + zod + TanStack mutation, connected). AdminGuard
                   #   protects /admin, validates token via GET /auth/me. ForgotPasswordForm — 3-step
@@ -252,7 +267,16 @@ components/
                   #     this modal and paints earlier in the DOM, so it would land behind the backdrop.
                   #     `publicToken` is declared on `AdminOrderSchema` only so the rotate response
                   #     survives the parse — no UI reads it, and none should: it's the credential that
-                  #     opens /pedido/<token> with no password
+                  #     opens /pedido/<token> with no password.
+                  #     Constancia de aceptación (Fase 27): línea "Términos aceptados" bajo el bloque
+                  #     de Cliente, con fecha (vía el mismo `formatDate` del archivo) + versión + IP.
+                  #     `termsAcceptedAt`/`termsVersion`/`termsAcceptedIp` se declaran nullable en
+                  #     `AdminOrderSchema` porque los pedidos anteriores a la fase no tienen
+                  #     constancia: `null` significa **"no hay constancia", jamás "aceptó"**, y se
+                  #     pinta como guion + "sin constancia (pedido anterior al registro)". Inventar
+                  #     el sí sería justo lo que la fase vino a eliminar. Es el único lugar de la app
+                  #     donde se ve la IP: el backend la excluye de la respuesta del checkout y la
+                  #     consulta pública nunca la incluyó (lista blanca)
                   #   orders/shipmentLabel.ts — pure module. `skydropxShipmentId` isn't "an id or
                   #     null": it can also be "creating" (in flight / orphaned), "unreconciled:<id>"
                   #     (Skydropx charged but didn't persist), "unreconciled:desconocido" (may have
@@ -311,14 +335,22 @@ lib/
                   #   handled inline instead of logging out)
     auth.ts       # Zod contracts + login/forgotPassword/verifyResetCode/resetPassword/getMe + authKeys.
                   #   Source of truth for AuthUser type
-    orders.ts     # Checkout contract. buildOrderPayload sends { items, customer, couponCode?,
-                  #   quotationId?, rateId? } — never amounts (backend recalculates + re-quotes
+    orders.ts     # Checkout contract. buildOrderPayload sends { items, customer, acceptedTerms,
+                  #   termsVersion, couponCode?, quotationId?, rateId? } — never amounts (backend
+                  #   recalculates + re-quotes
                   #   Skydropx if a quotation was passed). createOrder(payload, idempotencyKey?) sends
                   #   the `Idempotency-Key` header and reads `Idempotency-Replayed` off the response
                   #   header (not the body). PublicOrderSchema is a distinct, smaller projection (no
                   #   unitCost/paymentIntentId/refundId/labelUrl/Skydropx ids/publicToken/buyer contact
                   #   info — this link gets shared over WhatsApp). `packageCount` (Fase 23, nullable —
-                  #   null = flat-rate) is informational only, never sent back in buildOrderPayload
+                  #   null = flat-rate) is informational only, never sent back in buildOrderPayload.
+                  #   `acceptedTerms`/`termsVersion` (Fase 27) son los ÚNICOS campos obligatorios que
+                  #   no se omiten nunca — el backend responde 400 sin ellos. `acceptedTerms` se LEE
+                  #   del CheckoutContext y no se hardcodea a `true`: un valor fijo haría que el
+                  #   campo afirmara algo que el sistema no comprobó. `termsVersion` sale de
+                  #   `LEGAL_VERSION` porque solo el cliente sabe qué texto renderizó. La fecha y la
+                  #   IP las estampa el servidor (nunca el cliente) y NO se declaran en
+                  #   `OrderResponseSchema`/`PublicOrderSchema`: la constancia es dato del comercio
     coupons.ts    # Public coupon contract (Fase 19). validateCoupon() — validates WITHOUT redeeming
                   #   (querying repeatedly doesn't burn a use), returns the exact amount that will be
                   #   charged (shares computeCouponDiscount with the backend checkout — front never
@@ -464,7 +496,7 @@ Two different reasons to suspend → two different answers. **Don't unify withou
 
 The `Stepper` allows jumping to any **already-visited** step (never an unvisited one, never after order confirmation), and renders 3 states per step (done / visited-but-not-current / pending) — without the middle state, going back made a filled step look untouched.
 
-1. **Resumen** (`OrderSummary`) — read-only review + required terms checkbox. `computeTotals(items)` no longer estimates shipping (Fase 23) — shown as "Se calcula con tu dirección", never $0 or hidden (an unnamed shipping line reads as free shipping). `CouponField` lives here. **App-wide totals invariant: `total = subtotal − savings − couponDiscount + shipping`** — `savings` (outlet discount) and `couponDiscount` are distinct and never merged; the coupon never touches shipping.
+1. **Resumen** (`OrderSummary`) — read-only review + required terms checkbox. Desde la Fase 27 esa casilla **sale del navegador**: `acceptedTerms` viaja en `POST /api/orders` junto a `LEGAL_VERSION`, el backend 400ea sin ellos y guarda fecha + versión + IP en el pedido. Ojo: la casilla **no se resetea al avanzar**, así que se vuelve a consultar en `usePlaceOrder` y en el botón de pago de `ShippingOptions` — antes de esa fase, volver por el `Stepper` y desmarcarla dejaba pagar igual. `computeTotals(items)` no longer estimates shipping (Fase 23) — shown as "Se calcula con tu dirección", never $0 or hidden (an unnamed shipping line reads as free shipping). `CouponField` lives here. **App-wide totals invariant: `total = subtotal − savings − couponDiscount + shipping`** — `savings` (outlet discount) and `couponDiscount` are distinct and never merged; the coupon never touches shipping.
 2. **Dirección** (`UserDetails`) — RHF + zod (`schemas/checkout.ts`, Mexico-only via `MEXICAN_STATES`). On submit, `confirmShipping(data)` unconditionally invalidates any previously chosen rate (a new address may quote differently) and advances. No order/Stripe interaction yet.
 3. **Envío** (`ShippingOptions`) — live Skydropx quote. **Coupon revalidation** (Fase 19): if applied and not yet checked against the confirmed email, re-queries `/validate` with the email — the only point in checkout where "one use per customer" can actually be verified. A rejection (`isCouponRejection`, 4xx) blocks "Pagar y confirmar"; a network error/429 does not. `POST /api/shipping/rates` **always returns 200** (falls back to flat rate on Skydropx failure). A single rate auto-selects; 2+ requires a choice. **packageCount** (Fase 23) is shown above the rate list and in the sidebar when >1 box, from a **single derivation** shared by both (they describe the same shipment, so two calculations could contradict each other on screen): the chosen rate's own count once one is selected — that's what gets charged — and before that the **max** across `data.rates`, never `rates[0]`. Payment: `usePlaceOrder` — (1) `createOrder()` posts `buildOrderPayload(...)` with **no amounts** (backend recalculates, re-quoting Skydropx by `quotationId` if present) → `{ order, clientSecret }`; (2) `stripe.confirmCardPayment(clientSecret, { payment_method: "pm_card_visa" })` — **hardcoded test card**, sandbox only. The pending order is cached in context by an `orderSignature` (cart + customer + rate + coupon) to avoid re-creating it on retry; invalidated if any of those change. **`Idempotency-Key`** (Fase 15) protects against the retry path that *doesn't* go through the cache (double-click, browser auto-retry) — keyed by the same signature, generated lazily on submit (never in render — `crypto.randomUUID()` doesn't exist in SSR), cleared by `completeOrder()`. If the backend replays (`Idempotency-Replayed` header), `usePlaceOrder` checks `stripe.retrievePaymentIntent()` before re-confirming, since re-confirming an already-`succeeded` payment throws a false failure. Errors mapped in `checkoutErrors.ts` (see components/checkout above). Only on `paymentIntent.status === "succeeded"` does `completeOrder()` freeze the snapshot (with server-authoritative totals), empty the cart, and advance — the real `paid` state is reconciled async by the webhook.
 4. **Confirmación** (`Success`) — renders the frozen snapshot. No `#<id>` (Fase 21); CTA is "Ver el estado de mi pedido" → `/pedido/<token>` when `publicToken` is present in the snapshot (not persisted to localStorage — that would move a credential to the browser just to save a click).

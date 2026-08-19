@@ -54,16 +54,22 @@ function Harness({
   onContext,
   confirmed = true,
   coupon,
+  acceptedTerms = true,
 }: {
   onContext: (ctx: Ctx) => void;
   confirmed?: boolean;
   coupon?: AppliedCoupon;
+  acceptedTerms?: boolean;
 }) {
   const ctx = useCheckout();
   const seeded = useRef(false);
   useEffect(() => {
     if (!seeded.current) {
       if (coupon) ctx.setAppliedCoupon(cartLineSignature(items), coupon);
+      // Se marca en el paso 1 y no se resetea al avanzar, así que llegar al paso
+      // 3 sin aceptación es la excepción, no la norma: por eso el default es
+      // `true` y el caso contrario se pide explícitamente (Fase 27).
+      if (acceptedTerms) ctx.setAcceptedTerms(true);
       if (confirmed) ctx.confirmShipping(customer);
       seeded.current = true;
     }
@@ -73,7 +79,13 @@ function Harness({
   return <ShippingOptions />;
 }
 
-function renderShipping(options: { confirmed?: boolean; coupon?: AppliedCoupon } = {}) {
+function renderShipping(
+  options: {
+    confirmed?: boolean;
+    coupon?: AppliedCoupon;
+    acceptedTerms?: boolean;
+  } = {}
+) {
   let ctx!: Ctx;
   const utils = renderWithCheckout(
     <Harness {...options} onContext={(c) => (ctx = c)} />
@@ -512,5 +524,37 @@ describe("pagar y confirmar", () => {
     });
     await user.click(retryButton);
     expect(getCtx().getAppliedCoupon(cartLineSignature(items))).toBeNull();
+  });
+});
+
+describe("ShippingOptions — aceptación de términos retirada (Fase 27)", () => {
+  // Se llega aquí volviendo al resumen por el Stepper y desmarcando la casilla.
+  // Antes de esta fase el pago seguía disponible: la casilla solo deshabilitaba
+  // el botón del paso 1 y nunca se volvía a consultar.
+  it("bloquea el pago y ofrece volver al resumen", async () => {
+    getShippingRatesMock.mockResolvedValue(ratesResponse());
+    const { user, getCtx } = renderShipping({ acceptedTerms: false });
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Pagar y confirmar" })).toBeDisabled()
+    );
+    expect(
+      screen.getByText(/aceptar los términos y condiciones/i)
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Volver al resumen" }));
+    expect(getCtx().step).toBe(0);
+  });
+
+  it("con la casilla marcada no aparece el aviso", async () => {
+    getShippingRatesMock.mockResolvedValue(ratesResponse());
+    renderShipping();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Pagar y confirmar" })).toBeEnabled()
+    );
+    expect(
+      screen.queryByText(/aceptar los términos y condiciones/i)
+    ).not.toBeInTheDocument();
   });
 });
