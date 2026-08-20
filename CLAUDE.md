@@ -22,9 +22,11 @@ pnpm test:coverage  # Jest + reporte de cobertura (NO uses `pnpm test -- --cover
 
 Package manager is **pnpm**. Use `pnpm add` to install.
 
-## CI
+## CI & CD
 
-`.github/workflows/ci.yml` runs on every push/PR to `main`: lint, `tsc --noEmit`, test, build. Deploys are unrelated to this workflow — Vercel's own GitHub integration handles previews/production on push, independent of Actions.
+`.github/workflows/ci.yml` runs on every push/PR to `main`: lint, `tsc --noEmit`, test, build (job `ci`). **Branch protection on `main` requires the `ci` check to pass, requires going through a PR (0 approvals needed — solo dev), and blocks force-push/deletion.**
+
+Production deploys are gated on CI: a second job, `deploy-production`, runs only after `ci` succeeds on a push to `main` and deploys via the Vercel CLI (`vercel pull` → `vercel build --prod` → `vercel deploy --prebuilt --prod`), using the `VERCEL_TOKEN`/`VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` repo secrets. Vercel's own Git integration is prevented from double-deploying `main` via `vercel.json`'s `ignoreCommand` (skips the build when `VERCEL_GIT_COMMIT_REF == main`) — **preview deployments for other branches/PRs still go through Vercel's native Git integration unchanged**, only `main`'s production build is redirected through Actions.
 
 ## Stack
 
