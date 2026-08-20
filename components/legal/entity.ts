@@ -48,7 +48,7 @@ export const LEGAL_ENTITY = {
  *
  * Formato ISO porque es lo que viaja al backend (que valida `YYYY-MM-DD`).
  */
-export const LEGAL_VERSION = "2026-08-19";
+export const LEGAL_VERSION = "2026-08-20";
 
 /**
  * `LEGAL_VERSION` en prosa, para el encabezado de los documentos: "18 de agosto

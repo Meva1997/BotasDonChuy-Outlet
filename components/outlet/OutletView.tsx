@@ -14,7 +14,7 @@ import {
   productKeys,
   type ProductFilters,
 } from "@/lib/api/products";
-import { categoryPlural } from "@/lib/domain/categories";
+import { categoryHref, categoryPlural } from "@/lib/domain/categories";
 import {
   hasActiveFilters,
   isInvertedPriceRange,
@@ -120,6 +120,27 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
     [updateParams],
   );
 
+  // En /botas, /sombreros y /ropa la categoría la fija la ruta, no un query
+  // param — el select sigue visible (ver showCategoria más abajo) para poder
+  // cambiar de categoría sin volver al NavHeader, pero cambiarla aquí significa
+  // navegar a la ruta dedicada de la nueva categoría (o a /outlet para "Todas"),
+  // conservando el resto de los filtros ya puestos.
+  const onCategoriaChange = useCallback(
+    (val: string | null) => {
+      if (!defaultCategoria) {
+        updateParam("categoria", val);
+        return;
+      }
+      const targetPath = val ? categoryHref(val) : "/outlet";
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("categoria");
+      params.delete("pagina");
+      const query = params.toString();
+      router.push(query ? `${targetPath}?${query}` : targetPath);
+    },
+    [defaultCategoria, router, searchParams, updateParam],
+  );
+
   // Los tres campos de texto llegan crudos desde el input: "" significa quitar
   // el param. No se recortan ni se validan aquí — el saneo pasa al leer la URL,
   // y trimear en el commit borraría el espacio que el comprador acaba de teclear
@@ -171,7 +192,7 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
       : "Ninguna pieza coincide con los filtros que elegiste. Prueba quitando alguno.";
 
   return (
-    <section className="min-h-dvh bg-tobacco-950 px-6 md:p-10 py-6 md:py-12 my-4 md:my-20">
+    <section className="min-h-dvh bg-tobacco-950 px-6 md:p-10 py-6 md:py-12 my-4 md:mb-20 md:mt-2">
       {/* Trust strip */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -211,9 +232,11 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
         </p>
       </motion.div>
 
-      {/* Filters — talla select only appears when a category is active */}
+      {/* Filters — categoria select always shows (even on /botas /sombreros /ropa,
+          so switching categories doesn't require going back through NavHeader);
+          talla select only appears when a category is active */}
       <OutletFilters
-        showCategoria={!defaultCategoria}
+        showCategoria
         showTalla={!!categoria}
         selectedCategoria={categoria}
         selectedTalla={talla}
@@ -228,7 +251,7 @@ export default function OutletView({ defaultCategoria }: OutletViewProps) {
         availableSizes={result?.availableSizes ?? []}
         total={result?.total}
         filtersActive={filtersActive}
-        onCategoriaChange={(val) => updateParam("categoria", val)}
+        onCategoriaChange={onCategoriaChange}
         onTallaChange={(val) => updateParam("talla", val)}
         onOrdenChange={(val) => updateParam("orden", val)}
         onTextFiltersCommit={commitTextFilters}

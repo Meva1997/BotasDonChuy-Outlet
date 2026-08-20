@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* Scroll suave para anclas (p.ej. /nosotros#ubicacion desde el botón "Cómo
+   llegar" en NewProducts.tsx). Fuera de @media (prefers-reduced-motion) a
+   propósito: ese bloque más abajo solo apaga animation/transition, no
+   scroll-behavior. */
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 @theme {
   --font-serif: var(--font-playfair), Georgia, serif;
   --font-sans: var(--font-jost), system-ui, sans-serif;

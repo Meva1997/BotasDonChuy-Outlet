@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import CategoryCard from "@/components/home/CategoryCard";
+import NewProducts from "@/components/home/NewProducts";
 import { fadeUp, staggerContainer, EASE_LUXE } from "@/lib/ui/motion";
 import { useBrand } from "@/components/providers/BrandProvider";
 import { getProducts, productKeys } from "@/lib/api/products";
@@ -144,6 +145,9 @@ export default function Hero() {
           />
         ))}
       </motion.section>
+
+      {/* Nuevo en tienda física — contenido estático, ver NewProducts.tsx */}
+      <NewProducts />
     </main>
   );
 }

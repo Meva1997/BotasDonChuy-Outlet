@@ -71,7 +71,7 @@ describe("OutletView", () => {
     );
   });
 
-  it("defaultCategoria manda sobre la URL y oculta el select de categoría", async () => {
+  it("defaultCategoria manda sobre la URL, pero el select de categoría sigue disponible", async () => {
     getProductsMock.mockResolvedValue(makeProductsResult());
     renderOutletView({ defaultCategoria: "sombrero" }, "categoria=bota");
 
@@ -80,7 +80,40 @@ describe("OutletView", () => {
         expect.objectContaining({ categoria: "sombrero" })
       )
     );
-    expect(screen.queryByLabelText("Categoría")).not.toBeInTheDocument();
+    // El select sigue ahí (no hay que volver al NavHeader para cambiar de
+    // categoría) y refleja la categoría que realmente manda: la de la ruta.
+    const select = screen.getByLabelText("Categoría") as HTMLSelectElement;
+    expect(select.value).toBe("sombrero");
+  });
+
+  it("cambiar de categoría en una ruta fija (/botas, /sombreros, /ropa) navega a la ruta de la nueva categoría", async () => {
+    getProductsMock.mockResolvedValue(makeProductsResult());
+    const { user } = renderOutletView(
+      { defaultCategoria: "bota" },
+      "talla=26&orden=precio_asc"
+    );
+
+    await waitFor(() => expect(screen.getByText("Bota vaquera")).toBeInTheDocument());
+
+    await user.selectOptions(screen.getByLabelText("Categoría"), "sombrero");
+
+    const url = mockPush.mock.calls[0][0] as string;
+    expect(url.startsWith("/sombreros")).toBe(true);
+    expect(url).toContain("talla=26");
+    expect(url).toContain("orden=precio_asc");
+    expect(url).not.toContain("categoria=");
+    expect(url).not.toContain("pagina=");
+  });
+
+  it("elegir 'Todas las categorías' en una ruta fija navega a /outlet", async () => {
+    getProductsMock.mockResolvedValue(makeProductsResult());
+    const { user } = renderOutletView({ defaultCategoria: "bota" });
+
+    await waitFor(() => expect(screen.getByText("Bota vaquera")).toBeInTheDocument());
+
+    await user.selectOptions(screen.getByLabelText("Categoría"), "");
+
+    expect(mockPush).toHaveBeenCalledWith("/outlet");
   });
 
   it("sin categoría activa no ofrece el select de talla", async () => {

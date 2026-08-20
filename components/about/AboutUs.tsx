@@ -15,7 +15,13 @@ const STATS = [
 // Cuadra es la marca insignia (se destaca aparte); el resto son marcas
 // premium complementarias que también manejamos.
 const FEATURED_BRAND = "Cuadra";
-const OTHER_BRANDS = ["Rio Grande", "Becerro", "Barabas", "Canelo"];
+const OTHER_BRANDS = [
+  "Rio Grande",
+  "Becerro",
+  "Barabas",
+  "Canelo",
+  "Yellowstone",
+];
 
 export default function AboutUs() {
   const brand = useBrand();
@@ -152,6 +158,7 @@ export default function AboutUs() {
 
         {/* Ubicación */}
         <motion.section
+          id="ubicacion"
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}

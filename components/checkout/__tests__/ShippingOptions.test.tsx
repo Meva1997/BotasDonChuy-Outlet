@@ -492,7 +492,12 @@ describe("pagar y confirmar", () => {
     await user.click(screen.getByRole("button", { name: "Pagar y confirmar" }));
 
     expect(await screen.findByText("Procesando…")).toBeInTheDocument();
-    resolveConfirm({ paymentIntent: { status: "succeeded" } });
+    // Resolver sin esperar dejaría la cadena onSuccess → completeOrder() (setOrder,
+    // clearCart, setAppliedCouponEntry, visit(3)) corriendo en un microtask posterior,
+    // fuera de act() y sobre un árbol que RTL ya está desmontando.
+    await act(async () => {
+      resolveConfirm({ paymentIntent: { status: "succeeded" } });
+    });
   });
 
   it("un cupón rechazado justo al cobrar ofrece 'Quitar cupón y reintentar' sin tocar la orden", async () => {

@@ -60,10 +60,10 @@ export default function Footer() {
         <div className="flex flex-col md:flex-row md:justify-between gap-10 md:gap-12">
           {/* Marca */}
           <div className="space-y-3 shrink-0">
-            <p className="font-serif text-xl">
+            <Link href="/" className="font-serif text-xl">
               <span className="text-amber-50">{brand.namePrimary} </span>
               <span className="italic text-amber-400">{brand.nameAccent}</span>
-            </p>
+            </Link>
             <p className="text-xs text-amber-100/40 tracking-wide max-w-48">
               {brand.taglineLines[0]}
             </p>
