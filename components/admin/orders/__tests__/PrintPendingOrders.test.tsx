@@ -140,6 +140,77 @@ describe("PrintPendingOrders", () => {
     expect(screen.queryByText(/Cód\./)).not.toBeInTheDocument();
   });
 
+  // Fase 28. La hoja es el papel que el dueño tiene en la mano al empacar: si un pedido
+  // disputado sale ahí, se manda la mercancía con el cobro ya retirado del saldo. Por eso el
+  // filtro no puede quedarse solo en el badge de la pantalla.
+  it("no imprime un pedido con disputa abierta, pero lo nombra en el aviso de exclusión", async () => {
+    const sano = makeAdminOrder({ id: 100 });
+    const disputado = makeAdminOrder({
+      id: 101,
+      disputeStatus: "needs_response",
+      disputeReason: "fraudulent",
+    });
+    mockGetOrders.mockResolvedValue({
+      orders: [sano, disputado],
+      total: 2,
+      page: 1,
+      perPage: 10_000,
+      totalPages: 1,
+    });
+    mockGetProducts.mockResolvedValue([makeAdminProduct()]);
+
+    const { user } = renderWithQueryClient(<PrintPendingOrders />);
+    await user.click(screen.getByRole("button", { name: "Imprimir pendientes" }));
+
+    expect(await screen.findByText("Pedido #100")).toBeInTheDocument();
+    expect(screen.queryByText("Pedido #101")).not.toBeInTheDocument();
+    // Excluirlo en silencio dejaría la hoja y la pantalla contradiciéndose sin explicación.
+    expect(
+      screen.getByText(/1 pedido no se incluyó por tener una disputa abierta/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/#101/)).toBeInTheDocument();
+  });
+
+  // Una disputa ganada devolvió el dinero: el pedido vuelve a la hoja como cualquier otro.
+  it("una disputa ya ganada no excluye el pedido", async () => {
+    mockGetOrders.mockResolvedValue({
+      orders: [makeAdminOrder({ id: 102, disputeStatus: "won" })],
+      total: 1,
+      page: 1,
+      perPage: 10_000,
+      totalPages: 1,
+    });
+    mockGetProducts.mockResolvedValue([makeAdminProduct()]);
+
+    const { user } = renderWithQueryClient(<PrintPendingOrders />);
+    await user.click(screen.getByRole("button", { name: "Imprimir pendientes" }));
+
+    expect(await screen.findByText("Pedido #102")).toBeInTheDocument();
+    expect(screen.queryByText(/no se incluy/)).not.toBeInTheDocument();
+  });
+
+  // Sin esto la hoja saldría con el aviso de exclusión y nada más, pareciendo un error.
+  it("si TODOS los pendientes están disputados, lo dice en vez de salir vacía", async () => {
+    mockGetOrders.mockResolvedValue({
+      orders: [makeAdminOrder({ id: 103, disputeStatus: "lost" })],
+      total: 1,
+      page: 1,
+      perPage: 10_000,
+      totalPages: 1,
+    });
+    mockGetProducts.mockResolvedValue([makeAdminProduct()]);
+
+    const { user } = renderWithQueryClient(<PrintPendingOrders />);
+    await user.click(screen.getByRole("button", { name: "Imprimir pendientes" }));
+
+    expect(
+      await screen.findByText(
+        "No queda ningún pedido por empacar: todos los pendientes están en disputa."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Pedido #103")).not.toBeInTheDocument();
+  });
+
   it("muestra un estado de carga mientras prepara el listado", async () => {
     mockGetOrders.mockReturnValue(new Promise(() => {}));
     mockGetProducts.mockReturnValue(new Promise(() => {}));

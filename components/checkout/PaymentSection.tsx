@@ -1,15 +1,64 @@
 "use client";
 
+import { PaymentElement } from "@stripe/react-stripe-js";
+import { isStripeTestMode } from "@/lib/stripe/client";
+
 /**
- * Sección de pago — tarjeta de prueba (sandbox).
+ * Sección de pago — captura real con el Payment Element de Stripe.
  *
- * Todo corre en modo prueba de Stripe: NO se capturan datos de tarjeta. El pago
- * se confirma con el PaymentMethod de prueba `pm_card_visa` (equivale a la
- * tarjeta 4242 4242 4242 4242) en `usePlaceOrder`. Este panel es solo una
- * representación visual de solo lectura. Al pasar a producción se sustituye por
- * captura real con Stripe Elements (<PaymentElement>).
+ * El formulario vive dentro de un iframe de Stripe: los datos de la tarjeta
+ * viajan directamente a ellos y este sitio NUNCA los ve. Eso no es un detalle
+ * de implementación, es lo que hacen verdad el Aviso de Privacidad §4 y los
+ * Términos §8, que ya lo afirman por escrito.
+ *
+ * Esa misma ceguera es la razón de que aquí NO haya adorno alrededor del
+ * formulario: una tarjeta ilustrada al lado no podría reflejar ni la marca ni
+ * los dígitos (el `change` del Element solo entrega banderas), así que solo
+ * podría coreografiarse contra estados vagos. Se probó y se quitó. El Element
+ * ya comunica su propio estado dentro del iframe, en español por `locale`.
+ *
+ * ── Métodos de pago habilitados: SOLO TARJETA ──────────────────────────────
+ *
+ * El PaymentIntent se crea con `automatic_payment_methods: { enabled: true }`
+ * (backend/src/services/payment.service.ts) y NUNCA con `payment_method_types`.
+ * Qué métodos se ofrecen se decide en el Dashboard de Stripe, que es
+ * configuración INVISIBLE DESDE ESTE REPO — de ahí esta nota:
+ *
+ *   • **Link: DESACTIVADO.** Pide el correo dentro del propio Element y se lo
+ *     manda a Stripe. El Aviso de Privacidad §4 dice literalmente que a Stripe
+ *     "nunca les compartimos tu correo electrónico". Síntoma de que alguien lo
+ *     reactivó: aparece un campo de correo arriba del formulario de tarjeta.
+ *     Reactivarlo obliga a reescribir Privacidad §4 y a subir `LEGAL_VERSION`.
+ *
+ *   • **OXXO / SPEI: DESACTIVADOS.** Son asíncronos (el voucher vive días)
+ *     contra un `PENDING_ORDER_TTL_MINUTES = 30`: el barrido de órdenes
+ *     pendientes liberaría el stock con el voucher todavía vigente, y los
+ *     Términos §8 prometen que el pedido se confirma "cuando el pago se
+ *     acredita". Síntoma de que alguien los reactivó: pedidos clavados en
+ *     `pending` y piezas de vuelta en el catálogo mientras el comprador aún
+ *     podía pagarlas. Habilitarlos exige TTL por método y una UI de "pendiente
+ *     de pago" — no es un cambio de configuración, es una fase.
+ *
+ * El corolario que sostiene Privacidad §4 vive del otro lado: el backend nunca
+ * debe mandar `receipt_email` ni crear un `Customer` con el correo del
+ * comprador. Hoy el PaymentIntent solo lleva `metadata.orderId`.
  */
-export default function PaymentSection() {
+
+/**
+ * - `ready`: Stripe.js está configurado y el Element puede montarse.
+ * - `unavailable`: falta la llave publicable (`getStripe()` devolvió null), así
+ *   que no hay pasarela que mostrar. Se dice en pantalla en vez de dejar un
+ *   hueco: un formulario de pago que no aparece parece un sitio roto.
+ */
+export type PaymentSectionState = "ready" | "unavailable";
+
+export default function PaymentSection({
+  state,
+}: {
+  state: PaymentSectionState;
+}) {
+  const testMode = isStripeTestMode();
+
   return (
     <fieldset className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pb-4 border-b border-amber-600/30">
@@ -32,82 +81,36 @@ export default function PaymentSection() {
         </span>
       </div>
 
-      {/* Tarjeta de prueba — representación visual de solo lectura */}
-      <div className="relative mx-auto w-full max-w-sm">
-        {/* Resplandor ambiental bajo la tarjeta */}
-        <div
-          aria-hidden="true"
-          className="absolute -inset-3 rounded-4xl bg-linear-to-br from-amber-500/15 via-transparent to-amber-700/15 blur-2xl"
-        />
+      {/* El sello sale del prefijo de la llave, no de una bandera aparte: en
+          desarrollo sigue avisando que no se cobra nada, y en producción
+          desaparece solo, sin que nadie tenga que acordarse de quitarlo. */}
+      {testMode && (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-400/10 px-2.5 py-1 text-[9px] font-medium uppercase tracking-[0.22em] text-amber-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_1px_rgba(251,191,36,0.7)]" />
+          Modo de prueba
+        </span>
+      )}
 
-        <div className="relative aspect-[1.586/1] overflow-hidden rounded-2xl border border-amber-500/25 bg-linear-to-br from-stone-800 via-stone-900 to-tobacco-950 p-5 sm:p-6 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(251,191,36,0.12)]">
-          {/* Textura decorativa: arcos concéntricos ámbar */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full border border-amber-500/10"
-          />
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -right-8 -top-24 h-56 w-56 rounded-full border border-amber-500/10"
-          />
-          {/* Barrido de luz sutil */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 bg-linear-to-tr from-transparent via-amber-100/4 to-transparent"
-          />
+      {state === "ready" && <PaymentElement options={{ layout: "tabs" }} />}
 
-          <div className="relative flex h-full flex-col justify-between">
-            {/* Fila superior: sello de prueba + marca */}
-            <div className="flex items-start justify-between">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-400/10 px-2.5 py-1 text-[9px] font-medium uppercase tracking-[0.22em] text-amber-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_1px_rgba(251,191,36,0.7)]" />
-                Modo de prueba
-              </span>
-              <span className="font-serif text-lg italic tracking-wide text-amber-50/90">
-                VISA
-              </span>
-            </div>
+      {state === "unavailable" && (
+        <p
+          role="alert"
+          className="rounded-md border border-red-500/30 bg-red-500/5 px-4 py-6 text-center text-[12px] leading-relaxed text-red-400/90"
+        >
+          Los pagos no están disponibles en este momento. Inténtalo más tarde.
+        </p>
+      )}
 
-            {/* Chip + número */}
-            <div className="space-y-3">
-              <div
-                aria-hidden="true"
-                className="h-7 w-10 rounded-md bg-linear-to-br from-amber-300/80 to-amber-600/70 shadow-inner ring-1 ring-amber-200/30"
-              />
-              <p className="font-sans text-base sm:text-xl tabular-nums tracking-[0.08em] sm:tracking-[0.18em] text-amber-50 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)]">
-                4242 4242 4242 4242
-              </p>
-            </div>
-
-            {/* Fila inferior: titular / vencimiento / cvc */}
-            <div className="flex items-end justify-between gap-2 sm:gap-4">
-              <div className="min-w-0">
-                <span className="block text-[8px] uppercase tracking-[0.2em] sm:tracking-[0.25em] text-amber-100/40">
-                  Titular
-                </span>
-                <span className="block truncate font-sans text-[11px] sm:text-xs tracking-[0.08em] sm:tracking-[0.15em] text-amber-50/85">
-                  BOTAS DON CHUY
-                </span>
-              </div>
-              <div className="shrink-0 text-right">
-                <span className="block text-[8px] uppercase tracking-[0.2em] sm:tracking-[0.25em] text-amber-100/40">
-                  Vence · CVC
-                </span>
-                <span className="font-sans text-[11px] sm:text-xs tabular-nums tracking-[0.08em] sm:tracking-[0.15em] text-amber-50/85">
-                  12/34 · •••
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <p className="text-[11px] leading-relaxed text-amber-100/45">
-        Estás en un entorno de{" "}
-        <span className="text-amber-200/70">prueba de Stripe</span>. No se cobra
-        dinero real: al confirmar, tu pago se procesa de forma segura con la
-        tarjeta de prueba <span className="tabular-nums">4242 4242 4242 4242</span>.
-      </p>
+      {testMode && state === "ready" && (
+        <p className="text-[11px] leading-relaxed text-amber-100/45">
+          Estás en un entorno de{" "}
+          <span className="text-amber-200/70">prueba de Stripe</span>: no se
+          cobra dinero real. Usa la tarjeta{" "}
+          <span className="tabular-nums">4242 4242 4242 4242</span>, cualquier
+          fecha futura y cualquier CVC.
+        </p>
+      )}
     </fieldset>
   );
 }

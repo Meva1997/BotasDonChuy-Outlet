@@ -64,6 +64,14 @@ export function makeAdminOrder(overrides: Partial<AdminOrder> = {}): AdminOrder 
     termsAcceptedAt: null,
     termsVersion: null,
     termsAcceptedIp: null,
+    // Disputa (Fase 28). El default es "sin disputa" porque es el caso normal, y
+    // porque así cualquier test que la necesite tiene que declararla — nunca al
+    // revés (un pedido disputado por defecto convertiría la exclusión de la hoja
+    // de empaque en el comportamiento base, que es justo lo contrario).
+    disputeStatus: null,
+    disputeReason: null,
+    disputedAt: null,
+    disputeAmount: null,
     createdAt: "2026-07-03T12:00:00.000Z",
     updatedAt: "2026-07-03T12:00:00.000Z",
     items: [makeAdminOrderItem()],

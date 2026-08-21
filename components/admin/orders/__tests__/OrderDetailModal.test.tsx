@@ -966,3 +966,84 @@ describe("OrderDetailModal — constancia de aceptación de términos (Fase 27)"
     expect(block).not.toHaveTextContent(/sin constancia/i);
   });
 });
+
+describe("OrderDetailModal — disputas (Fase 28)", () => {
+  it("sin disputa no pinta el bloque", () => {
+    renderModal();
+    expect(screen.queryByText(/disputa/i)).not.toBeInTheDocument();
+  });
+
+  it("muestra qué pasó con el dinero, el motivo, el importe y desde cuándo", () => {
+    renderModal({
+      disputeStatus: "needs_response",
+      disputeReason: "product_not_received",
+      // Parcial a propósito: el importe disputado no siempre es el total del pedido.
+      disputeAmount: 500,
+      disputedAt: "2026-08-20T15:00:00.000Z",
+    });
+
+    expect(
+      screen.getByText(/Disputa abierta: el banco retuvo este cobro/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Producto no recibido/)).toBeInTheDocument();
+    expect(screen.getByText(/Importe disputado: \$500\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/20 ago 2026/)).toBeInTheDocument();
+    // El caso se pelea en Stripe: este panel no debe aparentar que se responde aquí.
+    expect(screen.getByText(/panel de Stripe/)).toBeInTheDocument();
+  });
+
+  it("una disputa ganada se reporta como tal", () => {
+    renderModal({ disputeStatus: "won" });
+    expect(
+      screen.getByText(/Disputa ganada: el cobro se mantiene/)
+    ).toBeInTheDocument();
+  });
+
+  // El aviso NO prohíbe enviar —el dueño puede tener razones— pero un solo clic no basta.
+  it("con disputa viva, 'Confirmar envío' pide un segundo clic antes de llamar al backend", async () => {
+    const user = userEvent.setup();
+    updateAdminOrderStatusMock.mockResolvedValue(makeAdminOrder({ status: "shipped" }));
+    renderModal({ status: "paid", disputeStatus: "needs_response" });
+
+    await user.click(screen.getByRole("button", { name: "Marcar como enviado" }));
+    expect(
+      screen.getByText(/Si lo envías, puedes perder la pieza y el dinero/)
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Confirmar envío" }));
+    expect(updateAdminOrderStatusMock).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: "Sí, enviar con la disputa abierta" })
+    );
+    await waitFor(() =>
+      expect(updateAdminOrderStatusMock).toHaveBeenCalledWith(
+        100,
+        expect.objectContaining({ status: "shipped" })
+      )
+    );
+  });
+
+  it("sin disputa, 'Confirmar envío' sigue siendo de un solo clic", async () => {
+    const user = userEvent.setup();
+    updateAdminOrderStatusMock.mockResolvedValue(makeAdminOrder({ status: "shipped" }));
+    renderModal({ status: "paid" });
+
+    await user.click(screen.getByRole("button", { name: "Marcar como enviado" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar envío" }));
+
+    await waitFor(() => expect(updateAdminOrderStatusMock).toHaveBeenCalled());
+  });
+
+  // Una disputa ganada devolvió el dinero: no hay nada que confirmar dos veces.
+  it("una disputa ganada no agrega el paso extra", async () => {
+    const user = userEvent.setup();
+    updateAdminOrderStatusMock.mockResolvedValue(makeAdminOrder({ status: "shipped" }));
+    renderModal({ status: "paid", disputeStatus: "won" });
+
+    await user.click(screen.getByRole("button", { name: "Marcar como enviado" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar envío" }));
+
+    await waitFor(() => expect(updateAdminOrderStatusMock).toHaveBeenCalled());
+  });
+});

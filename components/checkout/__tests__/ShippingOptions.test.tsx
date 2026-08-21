@@ -38,12 +38,31 @@ jest.mock("../../../lib/api/orders", () => ({
   ...jest.requireActual("../../../lib/api/orders"),
   createOrder: jest.fn(),
 }));
-jest.mock("../../../lib/stripe/client", () => ({ getStripe: jest.fn() }));
+jest.mock("../../../lib/stripe/client", () => ({
+  getStripe: jest.fn(),
+  isStripeTestMode: () => false,
+}));
+
+// El Payment Element es un iframe de Stripe: en jsdom no hay nada que montar ni
+// que teclear. Se sustituye por un marcador y por dobles de `useStripe`/
+// `useElements`, que es lo único que este componente le pide al paquete —
+// `elements.submit()` y el cobro se prueban de verdad en usePlaceOrder.test.ts.
+jest.mock("@stripe/react-stripe-js", () => ({
+  Elements: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  PaymentElement: () => <div data-testid="payment-element" />,
+  useStripe: () => stripeDouble,
+  useElements: () => elementsDouble,
+}));
 
 const getShippingRatesMock = getShippingRates as jest.Mock;
 const validateCouponMock = validateCoupon as jest.Mock;
 const createOrderMock = createOrder as jest.Mock;
 const getStripeMock = getStripe as jest.Mock;
+
+// Los devuelven los hooks mockeados de arriba. Se reasignan por test para
+// simular la carga de Stripe.js (null = todavía no cargó → botón deshabilitado).
+let stripeDouble: { confirmPayment: jest.Mock; retrievePaymentIntent: jest.Mock } | null;
+let elementsDouble: { submit: jest.Mock } | null;
 
 type Ctx = ReturnType<typeof useCheckout>;
 
@@ -113,6 +132,15 @@ beforeEach(() => {
   jest.clearAllMocks();
   useCartStore.setState({ items });
   getShippingRatesMock.mockResolvedValue(ratesResponse());
+  // Stripe.js ya cargó y el formulario de tarjeta valida: el caso normal.
+  stripeDouble = {
+    confirmPayment: jest.fn().mockResolvedValue({
+      paymentIntent: { status: "succeeded" },
+    }),
+    retrievePaymentIntent: jest.fn(),
+  };
+  elementsDouble = { submit: jest.fn().mockResolvedValue({}) };
+  getStripeMock.mockReturnValue(Promise.resolve(stripeDouble));
 });
 
 describe("sin dirección confirmada", () => {
@@ -449,12 +477,7 @@ describe("pagar y confirmar", () => {
       clientSecret: "secret_1",
       replayed: false,
     });
-    const stripe = {
-      confirmCardPayment: jest.fn().mockResolvedValue({ paymentIntent: { status: "succeeded" } }),
-      retrievePaymentIntent: jest.fn(),
-    };
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
-    return stripe;
+    return stripeDouble!;
   }
 
   it("con una tarifa autoseleccionada, cobra y avanza a Confirmación", async () => {
@@ -477,13 +500,9 @@ describe("pagar y confirmar", () => {
       replayed: false,
     });
     let resolveConfirm: (v: unknown) => void = () => {};
-    const stripe = {
-      confirmCardPayment: jest.fn(
-        () => new Promise((res) => (resolveConfirm = res))
-      ),
-      retrievePaymentIntent: jest.fn(),
-    };
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
+    stripeDouble!.confirmPayment.mockImplementation(
+      () => new Promise((res) => (resolveConfirm = res))
+    );
 
     const { user } = renderShipping();
     await waitFor(() =>
@@ -529,6 +548,50 @@ describe("pagar y confirmar", () => {
     });
     await user.click(retryButton);
     expect(getCtx().getAppliedCoupon(cartLineSignature(items))).toBeNull();
+  });
+
+  // Stripe.js se carga por red: hay una ventana real en la que el componente ya
+  // pintó y `useStripe()` todavía devuelve null. Cobrar en ese hueco es
+  // imposible, así que el botón no debe invitar a intentarlo.
+  it("mientras Stripe.js no ha cargado, el botón de pago está deshabilitado", async () => {
+    stripeDouble = null;
+    elementsDouble = null;
+    renderShipping();
+
+    await screen.findByRole("radio");
+    expect(
+      screen.getByRole("button", { name: "Pagar y confirmar" })
+    ).toBeDisabled();
+  });
+
+  // El pago se envió y no falló, pero tampoco está acreditado. Volver a ofrecer
+  // "Pagar" invitaría a un segundo cargo sobre un cobro que puede ir en camino.
+  it("con el pago en revisión, retira el botón y enlaza al seguimiento", async () => {
+    createOrderMock.mockResolvedValueOnce({
+      order: makeOrderResponse(),
+      clientSecret: "secret_1",
+      replayed: false,
+    });
+    stripeDouble!.confirmPayment.mockResolvedValueOnce({
+      paymentIntent: { status: "processing" },
+    });
+
+    const { user, getCtx } = renderShipping();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Pagar y confirmar" })).toBeEnabled()
+    );
+    await user.click(screen.getByRole("button", { name: "Pagar y confirmar" }));
+
+    expect(await screen.findByText(/Tu pago está en revisión/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Ver el estado de mi pedido" })
+    ).toHaveAttribute("href", "/pedido/public-token-1");
+    expect(
+      screen.queryByRole("button", { name: "Pagar y confirmar" })
+    ).not.toBeInTheDocument();
+    // Ni avanza de paso ni vacía el carrito: la compra no está cerrada.
+    expect(getCtx().step).toBe(2);
+    expect(useCartStore.getState().items).toHaveLength(1);
   });
 });
 

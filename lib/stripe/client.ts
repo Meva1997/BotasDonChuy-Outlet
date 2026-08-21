@@ -13,3 +13,19 @@ const stripePromise: Promise<Stripe | null> | null = publishableKey
 export function getStripe(): Promise<Stripe | null> | null {
   return stripePromise;
 }
+
+/**
+ * True si la llave publicable configurada es de modo prueba (`pk_test_…`).
+ *
+ * El modo se DERIVA de la llave en vez de vivir en su propia bandera: son la
+ * misma verdad, y dos fuentes se contradicen tarde o temprano —justo el error
+ * que dejaría el sello "Modo de prueba" pintado sobre un cobro real, o (peor)
+ * lo quitaría en desarrollo—. Lo consume `PaymentSection` para mostrar el sello
+ * y el número de la tarjeta de prueba solo cuando de verdad no se cobra dinero.
+ *
+ * Sin llave configurada devuelve `false`: no hay pagos que hacer, y anunciar un
+ * "modo de prueba" en una pasarela que ni siquiera cargó sería mentir dos veces.
+ */
+export function isStripeTestMode(): boolean {
+  return publishableKey?.startsWith("pk_test_") ?? false;
+}
