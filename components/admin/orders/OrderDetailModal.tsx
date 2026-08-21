@@ -24,10 +24,17 @@ import {
   shipmentLabelState,
 } from "./shipmentLabel";
 import {
+  DisputeBadge,
   OrderStatusBadge,
   PaymentStatusBadge,
   ShipmentStatusBadge,
 } from "./StatusBadges";
+import {
+  disputeBlocksShipping,
+  disputeReasonLabel,
+  disputeState,
+  type DisputeState,
+} from "./disputeStatus";
 
 interface Props {
   order: AdminOrder;
@@ -118,6 +125,15 @@ function formatDate(iso?: string): string | null {
   });
 }
 
+// Encabezados del bloque de disputa. Dicen qué pasó con el DINERO, que es la
+// pregunta que trae al dueño a este bloque — no el nombre del estado de Stripe.
+const DISPUTE_TITLES: Record<DisputeState, string> = {
+  abierta: "Disputa abierta: el banco retuvo este cobro",
+  perdida: "Disputa perdida: el cobro se revirtió",
+  ganada: "Disputa ganada: el cobro se mantiene",
+  cerrada: "Aviso de disputa cerrado sin contracargo",
+};
+
 const labelCls =
   "block text-[10px] tracking-[0.25em] uppercase text-amber-100/40 mb-1.5";
 
@@ -170,6 +186,11 @@ export default function OrderDetailModal({
   // correo con el nuevo: mismo tratamiento de dos pasos que cancelar y reintentar
   // guía, para que un clic accidental no la dispare.
   const [confirmingRotate, setConfirmingRotate] = useState(false);
+  // Marcar como enviado un pedido con disputa viva manda mercancía cuyo cobro ya
+  // se retiró del saldo. NO se prohíbe —el dueño puede tener razones, y un 409
+  // que no se puede sobrescribir sería peor— pero pide un segundo clic, mismo
+  // trato que cancelar, reintentar guía y rotar el código.
+  const [confirmingDisputedShip, setConfirmingDisputedShip] = useState(false);
 
   const canCancel = order.status === "pending" || order.status === "paid";
   // Los estados que el backend rechaza con 409 no ofrecen acción. Un pedido ya
@@ -256,6 +277,7 @@ export default function OrderDetailModal({
 
   const openShippingAction = (action: Exclude<ShippingAction, null>) => {
     statusMutation.reset();
+    setConfirmingDisputedShip(false);
     setShippingAction(action);
   };
 
@@ -263,6 +285,7 @@ export default function OrderDetailModal({
     setShippingAction(null);
     setTrackingNumber("");
     setShippingCarrier("");
+    setConfirmingDisputedShip(false);
     statusMutation.reset();
   };
 
@@ -317,6 +340,22 @@ export default function OrderDetailModal({
   // La fecha es la que manda: sin ella no hubo registro, y una versión o una IP
   // sueltas no acreditan nada por sí solas.
   const termsAccepted = formatDate(order.termsAcceptedAt ?? undefined);
+  // Disputa (Fase 28). `blocking` es lo único que cambia la conducta —si el pedido
+  // no debe empacarse— y por eso se lee del módulo puro en vez de deducirse del
+  // texto; el resto es presentación.
+  const disputeCurrentState = disputeState(order);
+  const disputeInfo = disputeCurrentState
+    ? {
+        blocking: disputeBlocksShipping(order),
+        title: DISPUTE_TITLES[disputeCurrentState],
+        reason: disputeReasonLabel(order.disputeReason),
+        // `disputeAmount` puede ser un importe parcial, así que se muestra el que
+        // reportó Stripe y no el total del pedido.
+        amount:
+          order.disputeAmount != null ? formatPrice(order.disputeAmount) : null,
+        since: formatDate(order.disputedAt ?? undefined),
+      }
+    : null;
   // La guía solo puede existir una vez pagado el pedido; antes de eso "en
   // proceso" sería engañoso (no hay envío que generar todavía).
   const canHaveLabel = order.status !== "pending" && order.status !== "cancelled";
@@ -372,6 +411,7 @@ export default function OrderDetailModal({
               <div className="flex flex-wrap items-center gap-2">
                 <OrderStatusBadge status={order.status} />
                 <PaymentStatusBadge status={order.paymentStatus} />
+                <DisputeBadge order={order} />
               </div>
             </div>
 
@@ -447,6 +487,45 @@ export default function OrderDetailModal({
                 </span>
               )}
             </Field>
+
+            {/* Disputa / contracargo (Fase 28). Va ARRIBA del bloque de envío
+                porque manda sobre él: mientras el caso siga vivo, la pregunta
+                no es cómo mandar el paquete sino si mandarlo.
+
+                Este panel NO pelea la disputa —la evidencia se sube en el
+                Dashboard de Stripe, con su propio plazo— y por eso lo dice en
+                voz alta: un bloque que se limita a informar y no lo aclara
+                invita a esperar aquí una acción que nunca va a aparecer. */}
+            {disputeInfo && (
+              <div
+                role="alert"
+                className={`rounded-md border px-4 py-3 space-y-1.5 ${
+                  disputeInfo.blocking
+                    ? "border-red-400/40 bg-red-500/10"
+                    : "border-stone-600/40 bg-stone-800/40"
+                }`}
+              >
+                <p
+                  className={`text-[13px] leading-relaxed ${
+                    disputeInfo.blocking ? "text-red-300" : "text-amber-100/70"
+                  }`}
+                >
+                  {disputeInfo.blocking && (
+                    <span aria-hidden="true" className="mr-1.5">
+                      ⚠️
+                    </span>
+                  )}
+                  <span className="font-semibold">{disputeInfo.title}</span>
+                  {disputeInfo.reason && <> — {disputeInfo.reason}</>}
+                </p>
+                <p className="text-[12px] leading-relaxed text-amber-100/50">
+                  {disputeInfo.amount && <>Importe disputado: {disputeInfo.amount}. </>}
+                  {disputeInfo.since && <>Desde el {disputeInfo.since}. </>}
+                  El caso se responde con evidencia desde el panel de Stripe;
+                  aquí solo se ve su estado.
+                </p>
+              </div>
+            )}
 
             <div className="border-t border-stone-700/40" />
 
@@ -972,6 +1051,24 @@ export default function OrderDetailModal({
                           : "Sin número de guía no se manda el correo de rastreo; puedes agregarla después."}
                       </p>
 
+                      {/* La disputa se avisa AQUÍ además de en el bloque de
+                          arriba: este formulario se abre desde la lista de
+                          acciones y puede quedar por debajo del scroll, así que
+                          el aviso tiene que estar donde está el botón. */}
+                      {disputeBlocksShipping(order) && (
+                        <p
+                          role="alert"
+                          className="rounded-md border border-red-400/40 bg-red-500/10 px-3 py-2.5 text-[12px] leading-relaxed text-red-300"
+                        >
+                          <span aria-hidden="true" className="mr-1.5">
+                            ⚠️
+                          </span>
+                          Este pedido tiene una disputa y el cobro está retenido
+                          o revertido. Si lo envías, puedes perder la pieza y el
+                          dinero.
+                        </p>
+                      )}
+
                       {statusMutation.isError && (
                         <p role="alert" className="text-[12px] text-red-400/90">
                           {statusUpdateErrorMessage(statusMutation.error)}
@@ -982,14 +1079,31 @@ export default function OrderDetailModal({
                         <button
                           type="button"
                           disabled={statusMutation.isPending}
-                          onClick={() => statusMutation.mutate("shipped")}
-                          className="border border-amber-400/60 text-amber-400 uppercase tracking-[0.2em] text-[10px] px-5 py-2.5 hover:bg-amber-400/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => {
+                            // Con disputa viva el primer clic solo arma la
+                            // confirmación; el segundo es el que manda.
+                            if (
+                              disputeBlocksShipping(order) &&
+                              !confirmingDisputedShip
+                            ) {
+                              setConfirmingDisputedShip(true);
+                              return;
+                            }
+                            statusMutation.mutate("shipped");
+                          }}
+                          className={`uppercase tracking-[0.2em] text-[10px] px-5 py-2.5 border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                            confirmingDisputedShip
+                              ? "border-red-400/60 text-red-400 hover:bg-red-500/10"
+                              : "border-amber-400/60 text-amber-400 hover:bg-amber-400/10"
+                          }`}
                         >
                           {statusMutation.isPending
                             ? "Guardando…"
-                            : canAddTracking
-                              ? "Guardar guía"
-                              : "Confirmar envío"}
+                            : confirmingDisputedShip
+                              ? "Sí, enviar con la disputa abierta"
+                              : canAddTracking
+                                ? "Guardar guía"
+                                : "Confirmar envío"}
                         </button>
                         <button
                           type="button"

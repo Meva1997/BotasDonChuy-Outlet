@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { Elements, useElements, useStripe } from "@stripe/react-stripe-js";
+import type { Stripe, StripeElements } from "@stripe/stripe-js";
+import { getStripe } from "@/lib/stripe/client";
+import { STRIPE_APPEARANCE } from "@/lib/stripe/appearance";
 import { useCartStore } from "@/store/cartStore";
 import {
   cartLineSignature,
@@ -30,6 +35,62 @@ import OrderTotals from "./OrderTotals";
 function isSameRate(a: ShippingRate | null, b: ShippingRate): boolean {
   if (!a) return false;
   return a.rateId === b.rateId && a.service === b.service;
+}
+
+/**
+ * Botón de pago. Vive en su propio componente porque necesita `useStripe()` y
+ * `useElements()`, que solo existen DENTRO del <Elements> de abajo — y el
+ * <Elements> no puede envolver a ShippingOptions entero, porque su monto sale
+ * justo de los cálculos que ShippingOptions hace.
+ *
+ * También se queda deshabilitado mientras Stripe.js carga: sin esos dos objetos
+ * no hay nada que cobrar, y un clic en ese hueco no haría nada visible.
+ */
+function PayButton({
+  disabled,
+  isProcessing,
+  onPay,
+}: {
+  disabled: boolean;
+  isProcessing: boolean;
+  onPay: (stripe: Stripe, elements: StripeElements) => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const ready = !!stripe && !!elements;
+
+  return (
+    <button
+      type="button"
+      onClick={() => ready && onPay(stripe, elements)}
+      disabled={disabled || !ready}
+      className="btn-shimmer w-full rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)] cursor-pointer disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
+    >
+      {isProcessing && (
+        <svg
+          fill="none"
+          aria-hidden="true"
+          className="animate-spin w-3.5 h-3.5 shrink-0"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="3"
+            className="opacity-25"
+          />
+          <path
+            fill="currentColor"
+            d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4z"
+            className="opacity-75"
+          />
+        </svg>
+      )}
+      {isProcessing ? "Procesando…" : "Pagar y confirmar"}
+    </button>
+  );
 }
 
 // Feedback de carga: en vez de barras vacías, comunica QUÉ está pasando
@@ -214,7 +275,8 @@ export default function ShippingOptions() {
     setSelectedRate,
     completeOrder,
   } = useCheckout();
-  const { status, error, couponRejected, placeOrder } = usePlaceOrder();
+  const { status, error, couponRejected, pendingConfirmation, placeOrder } =
+    usePlaceOrder();
   const isProcessing = status === "processing";
 
   const canQuote = !!confirmedCustomer && items.length > 0;
@@ -387,10 +449,16 @@ export default function ShippingOptions() {
       ? Math.max(...data.rates.map((r) => r.packageCount))
       : null);
 
-  const onSubmit = () => {
+  const onSubmit = (stripe: Stripe, elements: StripeElements) => {
     if (!selected || couponBlocked || !acceptedTerms) return;
-    placeOrder(items, confirmedCustomer, selected, coupon?.code ?? null, (order) =>
-      completeOrder(confirmedCustomer, order)
+    placeOrder(
+      stripe,
+      elements,
+      items,
+      confirmedCustomer,
+      selected,
+      coupon?.code ?? null,
+      (order) => completeOrder(confirmedCustomer, order)
     );
   };
 
@@ -402,232 +470,275 @@ export default function ShippingOptions() {
     setSelectedRate(signature, withQuotation);
   };
 
+  // El Payment Element se monta en modo "deferred intent": recibe el monto por
+  // adelantado y el PaymentIntent se crea después, al pagar. Es lo que permite
+  // seguir creando el pedido SOLO al confirmar —crearlo antes reservaría stock
+  // por el mero hecho de mirar el formulario— sin renunciar a la captura real.
+  //
+  // El monto va en centavos y solo sirve para lo que el Element muestra; lo que
+  // se cobra sale del PaymentIntent que calcula el backend, único autoritativo.
+  // Antes de elegir envío todavía no hay total, así que se manda la mercancía
+  // sola: un Element no se monta sin monto, y montarlo desde el principio deja
+  // capturar la tarjeta mientras se comparan paqueterías.
+  //
+  // <Elements> se monta UNA vez y nunca lleva `key`: al cambiar la tarifa o el
+  // cupón solo cambia `amount`, y react-stripe-js llama a `elements.update()`
+  // por dentro. Remontarlo borraría la tarjeta ya escrita.
+  const merchandise = base.subtotal - base.savings - couponDiscount;
+  // El piso NO es un precio: es lo que impide que el Element se niegue a montar.
+  // Stripe rechaza montos bajo el mínimo cobrable, y el provisional (mercancía
+  // sin envío) puede caer ahí con un cupón grande. Ese caso lo resuelve el
+  // backend al crear el pedido —409 de cupón si el total no llega al mínimo—,
+  // pero para entonces el formulario ya tiene que existir. Con solo tarjeta
+  // habilitada el Element no pinta ningún importe, así que el piso no se ve.
+  const MIN_CHARGEABLE_CENTS = 1000; // $10.00 MXN
+  const elementsAmount = Math.max(
+    Math.round((totals?.total ?? merchandise) * 100),
+    MIN_CHARGEABLE_CENTS
+  );
+
+  const stripePromise = getStripe();
+  const paymentState = stripePromise ? "ready" : "unavailable";
+
   return (
-    <div className="w-full max-w-5xl mx-auto grid lg:grid-cols-[1fr_20rem] gap-8 items-start">
-      {/* Columna principal: método de envío + pago */}
-      <div className="space-y-8">
-        <fieldset className="space-y-5 rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
-          <div className="flex items-center gap-3 pb-4 border-b border-amber-600/30">
-            <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-amber-500/20 to-amber-600/5 border border-amber-600/30 text-amber-500 shrink-0">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <rect x="2" y="7" width="20" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M7 7V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="1.5" />
-              </svg>
-            </span>
-            <div>
-              <legend className="font-serif text-lg text-amber-50">
-                Método de envío
-              </legend>
-              <p className="text-amber-100/40 text-xs tracking-wide mt-1">
-                Elige la paquetería con la que quieres recibir tu pedido.
-              </p>
+    <Elements
+      stripe={stripePromise}
+      options={{
+        mode: "payment",
+        currency: "mxn",
+        amount: elementsAmount,
+        appearance: STRIPE_APPEARANCE,
+        // Los mensajes de rechazo los redacta Stripe dentro del iframe: sin
+        // esto llegarían en inglés a una tienda que habla español.
+        locale: "es",
+      }}
+    >
+      <div className="w-full max-w-5xl mx-auto grid lg:grid-cols-[1fr_20rem] gap-8 items-start">
+        {/* Columna principal: método de envío + pago */}
+        <div className="space-y-8">
+          <fieldset className="space-y-5 rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
+            <div className="flex items-center gap-3 pb-4 border-b border-amber-600/30">
+              <span className="flex items-center justify-center w-9 h-9 rounded-full bg-linear-to-br from-amber-500/20 to-amber-600/5 border border-amber-600/30 text-amber-500 shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <rect x="2" y="7" width="20" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M7 7V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="1.5" />
+                </svg>
+              </span>
+              <div>
+                <legend className="font-serif text-lg text-amber-50">
+                  Método de envío
+                </legend>
+                <p className="text-amber-100/40 text-xs tracking-wide mt-1">
+                  Elige la paquetería con la que quieres recibir tu pedido.
+                </p>
+              </div>
             </div>
-          </div>
 
-          {isPending && <RatesLoadingState />}
+            {isPending && <RatesLoadingState />}
 
-          {isError && (
-            <div
-              role="alert"
-              className="space-y-3 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3"
-            >
-              <p className="text-[12px] leading-relaxed text-red-400/90">
-                No pudimos calcular las opciones de envío.
-              </p>
-              <button
-                type="button"
-                onClick={() => refetch()}
-                className="text-[11px] tracking-[0.2em] uppercase text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+            {isError && (
+              <div
+                role="alert"
+                className="space-y-3 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3"
               >
-                Reintentar
-              </button>
-            </div>
+                <p className="text-[12px] leading-relaxed text-red-400/90">
+                  No pudimos calcular las opciones de envío.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => refetch()}
+                  className="text-[11px] tracking-[0.2em] uppercase text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+                >
+                  Reintentar
+                </button>
+              </div>
+            )}
+
+            {data &&
+              (() => {
+                // Los distintivos solo tienen sentido comparando: con una sola
+                // opción no hay nada más barato/rápido que resaltar.
+                const canCompare = data.rates.length > 1;
+                const cheapestTotal = canCompare
+                  ? Math.min(...data.rates.map((r) => r.total))
+                  : null;
+                const deliveryDays = data.rates
+                  .map((r) => r.days)
+                  .filter((d): d is number => d != null);
+                const fastestDays =
+                  canCompare && deliveryDays.length
+                    ? Math.min(...deliveryDays)
+                    : null;
+                // `packageCount` sale del cálculo compartido de arriba. Se avisa
+                // aquí y no solo en el sidebar porque es donde el comprador está
+                // comparando precios y preguntándose por qué son más altos de lo
+                // que esperaba.
+                return (
+                  <div
+                    role="radiogroup"
+                    aria-label="Método de envío"
+                    className="space-y-3"
+                  >
+                    {packageCount != null && packageCount > 1 && (
+                      <p className="rounded-md border border-amber-600/25 bg-amber-500/5 px-4 py-3 text-[12px] leading-relaxed text-amber-100/60">
+                        Tu pedido va en{" "}
+                        <span className="text-amber-200/90 font-medium">
+                          {packageCount} cajas
+                        </span>
+                        : no cabe en una sola. La paquetería cobra una guía por caja,
+                        así que las tarifas de abajo ya incluyen las {packageCount}.
+                      </p>
+                    )}
+                    {data.rates.map((rate) => (
+                      <RateCard
+                        key={`${rate.rateId ?? "flat"}-${rate.service}`}
+                        rate={rate}
+                        selected={isSameRate(selected, rate)}
+                        onSelect={() => handleSelect(rate)}
+                        isCheapest={
+                          cheapestTotal != null && rate.total === cheapestTotal
+                        }
+                        isFastest={
+                          fastestDays != null && rate.days === fastestDays
+                        }
+                      />
+                    ))}
+                  </div>
+                );
+              })()}
+          </fieldset>
+
+          <div className="rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
+            <PaymentSection state={paymentState} />
+          </div>
+        </div>
+
+        {/* Columna lateral: total + acciones */}
+        <aside className="rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/50 to-stone-900/20 p-6 space-y-6 lg:sticky lg:top-6 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
+          <h3 className="font-serif text-lg text-amber-50">Tu pedido</h3>
+
+          {totals ? (
+            <OrderTotals
+              totals={totals}
+              discount={
+                coupon ? { code: coupon.code, amount: coupon.discount } : undefined
+              }
+              packageCount={packageCount}
+            />
+          ) : (
+            <p className="text-xs text-amber-100/50 leading-relaxed">
+              Elige una opción de envío para ver el total.
+            </p>
           )}
 
-          {data &&
-            (() => {
-              // Los distintivos solo tienen sentido comparando: con una sola
-              // opción no hay nada más barato/rápido que resaltar.
-              const canCompare = data.rates.length > 1;
-              const cheapestTotal = canCompare
-                ? Math.min(...data.rates.map((r) => r.total))
-                : null;
-              const deliveryDays = data.rates
-                .map((r) => r.days)
-                .filter((d): d is number => d != null);
-              const fastestDays =
-                canCompare && deliveryDays.length
-                  ? Math.min(...deliveryDays)
-                  : null;
-              // `packageCount` sale del cálculo compartido de arriba. Se avisa
-              // aquí y no solo en el sidebar porque es donde el comprador está
-              // comparando precios y preguntándose por qué son más altos de lo
-              // que esperaba.
-              return (
-                <div
-                  role="radiogroup"
-                  aria-label="Método de envío"
-                  className="space-y-3"
-                >
-                  {packageCount != null && packageCount > 1 && (
-                    <p className="rounded-md border border-amber-600/25 bg-amber-500/5 px-4 py-3 text-[12px] leading-relaxed text-amber-100/60">
-                      Tu pedido va en{" "}
-                      <span className="text-amber-200/90 font-medium">
-                        {packageCount} cajas
-                      </span>
-                      : no cabe en una sola. La paquetería cobra una guía por caja,
-                      así que las tarifas de abajo ya incluyen las {packageCount}.
-                    </p>
-                  )}
-                  {data.rates.map((rate) => (
-                    <RateCard
-                      key={`${rate.rateId ?? "flat"}-${rate.service}`}
-                      rate={rate}
-                      selected={isSameRate(selected, rate)}
-                      onSelect={() => handleSelect(rate)}
-                      isCheapest={
-                        cheapestTotal != null && rate.total === cheapestTotal
-                      }
-                      isFastest={
-                        fastestDays != null && rate.days === fastestDays
-                      }
-                    />
-                  ))}
-                </div>
-              );
-            })()}
-        </fieldset>
-
-        <div className="rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/40 to-stone-900/10 p-6 sm:p-8 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
-          <PaymentSection />
-        </div>
-      </div>
-
-      {/* Columna lateral: total + acciones */}
-      <aside className="rounded-xl border border-amber-600/30 bg-linear-to-b from-stone-900/50 to-stone-900/20 p-6 space-y-6 lg:sticky lg:top-6 shadow-[0_0_40px_-15px_rgba(217,119,6,0.35)] animate-fade-in-up">
-        <h3 className="font-serif text-lg text-amber-50">Tu pedido</h3>
-
-        {totals ? (
-          <OrderTotals
-            totals={totals}
-            discount={
-              coupon ? { code: coupon.code, amount: coupon.discount } : undefined
-            }
-            packageCount={packageCount}
-          />
-        ) : (
-          <p className="text-xs text-amber-100/50 leading-relaxed">
-            Elige una opción de envío para ver el total.
-          </p>
-        )}
-
-        {/* El cupón dejó de aplicar al verificarlo con el correo confirmado. El
-            `message` del backend va verbatim (dice la causa exacta) y el botón
-            existe porque quitar el cupón solo cambiaría en silencio el precio
-            que el comprador ya aceptó. */}
-        {couponBlocked && (
-          <div
-            role="alert"
-            className="space-y-2.5 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2.5"
-          >
-            <p className="text-[12px] leading-relaxed text-red-400/90 wrap-break-word">
-              {validateCouponErrorMessage(couponCheck.error)}
-            </p>
-            <button
-              type="button"
-              onClick={removeCoupon}
-              className="text-[10px] tracking-[0.2em] uppercase text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+          {/* El cupón dejó de aplicar al verificarlo con el correo confirmado. El
+              `message` del backend va verbatim (dice la causa exacta) y el botón
+              existe porque quitar el cupón solo cambiaría en silencio el precio
+              que el comprador ya aceptó. */}
+          {couponBlocked && (
+            <div
+              role="alert"
+              className="space-y-2.5 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2.5"
             >
-              Quitar cupón y continuar
-            </button>
-          </div>
-        )}
-
-        {error && (
-          <div
-            role="alert"
-            className="space-y-2.5 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2"
-          >
-            <p className="text-[12px] leading-relaxed text-red-400/90 wrap-break-word">
-              {error}
-            </p>
-            {/* El cupón se agotó (o lo usó otro carrito del mismo correo) entre
-                el visto bueno y el pago: /validate no reserva nada. Reintentar
-                con el mismo cupón da el mismo 409 para siempre. */}
-            {couponRejected && coupon && (
+              <p className="text-[12px] leading-relaxed text-red-400/90 wrap-break-word">
+                {validateCouponErrorMessage(couponCheck.error)}
+              </p>
               <button
                 type="button"
                 onClick={removeCoupon}
                 className="text-[10px] tracking-[0.2em] uppercase text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
               >
-                Quitar cupón y reintentar
+                Quitar cupón y continuar
               </button>
-            )}
-          </div>
-        )}
-
-        {/* Solo puede verse desmarcando la casilla del resumen DESPUÉS de haber
-            avanzado (el Stepper deja volver a un paso ya visitado). Antes de la
-            Fase 27 ese camino llegaba hasta el pago: la casilla únicamente
-            deshabilitaba el botón del paso 1 y nunca se volvía a consultar. */}
-        {!acceptedTerms && (
-          <div
-            role="alert"
-            className="space-y-2.5 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2.5"
-          >
-            <p className="text-[12px] leading-relaxed text-red-400/90">
-              Necesitas aceptar los términos y condiciones para completar tu
-              compra.
-            </p>
-            <button
-              type="button"
-              onClick={goToReview}
-              className="text-[10px] tracking-[0.2em] uppercase text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
-            >
-              Volver al resumen
-            </button>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={!selected || isProcessing || couponBlocked || !acceptedTerms}
-          className="btn-shimmer w-full rounded-md bg-linear-to-r from-amber-400 to-amber-600 text-stone-950 text-xs tracking-[0.25em] uppercase py-3.5 font-medium hover:brightness-110 transition-all shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)] cursor-pointer disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {isProcessing && (
-            <svg
-              fill="none"
-              aria-hidden="true"
-              className="animate-spin w-3.5 h-3.5 shrink-0"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="3"
-                className="opacity-25"
-              />
-              <path
-                fill="currentColor"
-                d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4z"
-                className="opacity-75"
-              />
-            </svg>
+            </div>
           )}
-          {isProcessing ? "Procesando…" : "Pagar y confirmar"}
-        </button>
 
-        <button
-          type="button"
-          onClick={goToDetails}
-          className="w-full text-[11px] tracking-[0.2em] uppercase text-amber-100/40 hover:text-amber-100/80 transition-colors cursor-pointer"
-        >
-          ← Volver a dirección
-        </button>
-      </aside>
-    </div>
+          {error && (
+            <div
+              role="alert"
+              className="space-y-2.5 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2"
+            >
+              <p className="text-[12px] leading-relaxed text-red-400/90 wrap-break-word">
+                {error}
+              </p>
+              {/* El cupón se agotó (o lo usó otro carrito del mismo correo) entre
+                  el visto bueno y el pago: /validate no reserva nada. Reintentar
+                  con el mismo cupón da el mismo 409 para siempre. */}
+              {couponRejected && coupon && (
+                <button
+                  type="button"
+                  onClick={removeCoupon}
+                  className="text-[10px] tracking-[0.2em] uppercase text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+                >
+                  Quitar cupón y reintentar
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Solo puede verse desmarcando la casilla del resumen DESPUÉS de haber
+              avanzado (el Stepper deja volver a un paso ya visitado). Antes de la
+              Fase 27 ese camino llegaba hasta el pago: la casilla únicamente
+              deshabilitaba el botón del paso 1 y nunca se volvía a consultar. */}
+          {!acceptedTerms && (
+            <div
+              role="alert"
+              className="space-y-2.5 border border-red-500/30 bg-red-500/5 rounded-md px-3 py-2.5"
+            >
+              <p className="text-[12px] leading-relaxed text-red-400/90">
+                Necesitas aceptar los términos y condiciones para completar tu
+                compra.
+              </p>
+              <button
+                type="button"
+                onClick={goToReview}
+                className="text-[10px] tracking-[0.2em] uppercase text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+              >
+                Volver al resumen
+              </button>
+            </div>
+          )}
+
+          {/* El pago se envió y no ha fallado, pero tampoco está acreditado. No
+              se ofrece "Pagar" otra vez: el cobro puede estar en curso y el botón
+              invitaría a duplicarlo. El seguimiento sí sabe el estado real. */}
+          {pendingConfirmation ? (
+            <div
+              role="status"
+              className="space-y-2.5 border border-amber-500/30 bg-amber-500/5 rounded-md px-3 py-2.5"
+            >
+              <p className="text-[12px] leading-relaxed text-amber-100/70">
+                Tu pago está en revisión. No vuelvas a pagarlo: en cuanto se
+                acredite te enviaremos la confirmación por correo.
+              </p>
+              {pendingConfirmation.token && (
+                <Link
+                  href={`/pedido/${pendingConfirmation.token}`}
+                  className="inline-block text-[10px] tracking-[0.2em] uppercase text-amber-400 hover:text-amber-300 transition-colors"
+                >
+                  Ver el estado de mi pedido
+                </Link>
+              )}
+            </div>
+          ) : (
+            <PayButton
+              disabled={
+                !selected || isProcessing || couponBlocked || !acceptedTerms
+              }
+              isProcessing={isProcessing}
+              onPay={onSubmit}
+            />
+          )}
+
+          <button
+            type="button"
+            onClick={goToDetails}
+            className="w-full text-[11px] tracking-[0.2em] uppercase text-amber-100/40 hover:text-amber-100/80 transition-colors cursor-pointer"
+          >
+            ← Volver a dirección
+          </button>
+        </aside>
+      </div>
+    </Elements>
   );
 }

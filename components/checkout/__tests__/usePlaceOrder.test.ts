@@ -1,9 +1,9 @@
 import { act, renderHook } from "@testing-library/react";
+import type { Stripe, StripeElements } from "@stripe/stripe-js";
 import { useCheckout } from "../CheckoutContext";
 import { usePlaceOrder } from "../usePlaceOrder";
 import { createOrder } from "@/lib/api/orders";
 import { LEGAL_VERSION } from "@/components/legal/entity";
-import { getStripe } from "@/lib/stripe/client";
 import { shippingKeys } from "@/lib/api/shipping";
 import { shippingSignature } from "@/lib/domain/cart";
 import {
@@ -20,30 +20,52 @@ import {
 } from "./helpers/factories";
 import { checkoutHookWrapper } from "./helpers/render";
 
-// Orquesta dos fases (crear la orden, confirmar con Stripe) y cachea la orden creada
-// en el contexto para que un reintento tras un pago fallido reconfirme la MISMA
-// orden en vez de duplicarla. Esta suite es la de mayor riesgo del roadmap: un bug
-// aquí cobra de más, cobra de menos, o duplica un cargo real.
+// Orquesta tres fases (validar la tarjeta, crear la orden, cobrarla) y cachea la
+// orden creada en el contexto para que un reintento tras un pago fallido reconfirme
+// la MISMA orden en vez de duplicarla. Esta suite es la de mayor riesgo del roadmap:
+// un bug aquí cobra de más, cobra de menos, o duplica un cargo real.
 
 // jest.mock() resuelve su primer argumento con el resolver de Jest, no con la
 // transformación de alias de Next (esa solo reescribe especificadores de
 // import/require reales) — así que aquí necesita una ruta relativa, aunque el resto
 // del archivo importe con "@/" sin problema.
-jest.mock("../../../lib/stripe/client", () => ({ getStripe: jest.fn() }));
 jest.mock("../../../lib/api/orders", () => ({
   ...jest.requireActual("../../../lib/api/orders"),
   createOrder: jest.fn(),
 }));
 
 const createOrderMock = createOrder as jest.Mock;
-const getStripeMock = getStripe as jest.Mock;
 
-function makeStripeMock() {
+// `stripe` y `elements` llegan como argumentos de `placeOrder` (los provee el
+// <Elements> que monta ShippingOptions), así que aquí son dobles sueltos: no hace
+// falta mockear @stripe/react-stripe-js para probar el hook.
+//
+// El `as unknown as` no es pereza: `Stripe` declara ~68 métodos y este hook usa
+// dos. Un doble completo sería ruido puro y quedaría desactualizado con cada
+// versión del SDK.
+type StripeDouble = Stripe & {
+  confirmPayment: jest.Mock;
+  retrievePaymentIntent: jest.Mock;
+};
+type ElementsDouble = StripeElements & { submit: jest.Mock };
+
+function makeStripeMock(): StripeDouble {
   return {
-    confirmCardPayment: jest.fn(),
+    confirmPayment: jest.fn(),
     retrievePaymentIntent: jest.fn(),
-  };
+  } as unknown as StripeDouble;
 }
+
+// `submit()` sin error = formulario de tarjeta válido, que es el caso de todos los
+// tests salvo el que prueba justamente lo contrario.
+function makeElementsMock(): ElementsDouble {
+  return {
+    submit: jest.fn().mockResolvedValue({}),
+  } as unknown as ElementsDouble;
+}
+
+let stripe: StripeDouble;
+let elements: ElementsDouble;
 
 function renderPlaceOrder({ acceptedTerms = true } = {}) {
   const { Wrapper, queryClient } = checkoutHookWrapper();
@@ -69,26 +91,36 @@ const rate = makeSelectedRate();
 
 beforeEach(() => {
   jest.clearAllMocks();
+  stripe = makeStripeMock();
+  elements = makeElementsMock();
 });
 
 describe("camino feliz", () => {
   it("crea la orden, confirma el pago y llama onSuccess sin resetear el estado", async () => {
     const order = makeOrderResponse();
     createOrderMock.mockResolvedValueOnce({ order, clientSecret: "secret_1", replayed: false });
-    const stripe = makeStripeMock();
-    stripe.confirmCardPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
+    stripe.confirmPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
 
     const { result } = renderPlaceOrder();
     const onSuccess = jest.fn();
 
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, onSuccess);
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, onSuccess);
     });
 
     expect(onSuccess).toHaveBeenCalledWith(order);
-    expect(stripe.confirmCardPayment).toHaveBeenCalledWith("secret_1", {
-      payment_method: "pm_card_visa",
+    // La tarjeta se valida ANTES de crear el pedido (crear reserva stock).
+    expect(elements.submit).toHaveBeenCalled();
+    expect(stripe.confirmPayment).toHaveBeenCalledWith({
+      elements,
+      clientSecret: "secret_1",
+      // `if_required` mantiene el 3DS en un modal; el return_url es la red para
+      // el emisor que sí obliga a salir del sitio, y apunta al seguimiento del
+      // pedido porque el wizard no sobrevive al viaje.
+      confirmParams: {
+        return_url: "http://localhost:3000/pedido/public-token-1",
+      },
+      redirect: "if_required",
     });
     // El formulario se desmonta al avanzar de paso: no hay "idle" que restaurar.
     expect(result.current.place.status).toBe("processing");
@@ -98,22 +130,20 @@ describe("camino feliz", () => {
   it("reusa la orden pendiente cacheada en un reintento con la misma firma (no duplica la creación)", async () => {
     const order = makeOrderResponse();
     createOrderMock.mockResolvedValueOnce({ order, clientSecret: "secret_1", replayed: false });
-    const stripe = makeStripeMock();
-    stripe.confirmCardPayment.mockResolvedValueOnce({ error: { message: "Tarjeta rechazada" } });
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
+    stripe.confirmPayment.mockResolvedValueOnce({ error: { message: "Tarjeta rechazada" } });
 
     const { result } = renderPlaceOrder();
     const onSuccess = jest.fn();
 
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, onSuccess);
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, onSuccess);
     });
     expect(result.current.place.error).toBe("Tarjeta rechazada");
     expect(createOrderMock).toHaveBeenCalledTimes(1);
 
-    stripe.confirmCardPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
+    stripe.confirmPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, onSuccess);
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, onSuccess);
     });
 
     // Misma firma (carrito+cliente+tarifa+cupón): la orden se reusa, no se crea otra.
@@ -125,17 +155,15 @@ describe("camino feliz", () => {
   it("con una firma distinta (cambió el cliente) crea una orden nueva", async () => {
     const order = makeOrderResponse();
     createOrderMock.mockResolvedValue({ order, clientSecret: "secret_1", replayed: false });
-    const stripe = makeStripeMock();
-    stripe.confirmCardPayment.mockResolvedValue({ error: { message: "declinada" } });
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
+    stripe.confirmPayment.mockResolvedValue({ error: { message: "declinada" } });
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
     const otherCustomer = makeShippingData({ postalCode: "99999" });
     await act(async () => {
-      await result.current.place.placeOrder(items, otherCustomer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, otherCustomer, rate, null, jest.fn());
     });
 
     expect(createOrderMock).toHaveBeenCalledTimes(2);
@@ -149,19 +177,17 @@ describe("camino feliz", () => {
     const flatRate = makeSelectedRate({ quotationId: null, rateId: null });
     const order = makeOrderResponse();
     createOrderMock.mockResolvedValueOnce({ order, clientSecret: "secret_1", replayed: false });
-    const stripe = makeStripeMock();
-    stripe.confirmCardPayment.mockResolvedValueOnce({ error: { message: "declinada" } });
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
+    stripe.confirmPayment.mockResolvedValueOnce({ error: { message: "declinada" } });
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, flatRate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, flatRate, null, jest.fn());
     });
 
-    stripe.confirmCardPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
+    stripe.confirmPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
     const onSuccess = jest.fn();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, flatRate, null, onSuccess);
+      await result.current.place.placeOrder(stripe, elements, items, customer, flatRate, null, onSuccess);
     });
 
     expect(createOrderMock).toHaveBeenCalledTimes(1);
@@ -173,44 +199,40 @@ describe("Idempotency-Replayed", () => {
   it("con el PaymentIntent ya succeeded, NO vuelve a confirmar y llama onSuccess directo", async () => {
     const order = makeOrderResponse();
     createOrderMock.mockResolvedValueOnce({ order, clientSecret: "secret_1", replayed: true });
-    const stripe = makeStripeMock();
     stripe.retrievePaymentIntent.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
 
     const { result } = renderPlaceOrder();
     const onSuccess = jest.fn();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, onSuccess);
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, onSuccess);
     });
 
     expect(stripe.retrievePaymentIntent).toHaveBeenCalledWith("secret_1");
-    expect(stripe.confirmCardPayment).not.toHaveBeenCalled();
+    expect(stripe.confirmPayment).not.toHaveBeenCalled();
     expect(onSuccess).toHaveBeenCalledWith(order);
   });
 
   it("con el PaymentIntent aún sin succeeded, sí procede a confirmarlo normalmente", async () => {
     const order = makeOrderResponse();
     createOrderMock.mockResolvedValueOnce({ order, clientSecret: "secret_1", replayed: true });
-    const stripe = makeStripeMock();
     stripe.retrievePaymentIntent.mockResolvedValueOnce({
       paymentIntent: { status: "requires_payment_method" },
     });
-    stripe.confirmCardPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
+    stripe.confirmPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
 
     const { result } = renderPlaceOrder();
     const onSuccess = jest.fn();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, onSuccess);
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, onSuccess);
     });
 
-    expect(stripe.confirmCardPayment).toHaveBeenCalled();
+    expect(stripe.confirmPayment).toHaveBeenCalled();
     expect(onSuccess).toHaveBeenCalledWith(order);
   });
 });
 
 describe("guardas antes de tocar Stripe", () => {
-  it("sin clientSecret en la respuesta, avisa y no llega a getStripe", async () => {
+  it("sin clientSecret en la respuesta, avisa y no intenta cobrar", async () => {
     createOrderMock.mockResolvedValueOnce({
       order: makeOrderResponse(),
       clientSecret: null,
@@ -219,69 +241,81 @@ describe("guardas antes de tocar Stripe", () => {
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
 
     expect(result.current.place.error).toBe(
       "Los pagos no están disponibles en este momento. Inténtalo más tarde."
     );
     expect(result.current.place.status).toBe("idle");
-    expect(getStripeMock).not.toHaveBeenCalled();
+    expect(stripe.confirmPayment).not.toHaveBeenCalled();
   });
 
-  it("con getStripe() null (falta la llave publicable), avisa que la pasarela no está configurada", async () => {
-    createOrderMock.mockResolvedValueOnce({
-      order: makeOrderResponse(),
-      clientSecret: "secret_1",
-      replayed: false,
+  // La razón de ser del orden validar → crear → cobrar. Crear el pedido reserva
+  // stock: si el formulario de tarjeta está vacío o mal, un pedido nacido de ese
+  // clic apartaría piezas por un pago que nunca ocurrió hasta que el barrido las
+  // liberara media hora después.
+  it("con el formulario de tarjeta inválido, NO crea el pedido y muestra el mensaje de Stripe", async () => {
+    elements.submit.mockResolvedValueOnce({
+      error: { message: "Tu número de tarjeta está incompleto." },
     });
-    getStripeMock.mockReturnValue(null);
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
 
+    expect(createOrderMock).not.toHaveBeenCalled();
+    expect(stripe.confirmPayment).not.toHaveBeenCalled();
     expect(result.current.place.error).toBe(
-      "La pasarela de pago no está configurada. Inténtalo más tarde."
+      "Tu número de tarjeta está incompleto."
     );
     expect(result.current.place.status).toBe("idle");
   });
 
-  it("con la promesa de Stripe resuelta a null, avisa que no pudo cargar la pasarela", async () => {
-    createOrderMock.mockResolvedValueOnce({
-      order: makeOrderResponse(),
-      clientSecret: "secret_1",
-      replayed: false,
-    });
-    getStripeMock.mockReturnValue(Promise.resolve(null));
+  // Si Stripe.js lanza en vez de devolver el error por valor, el hook tiene que
+  // volver a "idle": fuera del try el botón se quedaría en "Procesando…" para
+  // siempre, sin forma de reintentar ni de saber qué pasó.
+  it("si la validación LANZA, vuelve a idle con un mensaje en vez de colgarse", async () => {
+    elements.submit.mockRejectedValueOnce(new Error("boom"));
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
 
-    expect(result.current.place.error).toBe(
-      "No pudimos cargar la pasarela de pago. Revisa tu conexión e inténtalo de nuevo."
-    );
+    expect(createOrderMock).not.toHaveBeenCalled();
     expect(result.current.place.status).toBe("idle");
+    expect(result.current.place.error).not.toBeNull();
+  });
+
+  it("con un error de validación sin mensaje, cae a una copia propia", async () => {
+    elements.submit.mockResolvedValueOnce({ error: {} });
+
+    const { result } = renderPlaceOrder();
+    await act(async () => {
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
+    });
+
+    expect(createOrderMock).not.toHaveBeenCalled();
+    expect(result.current.place.error).toBe(
+      "Revisa los datos de tu tarjeta e inténtalo de nuevo."
+    );
   });
 });
 
-describe("resultado de confirmCardPayment", () => {
+describe("resultado de confirmPayment", () => {
   it("con result.error, muestra el mensaje de Stripe", async () => {
     createOrderMock.mockResolvedValueOnce({
       order: makeOrderResponse(),
       clientSecret: "secret_1",
       replayed: false,
     });
-    const stripe = makeStripeMock();
-    stripe.confirmCardPayment.mockResolvedValueOnce({ error: { message: "Fondos insuficientes" } });
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
+    stripe.confirmPayment.mockResolvedValueOnce({ error: { message: "Fondos insuficientes" } });
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
 
     expect(result.current.place.error).toBe("Fondos insuficientes");
@@ -294,40 +328,69 @@ describe("resultado de confirmCardPayment", () => {
       clientSecret: "secret_1",
       replayed: false,
     });
-    const stripe = makeStripeMock();
-    stripe.confirmCardPayment.mockResolvedValueOnce({ error: {} });
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
+    stripe.confirmPayment.mockResolvedValueOnce({ error: {} });
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
 
     expect(result.current.place.error).toBe("No pudimos procesar el pago. Inténtalo de nuevo.");
   });
 
-  it("con un status inesperado (ni succeeded ni error), pide reintentar", async () => {
+  // Ni error ni succeeded: el cobro puede ir en camino. No es un fallo (invitaría
+  // a pagar otra vez) ni un éxito (el paso 4 diría "Tu pago se realizó con éxito"
+  // sobre algo que aún no pasó): se expone aparte, con el token del seguimiento.
+  it("con un status pendiente (ni succeeded ni error), expone pendingConfirmation en vez de un error", async () => {
     createOrderMock.mockResolvedValueOnce({
       order: makeOrderResponse(),
       clientSecret: "secret_1",
       replayed: false,
     });
-    const stripe = makeStripeMock();
-    stripe.confirmCardPayment.mockResolvedValueOnce({
+    stripe.confirmPayment.mockResolvedValueOnce({
       paymentIntent: { status: "requires_action" },
     });
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
 
     const { result } = renderPlaceOrder();
     const onSuccess = jest.fn();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, onSuccess);
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, onSuccess);
     });
 
-    expect(result.current.place.error).toBe(
-      "El pago quedó pendiente de confirmación. Inténtalo de nuevo."
-    );
+    expect(result.current.place.pendingConfirmation).toEqual({
+      token: "public-token-1",
+    });
+    expect(result.current.place.error).toBeNull();
     expect(onSuccess).not.toHaveBeenCalled();
+    expect(result.current.place.status).toBe("idle");
+  });
+
+  // El pedido pendiente NO se limpia del caché: existe y tiene stock reservado,
+  // así que si el comprador insistiera debe recaer en él y no crear un segundo.
+  it("con un status pendiente, conserva la orden cacheada", async () => {
+    const order = makeOrderResponse();
+    createOrderMock.mockResolvedValueOnce({
+      order,
+      clientSecret: "secret_1",
+      replayed: false,
+    });
+    stripe.confirmPayment.mockResolvedValueOnce({
+      paymentIntent: { status: "processing" },
+    });
+
+    const { result } = renderPlaceOrder();
+    await act(async () => {
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
+    });
+
+    stripe.confirmPayment.mockResolvedValueOnce({
+      paymentIntent: { status: "succeeded" },
+    });
+    await act(async () => {
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
+    });
+
+    expect(createOrderMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -343,7 +406,7 @@ describe("los tres 409 especiales de POST /api/orders", () => {
     act(() => result.current.checkout.setSelectedRate(shipSig, rate));
 
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
 
     expect(result.current.checkout.getSelectedRate(shipSig)).toBeNull();
@@ -362,18 +425,16 @@ describe("los tres 409 especiales de POST /api/orders", () => {
       clientSecret: "secret_2",
       replayed: false,
     });
-    const stripe = makeStripeMock();
-    stripe.confirmCardPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
+    stripe.confirmPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
     const firstKey = createOrderMock.mock.calls[0][1];
 
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
     const secondKey = createOrderMock.mock.calls[1][1];
 
@@ -388,7 +449,7 @@ describe("los tres 409 especiales de POST /api/orders", () => {
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, "VERANO25", jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, "VERANO25", jest.fn());
     });
 
     expect(result.current.place.couponRejected).toBe(true);
@@ -400,7 +461,7 @@ describe("los tres 409 especiales de POST /api/orders", () => {
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
 
     expect(result.current.place.couponRejected).toBe(false);
@@ -416,7 +477,7 @@ describe("mapeo de errores genéricos (vía checkoutErrors)", () => {
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
 
     expect(result.current.place.error).toMatch(/conectar con el servidor/i);
@@ -428,13 +489,11 @@ describe("constancia de aceptación de términos (Fase 27)", () => {
   it("manda acceptedTerms y la versión de los documentos en el payload", async () => {
     const order = makeOrderResponse();
     createOrderMock.mockResolvedValueOnce({ order, clientSecret: "secret_1", replayed: false });
-    const stripe = makeStripeMock();
-    stripe.confirmCardPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
-    getStripeMock.mockReturnValue(Promise.resolve(stripe));
+    stripe.confirmPayment.mockResolvedValueOnce({ paymentIntent: { status: "succeeded" } });
 
     const { result } = renderPlaceOrder();
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, jest.fn());
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, jest.fn());
     });
 
     // `[0][0]` es el payload; `[0][1]` es la idempotency key (lo único que esta
@@ -455,7 +514,7 @@ describe("constancia de aceptación de términos (Fase 27)", () => {
     const onSuccess = jest.fn();
 
     await act(async () => {
-      await result.current.place.placeOrder(items, customer, rate, null, onSuccess);
+      await result.current.place.placeOrder(stripe, elements, items, customer, rate, null, onSuccess);
     });
 
     expect(createOrderMock).not.toHaveBeenCalled();

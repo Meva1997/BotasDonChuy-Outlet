@@ -11,6 +11,7 @@ import {
   OrderStatusBadge,
   PaymentStatusBadge,
   DropoffBadge,
+  DisputeBadge,
 } from "./StatusBadges";
 
 interface Props {
@@ -135,6 +136,10 @@ export default function OrdersTable({
                 <div className="flex items-center gap-2 flex-wrap justify-end">
                   <OrderStatusBadge status={order.status} />
                   <PaymentStatusBadge status={order.paymentStatus} />
+                  {/* Va con los badges de estado y no en la fila de "Envío":
+                      una disputa es del dinero, y tiene que verse aunque el
+                      pedido no tenga guía ni requiera dropoff. */}
+                  <DisputeBadge order={order} />
                 </div>
               </div>
               {(needsDropoffAction(order) ||
@@ -220,7 +225,13 @@ export default function OrdersTable({
                   <OrderStatusBadge status={order.status} />
                 </td>
                 <td className={td}>
-                  <PaymentStatusBadge status={order.paymentStatus} />
+                  <div className="flex flex-col items-center gap-1.5">
+                    <PaymentStatusBadge status={order.paymentStatus} />
+                    {/* Bajo el badge de pago, no en la columna de envío: una
+                        disputa es del dinero, y tiene que verse aunque el
+                        pedido no tenga guía ni requiera dropoff. */}
+                    <DisputeBadge order={order} />
+                  </div>
                 </td>
                 <td className={td}>
                   <div className="flex flex-col items-center gap-1.5">

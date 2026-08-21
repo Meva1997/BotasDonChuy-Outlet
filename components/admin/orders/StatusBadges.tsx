@@ -1,5 +1,6 @@
 import type { AdminOrder } from "@/lib/api/adminOrders";
 import { shipmentStatusLabel } from "@/lib/domain/shipmentStatus";
+import { disputeState, type DisputeState } from "./disputeStatus";
 
 // Fuente única del color/etiqueta de cada estado — usada por OrdersTable y
 // OrderDetailModal para que el significado visual no se duplique/desalinee.
@@ -82,6 +83,46 @@ export function DropoffBadge() {
       Sin recolección
     </span>
   );
+}
+
+// Disputa / contracargo (Fase 28). Como `DropoffBadge`, es una BANDERA y no un valor
+// de una rampa de estados, y por eso puede reusar hues que STATUS_META y PAYMENT_META
+// ya gastaron sin romper la invariante de arriba: lo que lo separa visualmente de un
+// badge de estado es el RELLENO (`bg-*/10` + borde a media opacidad), no el tono.
+// Aparece junto a los dos badges de estado, así que tampoco podía inventarse un hue
+// nuevo sin acercarse peligrosamente a alguno de los diez ya tomados.
+//
+// Rojo para las dos que importan —"abierta" (el caso sigue vivo) y "perdida" (el dinero
+// se fue)—: las distingue la etiqueta, porque para lo único que cambian la conducta
+// (no empacar este pedido) significan lo mismo. Esmeralda para "ganada" y gris para
+// "cerrada": ahí la bandera solo queda como historia del pedido.
+const DISPUTE_META: Record<DisputeState, { label: string; classes: string }> = {
+  abierta: {
+    label: "En disputa",
+    classes: "border-red-400/40 text-red-400 bg-red-500/10",
+  },
+  perdida: {
+    label: "Disputa perdida",
+    classes: "border-red-400/40 text-red-400 bg-red-500/10",
+  },
+  ganada: {
+    label: "Disputa ganada",
+    classes: "border-emerald-400/40 text-emerald-400 bg-emerald-500/10",
+  },
+  cerrada: {
+    label: "Disputa cerrada",
+    classes: "border-stone-500/40 text-stone-400 bg-stone-500/10",
+  },
+};
+
+export function DisputeBadge({ order }: { order: AdminOrder }) {
+  const state = disputeState(order);
+  // Sin disputa no hay nada que decir. El badge existe para interrumpir, y un
+  // "sin disputa" en cada renglón de la tabla lo volvería invisible.
+  if (!state) return null;
+
+  const meta = DISPUTE_META[state];
+  return <span className={`${PILL_BASE} ${meta.classes}`}>{meta.label}</span>;
 }
 
 // `Order.shipmentStatus` (Fase 11) es el string crudo que reporta Skydropx — no un

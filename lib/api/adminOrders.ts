@@ -100,6 +100,24 @@ export const AdminOrderSchema = z.object({
   termsAcceptedAt: z.string().nullable().optional(),
   termsVersion: z.string().nullable().optional(),
   termsAcceptedIp: z.string().nullable().optional(),
+  // Disputa / contracargo (Fase 28), poblados por los eventos `charge.dispute.*`
+  // del webhook de Stripe. `null` en los cuatro significa "este pedido nunca
+  // tuvo disputa" — el caso normal.
+  //
+  // `disputeStatus` y `disputeReason` son los strings CRUDOS de Stripe, no un
+  // enum cerrado (mismo trato que `shipmentStatus` con Skydropx): clasificarlos
+  // y traducirlos es trabajo de components/admin/orders/disputeStatus.ts.
+  // `disputeAmount` puede ser un importe PARCIAL, así que no se deriva de
+  // `total`. `disputedAt` es cuándo se supo por primera vez, no el último
+  // evento.
+  //
+  // Solo viajan por `/api/admin/*`: la consulta pública del pedido es una lista
+  // blanca de columnas y no los incluye — el comprador no tiene por qué ver que
+  // su propio cargo está disputado, ni el estado del caso.
+  disputeStatus: z.string().nullable().optional(),
+  disputeReason: z.string().nullable().optional(),
+  disputedAt: z.string().nullable().optional(),
+  disputeAmount: z.number().nullable().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
   items: z.array(AdminOrderItemSchema),

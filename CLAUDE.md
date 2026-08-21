@@ -45,18 +45,19 @@ Two gotchas that cost real debugging time:
 
 **Coverage, by area** — each folder below has its own `README.md`; sibling `__tests__/` folders never import from one another, so each keeps its own `helpers/factories.ts` (+ `apiError.ts`/`render.tsx` where a provider wrapper or error-mapping fixture is needed) even when the content is a near-duplicate of another folder's:
 
-- **Checkout** (`components/checkout/__tests__/`) — the full 4-step flow: `CheckoutContext`, `usePlaceOrder`, `CouponField`, `OrderTotals`, `ShippingOptions`, `UserDetails`, `Stepper`, `checkoutErrors`.
-- **Order tracking** (`components/order/__tests__/`) — `OrderLookupForm`, `OrderStatusTimeline`, `TrackedOrderItems`, `OrderTracking`, `orderTimeline`.
+- **Checkout** (`components/checkout/__tests__/`) — the full 4-step flow: `CheckoutContext`, `usePlaceOrder`, `CouponField`, `OrderTotals`, `ShippingOptions`, `UserDetails`, `Stepper`, `checkoutErrors`, `PaymentSection`. Stripe se prueba con dobles sueltos: `usePlaceOrder` recibe `stripe`/`elements` como argumentos (nada que mockear del paquete), y `ShippingOptions` mockea `@stripe/react-stripe-js` (`Elements` passthrough, `PaymentElement` marcador) — el iframe real no monta en jsdom. Lo que se fija: `elements.submit()` inválido NO crea pedido, el `return_url` lleva el `publicToken`, y `processing` ni avanza ni vacía el carrito. `PaymentSection` solo mockea el `PaymentElement` como marcador: el panel es marco, y lo que se fija es que el sello "Modo de prueba" y el número 4242 **no existan con llave viva**, y que sin pasarela salga el aviso en vez del hueco del formulario.
+- **Order tracking** (`components/order/__tests__/`) — `OrderLookupForm`, `OrderStatusTimeline`, `TrackedOrderItems`, `OrderTracking` (incluida la vuelta del 3DS: `?redirect_status=succeeded` vacía el carrito, `failed` no), `orderTimeline`.
 - **Outlet/catalog** (`components/outlet/__tests__/`) — `OutletFilters`, `OutletView`, `EmptyState`, `OutletCard`, `OutletPagination`; `next/navigation`'s `useRouter`/`useSearchParams` mocked per-file. The `<Suspense fallback={<OutletSkeleton />}>` boundary itself lives in the page (`app/(public)/outlet/page.tsx` and category siblings), outside what a component test can reach.
 - **Excel import** (`components/admin/import/__tests__/`) — the only screen with a nested pipeline breakdown (`pure/`, `intake/`, `review/`, `editing/`, `presentation/`, `commit/` + `helpers/`); read its `README.md` before adding more.
 - **Auth** (`components/auth/__tests__/`) — `LoginForm`, `ForgotPasswordForm` tested as one integrated flow with the `ResetCodeForm`/`NewPasswordForm` steps it renders (`NewPasswordForm` is also mounted standalone once, for the `onExpired`-absent branch the wizard can't reach), `CodeInput`, `AdminGuard`.
-- **Admin: Órdenes** (`components/admin/orders/__tests__/`) — `StatusBadges` (disjoint status/paymentStatus colors), `OrdersPagination`, `OrdersTable` (row selection; `xl:hidden` cards and `hidden xl:block` table both render in jsdom, so assertions go through `within(screen.getByRole("table"))`), `OrderDetailModal` (coupon row ordering, cancel/refund visibility, all 5 `shipmentLabel.ts` states incl. the `force` confirmation, tracking-code rotation asserted visible in **all five** order statuses since it's the one action with no 409), `PrintPendingOrders` (the unpaginated fetch, printable block fields, product `code` cross-referenced from `getAdminProducts()`, `window.print()` mocked).
+- **Admin: Órdenes** (`components/admin/orders/__tests__/`) — `StatusBadges` (disjoint status/paymentStatus colors), `OrdersPagination`, `OrdersTable` (row selection; `xl:hidden` cards and `hidden xl:block` table both render in jsdom, so assertions go through `within(screen.getByRole("table"))`), `OrderDetailModal` (coupon row ordering, cancel/refund visibility, all 5 `shipmentLabel.ts` states incl. the `force` confirmation, tracking-code rotation asserted visible in **all five** order statuses since it's the one action with no 409, dispute block + the second click "Marcar como enviado" needs with a live dispute), `PrintPendingOrders` (the unpaginated fetch, printable block fields, product `code` cross-referenced from `getAdminProducts()`, `window.print()` mocked, **and that a disputed order is excluded from the sheet but named in it**), `disputeStatus` (the four states, "abierta" as the default for anything unknown, and both directions of `disputeBlocksShipping` incl. that a LOST dispute still blocks).
 - **Admin: Productos** (`components/admin/products/__tests__/`) — `ProductForm` ("Maneja tallas" toggle never sends `sizes`+`stockQuantity` together, the up-to-3-image gallery incl. a mid-flight upload failure retrying via `updateProduct` instead of recreating, per-category dimension reset only on untouched fields), `ProductCategoryView`, `ProductDetailModal` (the "Tallas" block fully absent when `hasSizes: false`), `notices`.
 - **Admin: Cupones y Gastos** (`components/admin/coupons/__tests__/`, `components/admin/expenses/__tests__/`) — `CouponForm` (mirrors the backend's `couponFormSchema.superRefine` cross-field rules), `CouponsTable` ("Cancelar" is `PUT { active:false }`, never a delete), `ExpenseForm`, `ExpenseAmountForm` (every submit appends a dated version, never overwrites), `ExpenseHistory`, `ExpensesTable`, `ExpenseSummaryCard`, `ShippingCostNote` (tested from both consumers, since being shared is the point), `ExpenseStateBadge`.
 - **Admin: Dashboard, Reportes, Config, contenedores** (`components/admin/data|reports|config|sections/__tests__/`) — `KpiGrid` (trend color follows `trend.positive`, never the raw number), `SalesTable`, `InventoryTable`, `RevenueChart` (mocks `recharts.ResponsiveContainer` to clone its child with fixed dimensions — recharts measures 0×0 in jsdom otherwise); Reposición's CSV asserted on the real Blob vs. Ventas' printable sheet asserted on the mounted `#print-reporte-ventas` block; `ConfigSection`'s two account/admin cards; `OrdersSection`'s 4 status tabs + polling-toast suppression; `CouponsSection` vs. `ExpensesSection` (the latter also invalidates `dashboardKeys`); `ReportsSection`'s default-month logic; `DataSection`.
 - **Shared UI + home** (`components/ui/__tests__/`, `components/home/__tests__/`) — `Cart` (per-size stock cap, `size === 0` hides the talla row), `ImageCarousel` (wrap-around, keyboard nav only with 2+ images), `FormControls`; `Hero` (three per-category `getProducts({ categoria, perPage: 1 })` queries reading only `total`), `NavHeader`, `Footer`, `CategoryCard`, `NewProducts`. None mount `<BrandProvider>` — `BrandContext`'s own default value already equals the resolved fallback (`resolveBrand(null)`).
 - **`lib/api/` layer** (`lib/api/__tests__/`) — one spec per module, 100% of statements/lines/functions. Replaces `api.defaults.adapter` (not `jest.mock`) so the interceptors run for real and assertions check the request that would actually go out (URL, params, headers, `skipAuth`/`skipAuthRedirect`). Pins down: what travels vs. is omitted, strict `parse` (reads) vs. tolerant `safeParse` (writes that already happened), and each of the 5 error mappers probed with/without a backend `message`. **`client.test.ts` runs in the `node` environment on purpose** — jsdom's `Location` is non-configurable, so `location.assign`/`pathname` can't be spied or moved.
-- **Pure domain modules** — `lib/domain/__tests__/` (`idempotency`, `catalogFilters`, `cart`, `categories`, `brand`, `publicOrderToken`, `shipmentStatus`), plus `shipmentLabel.ts`, `couponStatus.ts`, `expenseStatus.ts` alongside their own components.
+- **`lib/stripe/`** (`lib/stripe/__tests__/client.test.ts`) — solo `isStripeTestMode()`, con `jest.resetModules()` + `await import()` por llave (la llave se lee UNA vez al cargar el módulo). Es una línea con consecuencias en las dos direcciones: "no se cobra dinero real" sobre un cargo real, o perder la única señal de sandbox en desarrollo.
+- **Pure domain modules** — `lib/domain/__tests__/` (`idempotency`, `catalogFilters`, `cart`, `categories`, `brand`, `publicOrderToken`, `shipmentStatus`), plus `shipmentLabel.ts`, `disputeStatus.ts`, `couponStatus.ts`, `expenseStatus.ts` alongside their own components.
 
 No specs yet for `AuthShell`, `BrandSection`, or `ProductSection`/`ImportSection`'s own containers (their subcomponents are covered) — see `ROADMAP-TEST-COVERAGE.md`. No snapshots (would break on every Tailwind tweak). No Playwright/e2e — don't reintroduce without being asked.
 
@@ -139,7 +140,10 @@ components/
                   #   FOUR 409s of POST /api/orders: no stock · quote expired · idempotency key reused
                   #   · coupon (isCouponError — expired/reused/pushes total under Stripe's minimum).
                   #   Coupon errors are the only ones mentioning "cupón". A rejected coupon is never
-                  #   auto-removed (would silently change the accepted price) — the UI offers a button
+                  #   auto-removed (would silently change the accepted price) — the UI offers a button.
+                  #   PaymentSection (step 3) monta el Payment Element PELADO: encabezado, sello
+                  #   de "Modo de prueba" y el iframe. Sin tarjeta ilustrada ni marcas de red al
+                  #   lado — ver "Sin adorno alrededor del Element" bajo "Pagos (Stripe)"
   order/          # Public order tracking (buyer-facing, not owner). OrderTracking owns the query
                   #   (orderKeys.lookup(token), manual refresh only — no refetchInterval; backend caps
                   #   this route at 30 req/min; retry:false since a 404 is definitive). OrderStatusTimeline,
@@ -281,6 +285,14 @@ components/
                   #     `visibility`, standard "print only this element" pattern). Continuous flow, not one
                   #     order per page — `break-inside: avoid` per order block just discourages a mid-order
                   #     split. Triggers `window.print()` after paint; `afterprint` clears the fetched data.
+                  #     Fase 28: los pedidos con disputa viva (`disputeBlocksShipping`) se separan del
+                  #     resto ANTES de renderizar y NO se imprimen — empacarlos sería mandar mercancía
+                  #     con el cobro ya retirado del saldo — pero la hoja los NOMBRA en una línea al
+                  #     inicio (conteo + `#id`), porque sacarlos en silencio dejaría el papel y la
+                  #     pantalla contradiciéndose. El filtro es del cliente y no del backend a
+                  #     propósito: la pestaña los sigue mostrando, con su badge, para que el dueño
+                  #     decida. Si TODOS los pendientes están disputados, un texto lo dice en vez de
+                  #     imprimir una hoja en blanco.
                   #     Token rotation (roadmap's Fase 26 — the number collides with
                   #     PrintPendingOrders above, which the git history also calls Fase 26; they are
                   #     unrelated pieces of work): "Regenerar código de rastreo" in OrderDetailModal
@@ -311,6 +323,24 @@ components/
                   #     el sí sería justo lo que la fase vino a eliminar. Es el único lugar de la app
                   #     donde se ve la IP: el backend la excluye de la respuesta del checkout y la
                   #     consulta pública nunca la incluyó (lista blanca)
+                  #     Disputas/contracargos (Fase 28): bloque "Disputa" ARRIBA del de envío (una
+                  #     disputa manda sobre la logística) + `DisputeBadge` en el encabezado, en
+                  #     OrdersTable (las dos estructuras) y en el modal. `disputeStatus`/
+                  #     `disputeReason`/`disputedAt`/`disputeAmount` los puebla el webhook y NO
+                  #     tocan `status` ni `paymentStatus`: el cargo sí se cobró, así que la disputa
+                  #     es un eje aparte (por eso son columnas y no un valor más del enum). Tampoco
+                  #     repone stock una disputa perdida — la mercancía pudo haber salido ya. El
+                  #     único freno operativo es que "Marcar como enviado" pide un SEGUNDO clic con
+                  #     disputa viva (patrón de confirmingRetry/confirmingRotate); nunca se
+                  #     deshabilita, porque un 409 que el dueño no puede sobrescribir sería peor.
+                  #     El bloque dice en voz alta que el caso se responde en el Dashboard de
+                  #     Stripe: este panel no pelea disputas y no debe aparentar que sí
+                  #   orders/disputeStatus.ts — pure module (specs). Clasifica el `disputeStatus`
+                  #     crudo de Stripe en ganada/perdida/cerrada/**abierta**, donde "abierta" es el
+                  #     default de todo lo desconocido a propósito: un estado nuevo de Stripe debe
+                  #     tratarse como pendiente, nunca como resuelto. `disputeBlocksShipping()`
+                  #     bloquea también la disputa PERDIDA (el dinero se fue: enviar ahí regala la
+                  #     pieza encima) y es lo que saca al pedido de la hoja de empaque
                   #   orders/shipmentLabel.ts — pure module. `skydropxShipmentId` isn't "an id or
                   #     null": it can also be "creating" (in flight / orphaned), "unreconciled:<id>"
                   #     (Skydropx charged but didn't persist), "unreconciled:desconocido" (may have
@@ -413,7 +443,11 @@ lib/
     adminOrders.ts # Paginated admin order list + guía/rastreo fields (Fase 11) + refund (Fase 12,
                   #   POST /:id/cancel) + manual status advance (Fase 14, PATCH /:id/status,
                   #   forward-only) + shipment retry (Fase 16, POST /:id/shipment/retry — 200 = label
-                  #   exists, 502 = Skydropx failed again, 409 on any ambiguity)
+                  #   exists, 502 = Skydropx failed again, 409 on any ambiguity). Fase 28:
+                  #   `disputeStatus`/`disputeReason`/`disputedAt`/`disputeAmount`, todos nullable
+                  #   (`null` = nunca hubo disputa). Los dos primeros son strings CRUDOS de Stripe,
+                  #   no un enum — igual que `shipmentStatus` con Skydropx. `disputeAmount` puede ser
+                  #   PARCIAL, así que no se deriva de `total`. Solo viajan por /api/admin/*
     dashboard.ts  # DashboardSchema, GET /api/admin/dashboard. kpisByPeriod/profitKpisByPeriod precompute
                   #   all 3 windows (7/30/90) in one response. Fase 22: recentSales[].shipping. The new
                   #   COSTO DE ENVÍO KPI's `trend` is INVERTED on purpose (positive: true = cost went
@@ -456,7 +490,15 @@ lib/
                   #   metadataBase, canonicals, sitemap.ts, robots.ts
     metadata.ts   # pageMetadata() — use for every new public page (see "SEO" for why)
     jsonLd.ts     # storeJsonLd/productJsonLd/breadcrumbJsonLd — only describe what the page actually shows
-  stripe/client.ts # getStripe() — module-level loadStripe() singleton. null if key missing → UI degrades
+  stripe/client.ts # getStripe() — module-level loadStripe() singleton. null if key missing → UI degrades.
+                  #   isStripeTestMode() — deriva el sello "Modo de prueba" del prefijo pk_test_
+  stripe/appearance.ts # STRIPE_APPEARANCE — el Design System traducido a CSS plano para el iframe
+                  #   del Payment Element (Tailwind no entra ahí). Sin la opción `fonts` a propósito:
+                  #   cargaría Jost desde Google Fonts, un tercero que el Aviso de Privacidad no declara.
+                  #   Las variables `colorIcon*` y `focusBoxShadow`/`focusOutline` son la ÚNICA manera
+                  #   de teñir los iconos y el anillo de foco de adentro del iframe: no aceptan reglas
+                  #   CSS. `.Tab*` se estila aunque hoy no se vea (con solo tarjeta el Element se salta
+                  #   la barra) porque los métodos se encienden desde el Dashboard, fuera del repo
   ui/motion.ts    # shared framer-motion variants (fadeUp, fadeIn, staggerContainer, EASE_LUXE)
   utils/index.ts  # formatPrice(amount) — es-MX locale
 schemas/
@@ -530,10 +572,114 @@ The `Stepper` allows jumping to any **already-visited** step (never an unvisited
 
 1. **Resumen** (`OrderSummary`) — read-only review + required terms checkbox. Desde la Fase 27 esa casilla **sale del navegador**: `acceptedTerms` viaja en `POST /api/orders` junto a `LEGAL_VERSION`, el backend 400ea sin ellos y guarda fecha + versión + IP en el pedido. Ojo: la casilla **no se resetea al avanzar**, así que se vuelve a consultar en `usePlaceOrder` y en el botón de pago de `ShippingOptions` — antes de esa fase, volver por el `Stepper` y desmarcarla dejaba pagar igual. `computeTotals(items)` no longer estimates shipping (Fase 23) — shown as "Se calcula con tu dirección", never $0 or hidden (an unnamed shipping line reads as free shipping). `CouponField` lives here. **App-wide totals invariant: `total = subtotal − savings − couponDiscount + shipping`** — `savings` (outlet discount) and `couponDiscount` are distinct and never merged; the coupon never touches shipping.
 2. **Dirección** (`UserDetails`) — RHF + zod (`schemas/checkout.ts`, Mexico-only via `MEXICAN_STATES`). On submit, `confirmShipping(data)` unconditionally invalidates any previously chosen rate (a new address may quote differently) and advances. No order/Stripe interaction yet.
-3. **Envío** (`ShippingOptions`) — live Skydropx quote. **Coupon revalidation** (Fase 19): if applied and not yet checked against the confirmed email, re-queries `/validate` with the email — the only point in checkout where "one use per customer" can actually be verified. A rejection (`isCouponRejection`, 4xx) blocks "Pagar y confirmar"; a network error/429 does not. `POST /api/shipping/rates` **always returns 200** (falls back to flat rate on Skydropx failure). A single rate auto-selects; 2+ requires a choice. **packageCount** (Fase 23) is shown above the rate list and in the sidebar when >1 box, from a **single derivation** shared by both (they describe the same shipment, so two calculations could contradict each other on screen): the chosen rate's own count once one is selected — that's what gets charged — and before that the **max** across `data.rates`, never `rates[0]`. Payment: `usePlaceOrder` — (1) `createOrder()` posts `buildOrderPayload(...)` with **no amounts** (backend recalculates, re-quoting Skydropx by `quotationId` if present) → `{ order, clientSecret }`; (2) `stripe.confirmCardPayment(clientSecret, { payment_method: "pm_card_visa" })` — **hardcoded test card**, sandbox only. The pending order is cached in context by an `orderSignature` (cart + customer + rate + coupon) to avoid re-creating it on retry; invalidated if any of those change. **`Idempotency-Key`** (Fase 15) protects against the retry path that *doesn't* go through the cache (double-click, browser auto-retry) — keyed by the same signature, generated lazily on submit (never in render — `crypto.randomUUID()` doesn't exist in SSR), cleared by `completeOrder()`. If the backend replays (`Idempotency-Replayed` header), `usePlaceOrder` checks `stripe.retrievePaymentIntent()` before re-confirming, since re-confirming an already-`succeeded` payment throws a false failure. Errors mapped in `checkoutErrors.ts` (see components/checkout above). Only on `paymentIntent.status === "succeeded"` does `completeOrder()` freeze the snapshot (with server-authoritative totals), empty the cart, and advance — the real `paid` state is reconciled async by the webhook.
+3. **Envío** (`ShippingOptions`) — live Skydropx quote. **Coupon revalidation** (Fase 19): if applied and not yet checked against the confirmed email, re-queries `/validate` with the email — the only point in checkout where "one use per customer" can actually be verified. A rejection (`isCouponRejection`, 4xx) blocks "Pagar y confirmar"; a network error/429 does not. `POST /api/shipping/rates` **always returns 200** (falls back to flat rate on Skydropx failure). A single rate auto-selects; 2+ requires a choice. **packageCount** (Fase 23) is shown above the rate list and in the sidebar when >1 box, from a **single derivation** shared by both (they describe the same shipment, so two calculations could contradict each other on screen): the chosen rate's own count once one is selected — that's what gets charged — and before that the **max** across `data.rates`, never `rates[0]`. Payment: `usePlaceOrder` — (1) `createOrder()` posts `buildOrderPayload(...)` with **no amounts** (backend recalculates, re-quoting Skydropx by `quotationId` if present) → `{ order, clientSecret }`; (2) `stripe.confirmPayment({ elements, clientSecret, redirect: "if_required" })` con la tarjeta capturada en el Payment Element — precedido de `elements.submit()`, que valida ANTES de crear nada (ver "Pagos (Stripe)"). The pending order is cached in context by an `orderSignature` (cart + customer + rate + coupon) to avoid re-creating it on retry; invalidated if any of those change. **`Idempotency-Key`** (Fase 15) protects against the retry path that *doesn't* go through the cache (double-click, browser auto-retry) — keyed by the same signature, generated lazily on submit (never in render — `crypto.randomUUID()` doesn't exist in SSR), cleared by `completeOrder()`. If the backend replays (`Idempotency-Replayed` header), `usePlaceOrder` checks `stripe.retrievePaymentIntent()` before re-confirming, since re-confirming an already-`succeeded` payment throws a false failure. Errors mapped in `checkoutErrors.ts` (see components/checkout above). Only on `paymentIntent.status === "succeeded"` does `completeOrder()` freeze the snapshot (with server-authoritative totals), empty the cart, and advance — the real `paid` state is reconciled async by the webhook. Un tercer resultado (`processing`/`requires_action`) no avanza ni vacía el carrito: expone `pendingConfirmation` y enlaza al seguimiento.
 4. **Confirmación** (`Success`) — renders the frozen snapshot. No `#<id>` (Fase 21); CTA is "Ver el estado de mi pedido" → `/pedido/<token>` when `publicToken` is present in the snapshot (not persisted to localStorage — that would move a credential to the browser just to save a click).
 
 Shared pieces: `Stepper`, `OrderItems`, `OrderTotals`, `FormControls`.
+
+## Pagos (Stripe) — Payment Element, solo tarjeta
+
+La tarjeta se captura de verdad, dentro del iframe del **Payment Element**: el sitio nunca ve el
+PAN. Eso es lo que hace ciertos a Privacidad §4 y Términos §8, que ya lo afirman por escrito.
+
+**Modo "deferred intent"**: `<Elements>` se monta en `ShippingOptions.tsx` con
+`{ mode: "payment", currency: "mxn", amount, locale: "es" }` y el PaymentIntent se crea **después**,
+al pagar. Es lo que permite seguir creando el pedido —que reserva stock— solo al confirmar, sin
+renunciar a la captura real. Por eso `usePlaceOrder` tiene **tres** fases y en este orden:
+
+1. **`elements.submit()`** — valida el formulario. Va primero porque crear el pedido reserva stock:
+   un clic con la tarjeta vacía apartaría piezas por un pago que nunca ocurrió.
+2. `POST /api/orders` → `clientSecret` (caché por `orderSignature` + `Idempotency-Key`, sin cambios).
+3. `stripe.confirmPayment({ elements, clientSecret, confirmParams: { return_url }, redirect: "if_required" })`.
+
+`amount` va en centavos y es el mismo total que pinta `OrderTotals`; antes de elegir envío se manda
+la mercancía sola (un Element no monta sin monto). Solo alimenta lo que el Element muestra — lo que
+se cobra sale del PaymentIntent del backend. **`<Elements>` nunca lleva `key`**: al cambiar tarifa o
+cupón solo cambia `amount` y react-stripe-js llama a `elements.update()` por dentro; remontarlo
+borraría la tarjeta ya escrita. El `PayButton` es un componente aparte porque `useStripe()` lanza
+fuera del proveedor.
+
+**Tres resultados, no dos**: `succeeded` → `completeOrder()`; `error` → mensaje de Stripe (en
+español por `locale`); y **ni uno ni otro** (`processing`, o un `requires_action` que sobrevivió a
+`if_required`) → `pendingConfirmation`, que NO avanza al paso 4 ni vacía el carrito y enlaza a
+`/pedido/<token>`. Avanzar ahí pintaría "Tu pago se realizó con éxito" sobre algo que aún no pasó.
+
+**El camino de redirect**: `if_required` mantiene el 3DS en un modal, pero algún emisor puede
+obligar a salir del sitio. Ese viaje se lleva el wizard (vive en memoria), así que el `return_url`
+apunta a `/pedido/<publicToken>` y **`OrderTracking` vacía el carrito al ver
+`?redirect_status=succeeded`** — el único punto donde ese camino se puede cerrar. Con `failed` no lo
+toca: hay que poder reintentar.
+
+**Sello "Modo de prueba"**: `isStripeTestMode()` lo deriva del prefijo `pk_test_` de la llave, no de
+una bandera aparte. Producción sale limpia sola y desarrollo conserva el aviso.
+
+### Sin adorno alrededor del Element
+
+`PaymentSection.tsx` es encabezado + sello de modo de prueba + el iframe, y nada más. Se
+construyó una vez la alternativa completa —tarjeta ilustrada al lado, coreografiada con
+`onReady`/`onFocus`/`onChange`, más una fila de marcas de red— y **se descartó por decisión del
+dueño: no gustó cómo se veía.** Queda anotado porque la idea va a volver, y con ella las dos
+tentaciones que la hacen inviable tal como se pide:
+
+- **Una tarjeta que se pinte con la marca y se llene con lo tecleado.** No existe con ningún
+  Element: el formulario vive en un iframe de `js.stripe.com` que no se lee ni se escucha, y el
+  `change` del `PaymentElement` solo trae `{ empty, complete, collapsed, value.type }` — donde
+  `value.type` es `"card"`, jamás `"visa"`. Espejear de verdad exige capturar el PAN nosotros
+  (PCI SAQ-D) y reescribir Privacidad §4 y Términos §8. El `CardNumberElement` legacy sí emite
+  `brand`, pero ni así entrega dígitos, y cambiarse a él cuesta los métodos dinámicos, las
+  wallets y el Appearance API entero.
+- **Llenar "TITULAR" con el `fullName` del paso 2.** Está a la mano en el CheckoutContext, pero
+  es quien RECIBE el envío, no quien firma la tarjeta. Pintarlo ahí afirma que son la misma
+  persona.
+
+Lo que sí quedó de ese trabajo es `lib/stripe/appearance.ts`: el iframe se ve como el resto de
+la tienda, que era la mitad útil. El estado del formulario lo comunica Stripe adentro, en
+español por `locale`.
+
+### Métodos de pago: SOLO TARJETA (configuración del Dashboard)
+
+`payment_method_types` **no se pasa nunca** (apagaría los métodos dinámicos). Qué se ofrece se
+decide en el Dashboard de Stripe, **por separado en test y en live** — configuración invisible desde
+el repo, de ahí esta tabla (repetida en `PaymentSection.tsx` y en `payment.service.ts`):
+
+| Método | Por qué está apagado | Síntoma si alguien lo reactiva |
+|---|---|---|
+| **Link** | Pide el correo dentro del Element y se lo manda a Stripe, contra Privacidad §4 ("nunca les compartimos tu correo electrónico"). | Aparece un campo de correo sobre el formulario de tarjeta. Obliga a reescribir §4 y subir `LEGAL_VERSION`. |
+| **OXXO / SPEI** | Asíncronos (voucher de días) contra `PENDING_ORDER_TTL_MINUTES = 30`: el sweeper liberaría el stock con el voucher vigente, y Términos §8 promete que el pedido se confirma "cuando el pago se acredita". | Pedidos clavados en `pending` y piezas de vuelta al catálogo mientras el comprador aún podía pagarlas. Exige TTL por método + UI de "pendiente de pago": es una fase, no un ajuste. |
+
+El corolario que sostiene Privacidad §4 vive en el backend: **nunca mandar `receipt_email` ni crear
+un `Customer`** con el correo del comprador. El PaymentIntent solo lleva `metadata.orderId`.
+
+### Eventos del webhook (la otra configuración invisible)
+
+Qué eventos llegan a `POST /api/webhooks/stripe` se decide **también en el Dashboard**, por endpoint
+y por separado en test y en live. El endpoint necesita seis: los tres de `payment_intent`
+(`succeeded`, `payment_failed`, `canceled`) y los tres de disputa (`charge.dispute.created`,
+`.updated`, `.closed`, Fase 28). `stripe listen` reenvía **todo** en local, así que un evento que
+falte en esa lista funciona perfecto en desarrollo y solo se nota en producción, callando: si una
+disputa no aparece en el panel, revisar esa suscripción antes que el código.
+
+### Disputas / contracargos (Fase 28)
+
+Un contracargo llega días después del cobro — en el momento del pago no hay nada que pueda
+saberlo, así que el checkout **debe** dejar pasar la compra. Lo que faltaba era el después:
+`applyDisputeFromWebhook` (backend) guarda estado/motivo/importe/fecha en el pedido y **no toca
+`status`, `paymentStatus` ni el stock**. Las tres omisiones son decisiones: el cargo sí se cobró
+(por eso la disputa es un eje aparte y no un valor más del enum), y una disputa perdida no repone
+stock porque la mercancía pudo haber salido ya.
+
+El único efecto operativo es que el pedido **sale de la hoja de empaque** (`PrintPendingOrders`),
+nombrado y no escondido, y que marcarlo como enviado pide un segundo clic. No se prohíbe nada: la
+decisión sigue siendo del dueño. El caso se pelea con evidencia en el Dashboard de Stripe, que
+además manda su propio correo — por eso esta fase **no agrega un correo propio**: dos avisos que
+dicen lo mismo entrenan a ignorar los dos.
+
+**Pendiente para producción**: la cuenta live de Stripe no está activada (datos fiscales + CLABE).
+Falta repetir la configuración de métodos en live, poner `pk_live_` en Vercel Production (es
+`NEXT_PUBLIC_*`: se hornea en build, hay que redeployar), la llave secreta live en el backend
+—preferir una **restricted key `rk_`** con PaymentIntents/Refunds write + Charges read— y crear el
+endpoint de webhook live, que trae **su propio `whsec_`** (el de test no sirve) **y su propia lista
+de eventos suscritos** (ver arriba: seis, no tres).
 
 ## Shipping — cotización en vivo (Skydropx, Fase 8.4)
 

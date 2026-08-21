@@ -1,10 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { RefreshCw, ShoppingBag } from "lucide-react";
 import { fadeUp } from "@/lib/ui/motion";
+import { useCartStore } from "@/store/cartStore";
 import {
   lookupOrder,
   lookupOrderErrorMessage,
@@ -34,7 +36,38 @@ function formatDay(iso: string): string {
  * `refetchOnWindowFocus`, que cubre el caso real: volver a la pestaña al día
  * siguiente.
  */
+/**
+ * Cierra el checkout cuando el pago terminó FUERA del wizard.
+ *
+ * Con `redirect: "if_required"` el 3D Secure casi siempre sale en un modal y el
+ * comprador nunca abandona `/checkout`, donde `completeOrder()` vacía el carrito
+ * al confirmarse el cobro. Pero hay emisores que sí obligan a salir del sitio:
+ * ese viaje se lleva por delante el estado del wizard (vive en memoria), y
+ * Stripe devuelve al comprador aquí, al `return_url` — con el pago hecho y el
+ * carrito intacto, como si no hubiera comprado nada.
+ *
+ * Este es el único punto donde ese camino se puede cerrar. Solo actúa con
+ * `redirect_status=succeeded` (Stripe también devuelve `failed`, y ahí el
+ * carrito debe seguir lleno para poder reintentar).
+ *
+ * Se lee de `window.location` y no con `useSearchParams()` a propósito: ese hook
+ * suspende en prerender y obligaría a envolver la página en un <Suspense> que
+ * hoy no necesita. Aquí no se renderiza nada con el valor — es un efecto de una
+ * sola vez tras montar.
+ */
+function useCloseCheckoutOnPaymentReturn() {
+  const clearCart = useCartStore((s) => s.clearCart);
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get(
+      "redirect_status"
+    );
+    if (status === "succeeded") clearCart();
+  }, [clearCart]);
+}
+
 export default function OrderTracking({ token }: { token: string }) {
+  useCloseCheckoutOnPaymentReturn();
+
   const { data: order, error, isPending, isFetching, refetch } = useQuery({
     queryKey: orderKeys.lookup(token),
     queryFn: () => lookupOrder(token),

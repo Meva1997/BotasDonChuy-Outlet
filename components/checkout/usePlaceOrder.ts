@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { getStripe } from "@/lib/stripe/client";
+import type { Stripe, StripeElements } from "@stripe/stripe-js";
+import { absoluteUrl } from "@/lib/seo/site";
 import {
   createOrder,
   buildOrderPayload,
@@ -20,13 +21,24 @@ import {
   placeOrderErrorMessage,
 } from "./checkoutErrors";
 
-// PaymentMethod de PRUEBA de Stripe (equivale a la tarjeta 4242 4242 4242 4242).
-// Todo corre en sandbox: no se capturan datos de tarjeta, se confirma el
-// PaymentIntent con este token hardcodeado. Al pasar a producción se sustituye
-// por captura real (Stripe Elements / <PaymentElement>).
-const TEST_PAYMENT_METHOD = "pm_card_visa";
-
 type PlaceOrderStatus = "idle" | "processing";
+
+/**
+ * A dónde vuelve el comprador si el banco se lo lleva a autenticar fuera del
+ * sitio (3D Secure con redirect). El destino es su propia página de
+ * seguimiento: el wizard vive en memoria y no sobrevive a un viaje al dominio
+ * del banco, así que devolverlo al checkout lo dejaría mirando un carrito y un
+ * paso 1 como si nada hubiera pasado. `/pedido/<token>` sí sabe el estado real,
+ * porque lo pregunta al backend.
+ *
+ * Sin `publicToken` (el backend lo manda siempre, pero el esquema lo declara
+ * opcional) cae al buscador por código, que al menos es una salida.
+ */
+function paymentReturnUrl(order: OrderResponse): string {
+  return order.publicToken
+    ? absoluteUrl(`/pedido/${order.publicToken}`)
+    : absoluteUrl("/pedido");
+}
 
 // Firma sobre todo lo que determina la orden en el backend: el carrito
 // (productId + talla + cantidad), los datos del cliente, la tarifa de envío
@@ -55,9 +67,17 @@ function orderSignature(
 }
 
 /**
- * Orquesta el checkout en dos fases:
- *   1. POST /api/orders → crea la orden y devuelve el `clientSecret` del PaymentIntent.
- *   2. stripe.confirmCardPayment(clientSecret, pm_card_visa) → confirma el pago (sandbox).
+ * Orquesta el checkout en tres fases:
+ *   1. elements.submit() → valida el formulario de tarjeta del Payment Element.
+ *   2. POST /api/orders → crea la orden y devuelve el `clientSecret` del PaymentIntent.
+ *   3. stripe.confirmPayment({ elements, clientSecret }) → cobra la tarjeta capturada.
+ *
+ * El orden importa y no es el obvio. `elements.submit()` va PRIMERO —antes de
+ * crear nada— porque crear la orden reserva stock: si el comprador le da a
+ * "Pagar" con el formulario vacío o con un número inválido, un pedido nacido de
+ * ese clic dejaría piezas apartadas para un pago que nunca ocurrió, hasta que
+ * el barrido de órdenes pendientes las devolviera media hora después. Validar
+ * primero cuesta una llamada local y evita todo eso.
  *
  * La orden creada se cachea en el CheckoutContext (no en un ref local): si el
  * pago falla y el usuario reintenta —incluso tras "Volver al resumen" y regresar,
@@ -82,6 +102,21 @@ export function usePlaceOrder() {
   // peor que pedirle un clic. ShippingOptions lo usa para ofrecer "Quitar cupón
   // y reintentar" junto al mensaje del backend.
   const [couponRejected, setCouponRejected] = useState(false);
+  // El pago se envió pero Stripe todavía no dice "succeeded" (`processing`, o un
+  // `requires_action` que sobrevivió a `redirect: "if_required"`). NO es un
+  // error —el dinero puede estar en camino— y NO es un éxito: avanzar al paso 4
+  // pintaría "Tu pago se realizó con éxito" sobre algo que aún no ocurrió, y
+  // vaciar el carrito daría por cerrada una compra que podría no cerrarse.
+  // Se guarda el token para mandar al comprador a su seguimiento, que sí sabe
+  // el estado real, y se deja que el webhook concilie.
+  //
+  // Es un objeto y no un `string | null` porque el token PUEDE faltar (el
+  // esquema lo declara opcional) y "pago en revisión sin enlace" no es lo mismo
+  // que "no hay pago en revisión": aplanarlo devolvería el botón de pagar justo
+  // en el caso donde más peligroso es volver a cobrarle.
+  const [pendingConfirmation, setPendingConfirmation] = useState<{
+    token: string | null;
+  } | null>(null);
   const {
     acceptedTerms,
     getPendingOrder,
@@ -94,6 +129,13 @@ export function usePlaceOrder() {
 
   const placeOrder = useCallback(
     async (
+      // `stripe` y `elements` llegan como argumentos en vez de salir de
+      // `useStripe()`/`useElements()` aquí dentro: este hook se llama desde
+      // ShippingOptions, que es quien MONTA el <Elements> (necesita el total, y
+      // el total sale de sus propias queries). Un hook de contexto llamado por
+      // encima del proveedor devolvería null siempre.
+      stripe: Stripe,
+      elements: StripeElements,
       items: CartItem[],
       customer: ShippingData,
       selectedRate: SelectedShippingRate,
@@ -114,6 +156,7 @@ export function usePlaceOrder() {
       setStatus("processing");
       setError(null);
       setCouponRejected(false);
+      setPendingConfirmation(null);
       const signature = orderSignature(
         items,
         customer,
@@ -121,7 +164,24 @@ export function usePlaceOrder() {
         couponCode
       );
       try {
-        // 1. Crear la orden (o reusar la de un intento previo que falló en el
+        // 1. Validar la tarjeta capturada ANTES de crear nada. `elements.submit()`
+        //    es local (no cobra ni contacta al banco): solo revisa el formulario
+        //    y recoge lo que haga falta. Si falla, no llegamos a reservar stock.
+        //
+        //    Va dentro del try aunque solo devuelva errores por valor: si
+        //    Stripe.js llegara a lanzar, fuera de aquí el `status` se quedaría en
+        //    "processing" para siempre y el botón, clavado en "Procesando…".
+        const { error: submitError } = await elements.submit();
+        if (submitError) {
+          setError(
+            submitError.message ??
+              "Revisa los datos de tu tarjeta e inténtalo de nuevo."
+          );
+          setStatus("idle");
+          return;
+        }
+
+        // 2. Crear la orden (o reusar la de un intento previo que falló en el
         //    pago, siempre que ni el carrito, los datos, la tarifa elegida ni el
         //    cupón hayan cambiado).
         let pending = getPendingOrder(signature);
@@ -154,25 +214,7 @@ export function usePlaceOrder() {
           setPendingOrder(signature, pending);
         }
 
-        // 2. Confirmar el pago con Stripe.js usando la tarjeta de prueba.
-        const stripePromise = getStripe();
-        if (!stripePromise) {
-          setError(
-            "La pasarela de pago no está configurada. Inténtalo más tarde."
-          );
-          setStatus("idle");
-          return;
-        }
-        const stripe = await stripePromise;
-        if (!stripe) {
-          setError(
-            "No pudimos cargar la pasarela de pago. Revisa tu conexión e inténtalo de nuevo."
-          );
-          setStatus("idle");
-          return;
-        }
-
-        // 2.b El backend nos devolvió un pedido que YA existía (header
+        // 3.a El backend nos devolvió un pedido que YA existía (header
         //     `Idempotency-Replayed`), no uno nuevo: su PaymentIntent puede
         //     estar cobrado desde el intento anterior. Confirmarlo otra vez
         //     devuelve un error de Stripe que le diría al comprador que su pago
@@ -189,8 +231,18 @@ export function usePlaceOrder() {
           }
         }
 
-        const result = await stripe.confirmCardPayment(pending.clientSecret, {
-          payment_method: TEST_PAYMENT_METHOD,
+        // 3.b Cobrar la tarjeta capturada en el Payment Element.
+        //
+        //     `redirect: "if_required"` mantiene al comprador en la página: el
+        //     3D Secure de la mayoría de los emisores sale en un modal sobre el
+        //     checkout. El `return_url` NO es opcional aunque casi nunca se use
+        //     — es la red para el emisor que sí exige salir del sitio, y sin él
+        //     ese pago fallaría en vez de autenticarse.
+        const result = await stripe.confirmPayment({
+          elements,
+          clientSecret: pending.clientSecret,
+          confirmParams: { return_url: paymentReturnUrl(pending.order) },
+          redirect: "if_required",
         });
 
         if (result.error) {
@@ -209,10 +261,13 @@ export function usePlaceOrder() {
           return;
         }
 
-        // Estado inesperado (p. ej. requires_action; no ocurre con pm_card_visa).
-        setError(
-          "El pago quedó pendiente de confirmación. Inténtalo de nuevo."
-        );
+        // Ni error ni `succeeded`: el pago sigue su curso (`processing`) o pide
+        // una acción que `if_required` no pudo resolver aquí. Se deja el pedido
+        // en el caché a propósito —existe y tiene stock reservado, así que un
+        // reintento debe recaer en él y no crear otro— y se manda al comprador a
+        // su seguimiento en vez de dejarlo pulsando "Pagar" contra un cobro que
+        // quizá ya vaya en camino.
+        setPendingConfirmation({ token: pending.order.publicToken ?? null });
         setStatus("idle");
       } catch (err) {
         if (isRateExpiredError(err)) {
@@ -260,5 +315,5 @@ export function usePlaceOrder() {
     ]
   );
 
-  return { status, error, couponRejected, placeOrder };
+  return { status, error, couponRejected, pendingConfirmation, placeOrder };
 }

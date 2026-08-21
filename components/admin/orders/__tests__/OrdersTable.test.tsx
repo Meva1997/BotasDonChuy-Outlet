@@ -210,6 +210,26 @@ describe("OrdersTable — sin recolección a domicilio", () => {
   );
 });
 
+describe("OrdersTable — disputa (Fase 28)", () => {
+  // Se prueba en las DOS estructuras porque el badge se agregó a mano en cada una:
+  // ponerlo solo en la tabla dejaría al dueño sin la señal en el celular, que es
+  // donde más rápido revisa los pedidos del día.
+  it("pinta el badge en la tabla y en las cards", () => {
+    const order = makeAdminOrder({ disputeStatus: "needs_response" });
+    render(<OrdersTable orders={[order]} onSelect={jest.fn()} />);
+
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("En disputa")).toBeInTheDocument();
+    // Dos apariciones = una por estructura (jsdom no aplica media queries).
+    expect(screen.getAllByText("En disputa")).toHaveLength(2);
+  });
+
+  it("sin disputa no aparece por ningún lado", () => {
+    render(<OrdersTable orders={[makeAdminOrder()]} onSelect={jest.fn()} />);
+    expect(screen.queryByText(/disputa/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("OrdersTable — formato de fecha", () => {
   it("sin createdAt, muestra un guion", () => {
     const order = makeAdminOrder({ createdAt: undefined });

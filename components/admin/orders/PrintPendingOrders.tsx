@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAdminOrders, type AdminOrder } from "@/lib/api/adminOrders";
 import { adminProductKeys, getAdminProducts } from "@/lib/api/adminProducts";
 import { formatPrice } from "@/lib/utils";
+import { disputeBlocksShipping } from "./disputeStatus";
 
 // El backend de GET /admin/orders solo clampa `page`, no `perPage` (ver
 // ../backend/src/controllers/order.controller.ts) — pedir un `perPage` grande
@@ -12,7 +13,15 @@ import { formatPrice } from "@/lib/utils";
 const PRINT_PER_PAGE = 10_000;
 
 interface PrintData {
+  /** Lo que sí se empaca. */
   orders: AdminOrder[];
+  /**
+   * Pedidos pendientes de enviar que quedaron FUERA de la hoja por tener una disputa viva
+   * (Fase 28). No se imprimen —empacarlos sería mandar mercancía cuyo cobro ya se retiró del
+   * saldo— pero sí se nombran: esconderlos en silencio dejaría la hoja y la pantalla
+   * contradiciéndose sin explicación, y el dueño buscando un pedido que "desapareció".
+   */
+  disputed: AdminOrder[];
   codeByProductId: Map<number, string>;
 }
 
@@ -138,7 +147,15 @@ export default function PrintPendingOrders() {
       for (const product of products) {
         if (product.code) codeByProductId.set(product.id, product.code);
       }
-      return { orders: ordersRes.orders, codeByProductId };
+      // El filtro es del cliente y no del backend a propósito: la pestaña sigue mostrando
+      // los pedidos disputados (con su badge) para que el dueño los vea y decida; lo que
+      // no puede pasar es que se cuelen en el papel que tiene en la mano al empacar.
+      const orders: AdminOrder[] = [];
+      const disputed: AdminOrder[] = [];
+      for (const order of ordersRes.orders) {
+        (disputeBlocksShipping(order) ? disputed : orders).push(order);
+      }
+      return { orders, disputed, codeByProductId };
     },
     onSuccess: setPrintData,
   });
@@ -184,8 +201,26 @@ export default function PrintPendingOrders() {
           id="print-pedidos-pendientes"
           className="hidden print:block bg-white text-black"
         >
+          {/* Encabezado de exclusión: va ARRIBA, antes de los pedidos, porque
+              es lo único de la hoja que pide una acción distinta a empacar. */}
+          {printData.disputed.length > 0 && (
+            <p className="mb-4 pb-2 border-b-2 border-black text-[12px] font-semibold">
+              {printData.disputed.length === 1
+                ? "1 pedido no se incluyó por tener una disputa abierta: "
+                : `${printData.disputed.length} pedidos no se incluyeron por tener una disputa abierta: `}
+              {printData.disputed.map((order) => `#${order.id}`).join(", ")}. No
+              los empaques sin revisar el caso en Stripe.
+            </p>
+          )}
+
           {printData.orders.length === 0 ? (
-            <p>No hay pedidos pendientes de enviar.</p>
+            // Con todos los pendientes disputados la hoja no puede salir en blanco:
+            // el aviso de arriba se queda solo y este texto explica que no es un error.
+            <p>
+              {printData.disputed.length > 0
+                ? "No queda ningún pedido por empacar: todos los pendientes están en disputa."
+                : "No hay pedidos pendientes de enviar."}
+            </p>
           ) : (
             printData.orders.map((order) => (
               <PrintableOrder

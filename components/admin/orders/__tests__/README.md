@@ -6,11 +6,13 @@ nombre que el módulo que prueba:
 
 | Archivo | Cubre |
 |---|---|
-| `StatusBadges.test.tsx` | Las cuatro píldoras (status/pago/dropoff/envío) + el invariante de color: `STATUS_META` y `PAYMENT_META` no comparten ningún hue, porque se pintan una junto a la otra |
+| `StatusBadges.test.tsx` | Las cinco píldoras (status/pago/dropoff/envío/disputa) + el invariante de color: `STATUS_META` y `PAYMENT_META` no comparten ningún hue, porque se pintan una junto a la otra |
 | `OrdersPagination.test.tsx` | Ventana + elipsis, flechas con `disabled` en los extremos (a diferencia de `OutletPagination`, que no tiene extremos que deshabilitar) |
-| `OrdersTable.test.tsx` | Selección de renglón (clic/teclado) **y de card**, suma de piezas, y las cuatro ramas de `labelNote` en la columna "Envío" |
-| `OrderDetailModal.test.tsx` | El detalle completo: fila de cupón antes de Envío, talla `0` como guion, cancelar/reembolsar solo en pending/paid, el bloque de reembolso ya emitido, el aviso de dropoff, avance de estado forward-only, las cinco ramas de `shipmentLabel.ts` en el flujo de reintento de guía (incluido el `force`), y la rotación del código de rastreo (Fase 26) |
+| `OrdersTable.test.tsx` | Selección de renglón (clic/teclado) **y de card**, suma de piezas, las cuatro ramas de `labelNote` en la columna "Envío", y el badge de disputa en **las dos** estructuras |
+| `OrderDetailModal.test.tsx` | El detalle completo: fila de cupón antes de Envío, talla `0` como guion, cancelar/reembolsar solo en pending/paid, el bloque de reembolso ya emitido, el aviso de dropoff, avance de estado forward-only, las cinco ramas de `shipmentLabel.ts` en el flujo de reintento de guía (incluido el `force`), la rotación del código de rastreo (Fase 26) y el bloque de disputa con su segundo clic (Fase 28) |
+| `PrintPendingOrders.test.tsx` | La hoja de empaque: fetch sin paginar, el `code` cruzado contra el catálogo, y la **exclusión de los pedidos disputados** con su aviso nombrándolos |
 | `shipmentLabel.test.ts` | Ya existía — clasificación pura de `skydropxShipmentId` y mapeo de errores del reintento |
+| `disputeStatus.test.ts` | Clasificación pura de `disputeStatus` (Fase 28): los cuatro estados, el default «abierta» ante lo desconocido y las dos direcciones de `disputeBlocksShipping` |
 | `helpers/` | **No son suites**: `factories` (`makeAdminOrder`/`makeAdminOrderItem`), `apiError`, `render` (QueryClientProvider) |
 
 ## Qué ordena estas suites
@@ -44,6 +46,14 @@ invalide `adminOrderKeys` ni llame a `onOrderUpdated`. `onOrderUpdated` arma de 
 `isManualRefreshRef` de `OrdersSection` —el que suprime el toast del polling— y rotar no toca un
 solo campo de `orderSignature`, así que usarlo ahí se comería el aviso del *siguiente* cambio real
 del webhook. El token nuevo tampoco se pinta: lo entrega el correo automático del backend.
+
+Las disputas (Fase 28) tienen su propia asimetría: `disputeState` trata como **abierta** cualquier
+estado que Stripe reporte y no conozca, y `disputeBlocksShipping` bloquea también la disputa
+**perdida**. Las dos parecen exageradas y las dos están probadas a propósito, porque los errores no
+cuestan lo mismo: equivocarse hacia "abierta" saca un pedido de la hoja de empaque (recuperable con
+un clic), y equivocarse hacia "resuelta" manda mercancía cuyo cobro ya se revirtió. Por lo mismo
+`PrintPendingOrders.test.tsx` afirma que el pedido excluido **sí aparece nombrado** en la hoja:
+sacarlo en silencio dejaría al dueño buscando un pedido que la pantalla sí muestra.
 
 ## Convenciones
 

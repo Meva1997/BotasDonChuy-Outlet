@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import {
+  DisputeBadge,
   DropoffBadge,
   OrderStatusBadge,
   PaymentStatusBadge,
@@ -7,6 +8,7 @@ import {
   ShipmentStatusBadge,
   STATUS_META,
 } from "../StatusBadges";
+import { makeAdminOrder } from "./helpers/factories";
 
 // `status` y `paymentStatus` son campos INDEPENDIENTES que se pintan uno junto al
 // otro (fila de OrdersTable, header del modal) — así que STATUS_META y PAYMENT_META
@@ -51,6 +53,39 @@ describe("DropoffBadge", () => {
   it("avisa que la paquetería no recoge a domicilio", () => {
     render(<DropoffBadge />);
     expect(screen.getByText("Sin recolección")).toBeInTheDocument();
+  });
+});
+
+describe("DisputeBadge", () => {
+  // El badge existe para interrumpir: si apareciera en cada renglón diciendo "sin
+  // disputa", dejaría de leerse justo cuando importa.
+  it("no pinta nada cuando el pedido no tiene disputa", () => {
+    const { container } = render(<DisputeBadge order={makeAdminOrder()} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("distingue las cuatro salidas por etiqueta", () => {
+    const casos: Array<[string, string]> = [
+      ["needs_response", "En disputa"],
+      ["lost", "Disputa perdida"],
+      ["won", "Disputa ganada"],
+      ["warning_closed", "Disputa cerrada"],
+    ];
+    casos.forEach(([disputeStatus, label]) => {
+      const { unmount } = render(
+        <DisputeBadge order={makeAdminOrder({ disputeStatus })} />
+      );
+      expect(screen.getByText(label)).toBeInTheDocument();
+      unmount();
+    });
+  });
+
+  // Reusa hues de las dos rampas a propósito (ver el comentario del componente): lo
+  // que lo separa de un badge de estado es el RELLENO, no el tono. Sin `bg-` sería
+  // indistinguible de "Cancelado" a un metro de distancia.
+  it("se pinta con relleno, que es lo que lo separa de un badge de estado", () => {
+    render(<DisputeBadge order={makeAdminOrder({ disputeStatus: "needs_response" })} />);
+    expect(screen.getByText("En disputa").className).toMatch(/bg-\w+-\d+\/\d+/);
   });
 });
 
