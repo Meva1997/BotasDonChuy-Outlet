@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Re-deploy de producción sin un commit nuevo. Necesario porque las
+  # NEXT_PUBLIC_* se hornean en el build: cambiarlas en Vercel no republica
+  # nada por sí solo, y el "Redeploy" del dashboard reusa el prebuilt anterior
+  # en vez de recompilar. El guard de `github.ref` en deploy-production sigue
+  # siendo obligatorio: workflow_dispatch deja elegir cualquier rama en la UI.
+  workflow_dispatch:
 
 jobs:
   ci:
@@ -33,7 +39,7 @@ jobs:
 
   deploy-production:
     needs: ci
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
