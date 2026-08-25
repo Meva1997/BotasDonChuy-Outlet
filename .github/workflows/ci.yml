@@ -1,16 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
-  # Re-deploy de producción sin un commit nuevo. Necesario porque las
-  # NEXT_PUBLIC_* se hornean en el build: cambiarlas en Vercel no republica
-  # nada por sí solo, y el "Redeploy" del dashboard reusa el prebuilt anterior
-  # en vez de recompilar. El guard de `github.ref` en deploy-production sigue
-  # siendo obligatorio: workflow_dispatch deja elegir cualquier rama en la UI.
-  workflow_dispatch:
+  # Invocado por deploy.yml (push a main y re-deploy manual). El deploy queda
+  # detrás de estas mismas verificaciones sin que main las corra dos veces, y
+  # sin que `deploy-production` aparezca como check "Skipped" en cada PR.
+  workflow_call:
 
 jobs:
   ci:
@@ -36,30 +32,3 @@ jobs:
       - run: pnpm test
 
       - run: pnpm build
-
-  deploy-production:
-    needs: ci
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - run: npm install -g vercel@latest
-
-      - run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      - run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-
-      - run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
