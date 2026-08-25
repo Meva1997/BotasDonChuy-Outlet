@@ -73,13 +73,34 @@ function JacketIcon({ className }: IconProps) {
   );
 }
 
+// Ícono del estado vacío (sin llegadas que anunciar): una caja cerrada, mismo
+// trazo que los de categoría.
+function PackageIcon({ className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.25}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M21 8v8a2 2 0 0 1-1 1.73l-7 4a2 2 0 0 1-2 0l-7-4A2 2 0 0 1 3 16V8a2 2 0 0 1 1-1.73l7-4a2 2 0 0 1 2 0l7 4A2 2 0 0 1 21 8z" />
+      <path d="M3.3 7 12 12l8.7-5" />
+      <path d="M12 12v9.5" />
+      <path d="M7.5 4.5 16 9.4" />
+    </svg>
+  );
+}
+
 const FALLBACK_ICON: Record<ProductType, typeof BootIcon> = {
   bota: BootIcon,
   sombrero: HatIcon,
   ropa: JacketIcon,
 };
 
-interface NewArrivalItem {
+export interface NewArrivalItem {
   id: string;
   category: ProductType;
   name: string;
@@ -92,30 +113,14 @@ interface NewArrivalItem {
 // piezas que solo existen en la sucursal, no en el catálogo online. Para
 // anunciar una llegada nueva basta con agregar un objeto aquí; `imageSrc` es
 // opcional y puede sumarse después, cuando haya foto.
-const NEW_ARRIVALS: NewArrivalItem[] = [
-  {
-    id: "botas-avestruz",
-    category: "bota",
-    name: "Botas Cuadra piel de avestruz",
-    description: "Punta cuadrada, horma cómoda. Negro y miel, tallas 25–29.",
-  },
-  {
-    id: "sombrero-fieltro",
-    category: "sombrero",
-    name: "Sombrero de fieltro ala ancha",
-    description:
-      "Copa alta estilo texano, banda de piel. Ideal para el sol de temporada.",
-  },
-  {
-    id: "chamarra-piel",
-    category: "ropa",
-    name: "Chamarra vaquera de piel",
-    description:
-      "Piel genuina forrada, corte clásico. Tallas chica a extra grande.",
-  },
-];
+//
+// Vacío es un estado NORMAL, no un error: la sección cambia su texto por una
+// invitación a ver el outlet y a estar pendiente, y el bloque de "Visítanos en
+// tienda" se sigue mostrando igual (es lo único que nunca depende de que haya
+// llegadas que anunciar).
+const NEW_ARRIVALS: NewArrivalItem[] = [];
 
-function NewArrivalCard({ item }: { item: NewArrivalItem }) {
+export function NewArrivalCard({ item }: { item: NewArrivalItem }) {
   const FallbackIcon = FALLBACK_ICON[item.category];
 
   return (
@@ -180,6 +185,8 @@ function NewArrivalCard({ item }: { item: NewArrivalItem }) {
 }
 
 export default function NewProducts() {
+  const hasArrivals = NEW_ARRIVALS.length > 0;
+
   return (
     <motion.section
       initial="hidden"
@@ -201,16 +208,41 @@ export default function NewProducts() {
           <span className="italic text-amber-400">tienda</span>
         </h2>
         <p className="text-sm text-amber-100/55 leading-relaxed">
-          Estas piezas acaban de llegar a nuestra sucursal de Celaya y todavía
-          no están en el outlet en línea. Ven a verlas y pruébatelas en persona.
+          {hasArrivals
+            ? "Estas piezas acaban de llegar a nuestra sucursal de Celaya y todavía no están en el outlet en línea. Ven a verlas y pruébatelas en persona."
+            : "Por ahora no tenemos llegadas nuevas que anunciar en nuestra sucursal de Celaya. En cuanto entre mercancía fresca la vas a ver justo aquí."}
         </p>
       </motion.div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-4">
-        {NEW_ARRIVALS.map((item) => (
-          <NewArrivalCard key={item.id} item={item} />
-        ))}
-      </div>
+      {hasArrivals ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-4">
+          {NEW_ARRIVALS.map((item) => (
+            <NewArrivalCard key={item.id} item={item} />
+          ))}
+        </div>
+      ) : (
+        <motion.div
+          variants={fadeUp}
+          transition={{ duration: 0.6, ease: EASE_LUXE }}
+          className="border border-amber-400/10 bg-stone-900 px-6 py-10 sm:px-10 sm:py-12 text-center"
+        >
+          <PackageIcon className="mx-auto h-12 w-12 text-amber-100/20" />
+          <p className="mt-5 font-serif text-xl text-amber-50 leading-snug">
+            Todavía no hay llegadas nuevas
+          </p>
+          <p className="mx-auto mt-3 max-w-md font-sans text-sm text-amber-100/50 leading-relaxed">
+            Mientras tanto, date una vuelta por el outlet en línea: ahí siguen
+            los modelos disponibles, con precios de temporada. Y quédate
+            pendiente, que la mercancía nueva llega seguido.
+          </p>
+          <Link
+            href="/outlet"
+            className="mt-7 inline-block text-xs tracking-[0.3em] uppercase border px-8 py-3.5 border-amber-400/70 text-amber-400 hover:bg-amber-400/10 transition-colors duration-300"
+          >
+            Ver el outlet
+          </Link>
+        </motion.div>
+      )}
 
       <motion.div
         variants={fadeUp}

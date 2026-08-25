@@ -106,7 +106,15 @@ components/
                   #   piece counts via getProducts({ categoria, perPage: 1 }) — only reads `total` —
                   #   then renders NewProducts below the grid: static "nuevo en tienda física" content
                   #   (NEW_ARRIVALS is hardcoded — these pieces only exist in the Celaya store, no
-                  #   backend), linking to /nosotros#ubicacion. Footer's brand mark links home
+                  #   backend), linking to /nosotros#ubicacion. **NEW_ARRIVALS is EMPTY today and that
+                  #   is a normal state, not a bug**: the section swaps its copy for "todavía no hay
+                  #   llegadas nuevas" + a CTA to /outlet, and the "Visítanos en tienda" block (address
+                  #   from LEGAL_ENTITY + "Cómo llegar") renders EITHER WAY — it's the one piece that
+                  #   never depends on there being arrivals to announce. The header paragraph is
+                  #   conditional too: the populated copy says the pieces "acaban de llegar", which
+                  #   over an empty section would be a promise the store isn't keeping. NewArrivalCard
+                  #   is exported only so its spec can mount it while the array is empty. Footer's
+                  #   brand mark links home
   outlet/         # OutletView (catalog listing) + OutletCard + EmptyState + OutletSkeleton (Suspense
                   #   fallback, see "Estados de carga"). OutletFilters (search + categoría + talla +
                   #   orden + price range): the backend resolves everything in SQL — front NEVER

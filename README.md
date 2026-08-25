@@ -57,7 +57,8 @@ app/              # Next.js App Router
   forgot-password/      # Forgot password wizard
 components/
   home/           # Page sections (NavHeader, Hero, Footer, CategoryCard, NewProducts — static
-                  #   "new in the physical store" content, no backend)
+                  #   "new in the physical store" content, no backend; empty today, so it shows an
+                  #   invitation to the online outlet plus the always-visible store address)
   outlet/         # OutletView — product listing; OutletFilters (search, category, size, sort,
                   #   price range — all resolved server-side); OutletSkeleton (Suspense fallback)
   seo/            # JsonLd — renders a schema.org block into the HTML
